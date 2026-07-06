@@ -10,11 +10,26 @@
 //! `docs/ARCHITECTURE.md` §9.3): `#![forbid(unsafe_code)]`, panic-free on
 //! fallible paths, bounded loops, and validation at every trust boundary.
 
+// `modman-core` touches users' game files, so arithmetic is held to the
+// strictest tier here: every `+`/`-`/`*` on a count or size must be a
+// `checked_*`/`saturating_*` call, enforced at deny level (the workspace sets
+// this to warn; core promotes it).
+#![deny(clippy::arithmetic_side_effects)]
+
 mod db;
+mod deploy;
 mod engine;
 mod error;
+mod gamedef;
+mod id;
+mod model;
 mod paths;
+mod store;
 
+pub use deploy::{Conflict, DeployPlan, DeployReport, FileStatus, VerifyIssue, VerifyReport};
 pub use engine::Engine;
 pub use error::{Error, Result};
+pub use gamedef::GameDef;
+pub use id::{GameId, ModId, ProfileId};
+pub use model::{Game, LinkType, Mod, Profile};
 pub use paths::Paths;

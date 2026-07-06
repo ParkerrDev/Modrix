@@ -60,8 +60,12 @@ site-specific, and no protocol crate; frontends depend on core; no cycles.**
 modman/  (cargo workspace)
 ├── modman-core        # engine: games, profiles, mod store, deploy, conflicts,
 │                      #   manifest, transactions. ZERO UI/network-UI deps.
+│                      #   Owns the declarative `game.toml` loader (pure data, no
+│                      #   code exec) so the engine can add games without linking
+│                      #   the Lua host.
 ├── modman-plugin      # mlua host + the sandboxed `modman` API given to Lua.
-│                      #   Also: TOML game-definition loader, FOMOD installer.
+│                      #   Also: FOMOD installer. (The `game.toml` loader lives in
+│                      #   core; this crate adds the Lua tier on top of it.)
 ├── modman-nexus       # Nexus API client + nxm:// link resolver (behind a
 │                      #   `ModSource` trait, so other sites slot in later).
 ├── modman-ipc         # single-instance guard + loopback listener. The one

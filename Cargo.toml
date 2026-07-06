@@ -25,6 +25,16 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+sha2 = "0.10"
+# zip for reading mod archives. We DECOMPRESS only, so we take the pure-Rust
+# flate2 (miniz_oxide) backend and never enable `deflate` (which would pull in
+# zopfli, an Apache-2.0-only crate rejected by our GPLv2 license gate).
+zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+proptest = "1"
 
 # --- Power of Ten for Rust - enforced workspace-wide (see docs/ARCHITECTURE.md §9.3) ---
 [workspace.lints.rust]

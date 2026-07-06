@@ -89,6 +89,20 @@ impl Paths {
         self.data.join("backups")
     }
 
+    /// The deploy journal: pre-state written before any mutation. Its presence
+    /// at startup means a deploy was interrupted and must be recovered.
+    #[must_use]
+    pub fn journal_file(&self) -> PathBuf {
+        self.data.join("deploy.journal.json")
+    }
+
+    /// The deploy commit marker: written atomically once all disk mutations
+    /// succeed. Its presence decides recovery direction (roll forward vs back).
+    #[must_use]
+    pub fn commit_file(&self) -> PathBuf {
+        self.data.join("deploy.commit.json")
+    }
+
     /// Create every directory this installation needs, if absent.
     ///
     /// # Errors

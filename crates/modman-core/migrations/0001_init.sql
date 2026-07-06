@@ -13,6 +13,8 @@ CREATE TABLE games (
     plugin_id    TEXT    NOT NULL,
     name         TEXT    NOT NULL,
     install_path TEXT    NOT NULL,
+    -- Where mods deploy, relative to install_path (from the game definition).
+    mod_root     TEXT    NOT NULL DEFAULT '',
     store        TEXT    NOT NULL DEFAULT 'unknown',
     steam_appid  INTEGER,
     staging_root TEXT    NOT NULL

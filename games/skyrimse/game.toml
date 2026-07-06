@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# A declarative (Tier 1) game definition - no code required. This is the whole
+# thing needed to manage a simple Steam title: an id, a name, and where mods
+# deploy relative to the install directory.
+api_version   = 1
+id            = "skyrimse"
+name          = "The Elder Scrolls V: Skyrim Special Edition"
+steam_appid   = 489830
+mod_root      = "Data"          # mods deploy into <install>/Data
+deploy        = "link"          # hardlink → symlink → copy (applier falls back)
+install_probe = ["steam", "registry", "path-hint"]
+load_order    = "plugins_txt"
