@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ModManager Bridge</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; margin: 20px; max-width: 32rem; }
+      h1 { font-size: 1.1rem; }
+      label { display: block; margin: 12px 0 4px; font-weight: 600; }
+      input { width: 100%; padding: 8px; box-sizing: border-box; }
+      button { margin-top: 14px; padding: 8px 14px; cursor: pointer; }
+      #status { margin-top: 12px; min-height: 1.2em; }
+      .hint { color: #666; font-size: 0.9em; }
+    </style>
+  </head>
+  <body>
+    <h1>ModManager Bridge</h1>
+    <p class="hint">
+      Run <code>modman serve</code> - it prints a port and a session token. Paste
+      them here. Downloads you start on Nexus (and other sites) are then handed
+      to ModManager over loopback, authenticated with your own browser session.
+    </p>
+    <label for="port">Port</label>
+    <input id="port" type="number" min="1" max="65535" placeholder="41015" />
+    <label for="token">Session token</label>
+    <input id="token" type="text" placeholder="paste the token from `modman serve`" />
+    <div>
+      <button id="save">Save</button>
+      <button id="test">Test connection</button>
+    </div>
+    <div id="status"></div>
+    <script src="options.js"></script>
+  </body>
+</html>

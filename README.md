@@ -3,8 +3,9 @@
 
 A fast, native, cross-platform (Linux, Windows, macOS) mod manager in Rust - an
 open-source [Vortex](https://www.nexusmods.com/about/vortex/) replacement with a
-**GUI, a TUI, and a CLI** over one engine. It handles `nxm://` "Download with
-Manager" links automatically, supports any game via community plugins, and treats
+**GUI, a TUI, and a CLI** over one engine. It is a **download manager** with a
+**browser extension** that hands your own browser downloads to the local engine
+(no site API, no API key), supports any game via community plugins, and treats
 Steam + Proton as first-class.
 
 - **License:** GPL-2.0-only. Every dependency is GPLv2-compatible, enforced by
@@ -26,7 +27,7 @@ Steam + Proton as first-class.
 |---|---|
 | `modman-core` | Engine: domain, deployment, manifest, storage. No UI deps. |
 | `modman-plugin` | Lua (mlua) plugin host + `game.toml` loader + FOMOD. |
-| `modman-nexus` | Nexus Mods `ModSource`: API client + `nxm://` resolver. |
+| `modman-download` | Segmented, resumable download engine (aria2/Motrix-style); fed by the browser extension's hand-off, not a site API. |
 | `modman-ipc` | Single-instance guard + loopback listener. |
 | `modman-protocol` | Tiny `nxm://` OS handler that forwards to the running instance. |
 | `modman-cli` | `clap` frontend (binary: `modman`). |

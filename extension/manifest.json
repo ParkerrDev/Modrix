@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "ModManager Bridge",
+  "version": "0.1.0",
+  "description": "Hand mod downloads from your browser to a running ModManager - no API key, works with your own logged-in session.",
+  "permissions": ["downloads", "cookies", "storage", "contextMenus", "notifications"],
+  "host_permissions": ["*://*/*"],
+  "background": { "service_worker": "sw.js" },
+  "options_page": "options.html",
+  "action": { "default_title": "ModManager Bridge", "default_popup": "options.html" },
+  "browser_specific_settings": {
+    "gecko": { "id": "modmanager-bridge@modmanager", "strict_min_version": "115.0" }
+  }
+}

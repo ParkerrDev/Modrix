@@ -1,38 +1,48 @@
 <!-- SPDX-License-Identifier: GPL-2.0-only -->
-# Browser integration
+# ModManager Bridge (browser extension)
 
-ModManager handles Nexus "Download with Manager" (`nxm://`) links two ways. You
-only need one.
+ModManager has **no Nexus API and needs no API key**. It is a download manager
+fed by this browser extension: you stay logged into Nexus (or any site) in your
+own browser, click the normal **Download**, and the extension hands that
+already-authenticated download - the real CDN URL plus your cookies, referrer,
+and User-Agent - to the local ModManager service, which downloads it (segmented,
+resumable) and installs it into the right game.
 
-## 1. OS protocol handler (recommended - no browser add-on)
+This is the same idea as Motrix/JDownloader, reimplemented in Rust with no aria2
+binary.
 
-Register ModManager as the system handler for the `nxm` scheme:
+## Setup
 
-```sh
-modman-protocol --register      # Linux: writes a .desktop + xdg-mime default
-```
+1. Start the service - it prints a **port** and a **session token**:
+   ```sh
+   modman serve
+   ```
+2. Load the extension:
+   - **Chrome/Edge**: `chrome://extensions` → enable Developer mode → *Load
+     unpacked* → select this `extension/` folder.
+   - **Firefox**: `about:debugging` → *This Firefox* → *Load Temporary Add-on* →
+     select `extension/manifest.json`.
+3. Open the extension's options (its toolbar icon) and paste the **port** and
+   **token**. Click *Test connection*.
 
-On Windows/macOS `--register` prints the manual steps (registry / Info.plist).
-After that, clicking **Mod Manager Download** on Nexus launches
-`modman-protocol`, which forwards the link to the running ModManager service
-(start it with `modman serve`, or the GUI once it ships). The download and
-install happen with no window open.
+## Using it
 
-## 2. Userscript (the enhanced path)
+- **Automatic**: clicking Nexus's *Manual Download* (or any archive download -
+  `.zip`/`.7z`/`.rar`/`.fomod`) hands it to ModManager instead of your browser's
+  download folder. The mod is downloaded and staged into the game whose Nexus
+  domain the page URL identifies.
+- **Explicit**: right-click any link → *Download with ModManager*.
 
-`modmanager.user.js` is a Tampermonkey/Violentmonkey userscript that forwards
-`nxm://` links to the local service directly, without the OS handler - useful if
-you can't register the protocol, or as groundwork for non-Nexus sites.
+The connection is **loopback-only and token-authed** (`x-modman-token`), so only
+a client that knows your per-session token can reach the engine. Cookies are only
+read for the download's own host and are forwarded solely so an authenticated
+download replays correctly.
 
-1. Run `modman serve`; it prints a **port** and a **session token**.
-2. Install the userscript and edit `MODMANAGER_PORT` / `MODMANAGER_TOKEN` at the
-   top to match.
-3. Reload the Nexus page. Clicking a Mod Manager Download now POSTs the link to
-   `http://127.0.0.1:<port>/nxm` with your token (via `GM_xmlhttpRequest`, which
-   bypasses page CORS / mixed-content rules).
+## Notes
 
-The service is **loopback-only and token-authed**: only a client that knows your
-per-session token can reach the engine.
-
-> Status: the userscript is a v1 draft and needs verification against the live
-> Nexus page structure. A packaged WebExtension follows in Phase 6.
+- `nxm://` links are **no longer** a download mechanism (resolving them requires
+  the site session, which lives in the browser - exactly what this extension
+  captures). `modman-protocol` and the `nxm://` parser are retained only to read
+  game/mod identity.
+- This is a v1 draft and needs verification against live sites' download flows.
+  A packaged (signed) build follows in a later phase.

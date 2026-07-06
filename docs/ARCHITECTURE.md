@@ -66,8 +66,9 @@ modman/  (cargo workspace)
 ├── modman-plugin      # mlua host + the sandboxed `modman` API given to Lua.
 │                      #   Also: FOMOD installer. (The `game.toml` loader lives in
 │                      #   core; this crate adds the Lua tier on top of it.)
-├── modman-nexus       # Nexus API client + nxm:// link resolver (behind a
-│                      #   `ModSource` trait, so other sites slot in later).
+├── modman-download    # segmented, resumable download engine (aria2/Motrix-style,
+│                      #   no aria2 code). Fed by the browser extension's hand-off,
+│                      #   NOT a site API. Retains the nxm:// identity parser.
 ├── modman-ipc         # single-instance guard + loopback listener. The one
 │                      #   ingress for both the OS protocol handler and the
 │                      #   browser extension.
@@ -192,43 +193,71 @@ Bound recursion over the step/condition tree (§9.3).
 
 ## 6. Download pipeline (the "seamless" part)
 
-Two ingress paths, unified at one loopback listener.
+> **Corrected (supersedes the earlier API-based design).** ModManager does **not**
+> use the Nexus API, API keys, or any third-party site API. An earlier draft made
+> downloads depend on `download_link.json` + a personal `apikey`; that path is
+> removed. The public API refuses free users download links anyway, so it could
+> never serve the common case. Instead ModManager is a **download manager** fed by
+> a **browser extension** that hands off the user's own browser download.
 
-### 6.1 `nxm://` - the primary path (no extension needed)
-We register as the OS handler for the `nxm` scheme:
-- **Linux:** a `.desktop` with `MimeType=x-scheme-handler/nxm;` +
-  `xdg-mime default modman.desktop x-scheme-handler/nxm`.
-- **Windows:** `HKCU\Software\Classes\nxm` with `URL Protocol` + shell open command.
-- **macOS:** `CFBundleURLTypes` in `Info.plist` (scheme `nxm`) /
-  `LSSetDefaultHandlerForURLScheme`.
+ModManager is, at its core, a clean-room Rust reimplementation of the aria2/Motrix
+download *engine* (segmented, multi-connection, resumable) with no UI and **no
+aria2 code or binary** - a GPLv2-clean rebuild on our hyper + rustls stack. A thin
+**WebExtension** captures the browser's real, already-authenticated download and
+hands it to the engine over loopback; the engine downloads and installs.
 
-Nexus's "Download with Manager" fires:
-```
-nxm://<game_domain>/mods/<mod_id>/files/<file_id>?key=<k>&expires=<ts>&user_id=<uid>
-```
-`modman-protocol` forwards it to the running instance, which calls:
-```
-GET https://api.nexusmods.com/v1/games/{game}/mods/{mod}/files/{file}/download_link.json
-    ?key={k}&expires={ts}          # key/expires required for free users; premium may omit
-    header: apikey: <user_api_key>
-```
-→ resolve CDN URL → download (resumable, progress, checksum-verified) → hand to the
-game plugin for install. Respect Nexus **rate limits** (`X-RL-*` headers); cache
-metadata; back off on 429.
+### 6.1 Extension hand-off - the primary path
+The `ModManager Bridge` WebExtension (MV3; Chrome + Firefox) observes downloads via
+`chrome.downloads` (primary hook `onDeterminingFilename`; `onCreated` fallback on
+Firefox), plus an explicit "Download with ModManager" context-menu item. When it
+recognizes a mod download (an archive, or a `*.nexus-cdn.com` URL) it:
+1. cancels + erases the browser's own download (no duplicate file);
+2. gathers auth context: `cookies.getAll({url})` → a `Cookie:` header, plus
+   `navigator.userAgent`, the referrer, and the page/tab URL (which carries the
+   Nexus game domain);
+3. `POST`s a JSON `HandoffJob` to `http://127.0.0.1:<port>/download` with the
+   per-session token.
 
-### 6.2 Extension / userscript - enhanced path
-Adds our own button that `POST`s mod info to `http://127.0.0.1:<port>` (the
-loopback listener). This is how we support **auto-handling** and **future non-Nexus
-sites**. The auto-slow-download userscript composes here: for free users it can
-auto-trigger the flow so the countdown isn't babysat. v1 ships a userscript (zero
-install friction); a WebExtension can follow.
+The signed Nexus CDN URL is self-authenticating (a token + `expires` + IP binding
+in its query string), so the engine re-issues it directly - segmented and
+resumable - provided it runs on the same public IP and before `expires`. An
+expired/IP-mismatched URL surfaces a "re-click the download" prompt.
 
-### 6.3 IPC seam (`modman-ipc`)
+### 6.2 The engine (`modman-download`)
+A generic segmented downloader on hyper + rustls: it probes for `Range` support
+(`206` vs `200`), preallocates the target, and drives up to N connections (default
+16) issuing `Range` GETs whose bodies stream to disjoint file offsets on
+per-worker seek-once handles (no `unsafe`, no shared cursor). Progress is persisted
+to a compact `.mmdl` control file (piece bitfield + `ETag` validator), giving
+resumable transfers. Downloads stream to `<dest>.part`, are checksum-verified when
+a hash is available (MD5/SHA-256), and are renamed into place only on success (a
+bad or partial file is never accepted). A FIFO queue with a global concurrency cap
+schedules multiple downloads; a broadcast event stream feeds the GUI/TUI. On
+completion the file is routed to a game and handed to `Engine::stage` - the
+unchanged transactional install path.
+
+### 6.3 Install routing - no API
+The target game is chosen from what the extension passed: the page/tab URL's Nexus
+domain (or an `nxm://` link's domain, via the retained `NxmUri` identity helper) →
+`Engine::game_by_nexus_domain`; failing that, the download still completes and is
+**parked**, and the user is prompted to pick a registered game. A download is never
+lost because a game is unregistered.
+
+### 6.4 IPC seam (`modman-ipc`)
 The loopback HTTP listener **is** the single-instance mechanism: whoever binds the
 port is primary; a second launch (or `modman-protocol`) detects the bound port and
 forwards its request instead of starting a duplicate. If nothing is running, a
 headless engine starts to service the download, so browser clicks work even with
-the GUI closed. Loopback-only + a per-session token; never bind non-localhost.
+the GUI closed. Loopback-only + a per-session token (`x-modman-token`), CORS for
+the extension origin; never bind non-localhost. New JSON endpoints - `POST
+/download`, `GET /download/<id>`, `GET /downloads` - carry the hand-off and progress.
+
+### 6.5 `nxm://` - dormant, identity-only
+Resolving an `nxm://` link to a file requires the browser session we deliberately
+don't automate, so `nxm://` is no longer a download mechanism. The OS protocol
+handler (`modman-protocol`) and the `NxmUri` parser are retained only to extract
+game/mod/file **identity**; they are not registered by default. Real downloads
+always come through the extension hand-off.
 
 ---
 
