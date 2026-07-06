@@ -61,15 +61,6 @@ impl NxmUri {
             user_id: query.user_id,
         })
     }
-
-    /// The Nexus API path that resolves this link to a CDN URL.
-    #[must_use]
-    pub fn download_link_path(&self) -> String {
-        format!(
-            "v1/games/{}/mods/{}/files/{}/download_link.json",
-            self.domain, self.mod_id, self.file_id
-        )
-    }
 }
 
 /// Strip a case-insensitive `nxm://` prefix, returning the remainder.
@@ -181,10 +172,6 @@ mod tests {
         assert_eq!(uri.key.as_deref(), Some("abcDEF123"));
         assert_eq!(uri.expires, Some(1_700_000_000));
         assert_eq!(uri.user_id, Some(42));
-        assert_eq!(
-            uri.download_link_path(),
-            "v1/games/skyrimspecialedition/mods/12345/files/67890/download_link.json"
-        );
     }
 
     #[test]

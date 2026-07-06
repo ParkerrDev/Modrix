@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 [package]
-name = "modman-nexus"
-description = "Nexus Mods ModSource: API client, nxm:// resolver, rate limiting."
+name = "modman-download"
+description = "Segmented, resumable download engine (Rust reimplementation of the aria2/Motrix engine); nxm identity parser."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,6 +20,7 @@ rustls.workspace = true
 rustls-rustcrypto.workspace = true
 rustls-native-certs.workspace = true
 md-5.workspace = true
+sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

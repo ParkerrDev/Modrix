@@ -15,7 +15,7 @@ path = "src/main.rs"
 [dependencies]
 modman-core.workspace = true
 modman-ipc.workspace = true
-modman-nexus.workspace = true
+modman-download.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 tokio.workspace = true

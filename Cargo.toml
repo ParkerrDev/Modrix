@@ -14,7 +14,7 @@ authors = ["ModManager contributors"]
 # --- internal crates ---
 modman-core = { path = "crates/modman-core" }
 modman-plugin = { path = "crates/modman-plugin" }
-modman-nexus = { path = "crates/modman-nexus" }
+modman-download = { path = "crates/modman-download" }
 modman-ipc = { path = "crates/modman-ipc" }
 # --- external (pinned; further deps added per phase as they are used) ---
 anyhow = "1"

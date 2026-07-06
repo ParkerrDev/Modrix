@@ -67,18 +67,13 @@ enum Command {
     Undeploy,
     /// Verify the current deployment against the manifest.
     Verify,
-    /// Run the headless background service that handles nxm:// links (downloads
-    /// and installs mods clicked in the browser). Blocks until killed.
+    /// Run the headless background service that handles browser download
+    /// hand-offs (downloads and installs mods clicked in the browser via the
+    /// extension). Blocks until killed.
     Serve {
-        /// Nexus personal API key (or set the `NEXUS_API_KEY` environment variable).
-        #[arg(long, env = "NEXUS_API_KEY")]
-        api_key: String,
         /// Loopback port to bind (single-instance mutex).
         #[arg(long, default_value_t = modman_ipc::DEFAULT_PORT)]
         port: u16,
-        /// Override the Nexus API base URL (for testing against a mock server).
-        #[arg(long, hide = true)]
-        api_base: Option<String>,
     },
 }
 
@@ -152,13 +147,8 @@ fn main() -> Result<()> {
 
     // `serve` runs its own async runtime and owns the engine; everything else is
     // a quick synchronous action.
-    if let Command::Serve {
-        api_key,
-        port,
-        api_base,
-    } = &cli.command
-    {
-        return serve::run(engine, api_key.clone(), *port, api_base.clone());
+    if let Command::Serve { port } = &cli.command {
+        return serve::run(engine, *port);
     }
 
     let stdout = std::io::stdout();

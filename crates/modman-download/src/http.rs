@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use http_body_util::{BodyExt, Empty};
+use http_body_util::Empty;
 use hyper::body::{Bytes, Incoming};
 use hyper::{Request, Uri};
 use hyper_util::rt::TokioIo;
@@ -19,8 +19,6 @@ use crate::error::Error;
 
 /// Maximum redirects to follow before giving up.
 const MAX_REDIRECTS: u8 = 5;
-/// Cap on a fully-buffered (non-streamed) response body, e.g. API JSON.
-const MAX_BUFFERED_BODY: usize = 16 * 1024 * 1024;
 
 /// A reusable HTTP client. Cheap to clone (shares one TLS config).
 #[derive(Clone)]
@@ -108,12 +106,19 @@ impl HttpClient {
             let _ = conn.await;
         });
 
+        // Only inject our default UA if the caller didn't supply one - a mod host
+        // may gate on the browser's User-Agent, which the extension replays.
+        let has_ua = headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("user-agent"));
         let mut builder = Request::builder()
             .method("GET")
             .uri(&target.path_and_query)
             .header("host", &target.host)
-            .header("user-agent", "ModManager")
             .header("connection", "close");
+        if !has_ua {
+            builder = builder.header("user-agent", "ModManager");
+        }
         for (name, value) in headers {
             builder = builder.header(*name, value);
         }
@@ -158,25 +163,6 @@ impl HttpClient {
             .map_err(|e| Error::Tls(e.to_string()))?;
         Ok(Stream::Tls(Box::new(tls)))
     }
-}
-
-/// Collect a response body into memory, bounded.
-///
-/// # Errors
-///
-/// Returns [`Error::Http`] on a read failure or if the body exceeds the cap.
-pub(crate) async fn read_to_bytes(mut response: Response) -> Result<Vec<u8>, Error> {
-    let mut out = Vec::new();
-    while let Some(frame) = response.body.frame().await {
-        let frame = frame.map_err(|e| Error::Http(e.to_string()))?;
-        if let Ok(data) = frame.into_data() {
-            if out.len().saturating_add(data.len()) > MAX_BUFFERED_BODY {
-                return Err(Error::Http("response body too large".to_owned()));
-            }
-            out.extend_from_slice(&data);
-        }
-    }
-    Ok(out)
 }
 
 fn is_redirect(status: u16) -> bool {

@@ -1184,8 +1184,8 @@ dependencies = [
  "anyhow",
  "clap",
  "modman-core",
+ "modman-download",
  "modman-ipc",
- "modman-nexus",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1210,6 +1210,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "modman-download"
+version = "0.0.0"
+dependencies = [
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "md-5",
+ "modman-core",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-rustcrypto",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "modman-gui"
 version = "0.0.0"
 
@@ -1223,28 +1246,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
-]
-
-[[package]]
-name = "modman-nexus"
-version = "0.0.0"
-dependencies = [
- "http-body-util",
- "hyper",
- "hyper-util",
- "md-5",
- "modman-core",
- "rustls",
- "rustls-native-certs",
- "rustls-rustcrypto",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-rustls",
- "tracing",
- "wiremock",
 ]
 
 [[package]]

@@ -55,17 +55,27 @@ pub enum Error {
     #[error("http error: {0}")]
     Http(String),
 
-    /// The Nexus API returned an error status or unexpected payload.
-    #[error("nexus api: {0}")]
-    Api(String),
+    /// A signed/single-use URL has expired or is IP-bound to a different host
+    /// (the browser must re-mint it and hand off again).
+    #[error("the download URL has expired; re-click the download in the browser")]
+    Expired,
 
-    /// We are rate limited; retry no sooner than the given number of seconds.
-    #[error("rate limited by Nexus; retry after {0}s")]
-    RateLimited(u64),
+    /// The deploy/resume control file was missing, malformed, or stale.
+    #[error("download control file: {0}")]
+    ControlFile(String),
 
-    /// A JSON payload could not be parsed.
-    #[error("malformed json: {0}")]
-    Json(String),
+    /// A bounded loop hit its ceiling - an input was too large or adversarial.
+    #[error("{what} exceeded its bound of {limit}")]
+    BoundExceeded {
+        /// What was being counted.
+        what: &'static str,
+        /// The limit reached.
+        limit: u64,
+    },
+
+    /// A hand-off job from the browser was malformed or failed validation.
+    #[error("invalid download job: {0}")]
+    BadJob(String),
 
     /// A downloaded file did not match its expected checksum.
     #[error("checksum mismatch: expected {expected}, got {actual}")]
