@@ -126,9 +126,11 @@ fn sanitize_filename(name: &str) -> Option<String> {
     // `file_name` strips every path component, so `../../etc/passwd` → `passwd`
     // and `..`/`/` → None.
     let base = Path::new(name).file_name()?.to_string_lossy();
+    // Drop control chars, path separators, and every Windows-reserved character
+    // (`:` would otherwise open an NTFS alternate data stream).
     let cleaned: String = base
         .chars()
-        .filter(|c| !c.is_control() && *c != '/' && *c != '\\')
+        .filter(|c| !c.is_control() && !"/\\<>:\"|?*".contains(*c))
         .take(MAX_NAME_LEN)
         .collect();
     let trimmed = cleaned.trim().trim_matches('.').to_owned();

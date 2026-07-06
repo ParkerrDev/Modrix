@@ -149,11 +149,7 @@ async fn segmented(
 ) -> Result<u64> {
     let piece_len = req.limits.piece_len;
     let piece = u64::from(piece_len.max(1));
-    // Resume from a matching control file, else start fresh.
-    let control = match Control::load(control_path).await? {
-        Some(c) if c.matches(piece_len, total, &validator) => c,
-        _ => Control::fresh(piece_len, total, validator.clone(), false)?,
-    };
+    let control = load_or_fresh(control_path, piece_len, total, &validator, part).await?;
     preallocate(part, total).await?;
     handle.total.store(total, Ordering::Relaxed);
     handle.done.store(control.bytes_done(), Ordering::Relaxed);
@@ -194,13 +190,19 @@ async fn segmented(
 
     let complete = shared.lock_map()?.is_complete();
     if !complete {
-        // Persist progress for a later resume, then report why we stopped.
+        // Persist progress for a later resume, then report why we stopped. Prefer
+        // the real worker error (e.g. Expired) over a generic message - a
+        // MAX_FAILURES/Expired abort also sets `cancel`, so checking it first
+        // would mask the actionable cause.
         let snapshot = shared.lock_map()?.snapshot();
         persist(control_path, piece_len, total, &validator, snapshot).await?;
-        if shared.handle.cancel.load(Ordering::Relaxed) {
-            return Err(Error::Http("download cancelled".to_owned()));
-        }
-        return Err(first_error.unwrap_or_else(|| Error::Http("download incomplete".to_owned())));
+        return Err(first_error.unwrap_or_else(|| {
+            if shared.handle.cancel.load(Ordering::Relaxed) {
+                Error::Http("download cancelled".to_owned())
+            } else {
+                Error::Http("download incomplete".to_owned())
+            }
+        }));
     }
 
     finalize(
@@ -237,6 +239,28 @@ async fn finalize(
         .map_err(|e| Error::io(dest, e))?;
     handle.done.store(total, Ordering::Relaxed);
     Ok(total)
+}
+
+/// Load a control file to resume from, or a fresh one. Resume only when the
+/// control matches, has a non-empty validator (remote known unchanged), and the
+/// `.part` is present at full length - otherwise discard and start clean.
+async fn load_or_fresh(
+    control_path: &Path,
+    piece_len: u32,
+    total: u64,
+    validator: &str,
+    part: &Path,
+) -> Result<Control> {
+    let resumable = Control::load(control_path)
+        .await?
+        .filter(|c| !validator.is_empty() && c.matches(piece_len, total, validator));
+    match resumable {
+        Some(c) if part_at_full_length(part, total).await => Ok(c),
+        _ => {
+            let _ = Control::remove(control_path).await;
+            Control::fresh(piece_len, total, validator.to_owned(), false)
+        }
+    }
 }
 
 /// Spawn `connections` workers, await them all, and return the first error.
@@ -313,43 +337,43 @@ async fn download_run(shared: &Shared, start: usize, end: usize) -> Result<()> {
     }
 
     let mut cursor = byte_start;
-    let mut next_piece = start;
     let mut body = response.body;
     while let Some(frame) = body.frame().await {
         if shared.handle.cancel.load(Ordering::Relaxed) {
+            // The job is aborting; leave this run's pieces unmarked so a resume
+            // re-fetches them (nothing is recorded as done that isn't durable).
             return Ok(());
         }
         let frame = frame.map_err(|e| Error::Http(e.to_string()))?;
         if let Ok(chunk) = frame.into_data() {
-            file.write_all(&chunk)
+            // Never write past this segment's region: a misbehaving server that
+            // over-sends must not clobber the adjacent worker or `total`.
+            let room = byte_end_excl.saturating_sub(cursor);
+            let take = usize::try_from(room).unwrap_or(usize::MAX).min(chunk.len());
+            let slice = chunk.get(..take).unwrap_or_default();
+            file.write_all(slice)
                 .await
                 .map_err(|e| Error::io(&shared.part, e))?;
-            cursor = cursor.saturating_add(as_u64(chunk.len()));
-            mark_pieces(shared, &mut next_piece, end, cursor)?;
+            cursor = cursor.saturating_add(as_u64(take));
+            if cursor >= byte_end_excl {
+                break; // got our whole range; discard any trailing bytes
+            }
         }
     }
     file.flush().await.map_err(|e| Error::io(&shared.part, e))?;
     file.sync_all()
         .await
         .map_err(|e| Error::io(&shared.part, e))?;
-    mark_pieces(shared, &mut next_piece, end, cursor)?;
-    Ok(())
-}
-
-/// Mark every piece in `[*next, end)` whose end offset the cursor has reached.
-fn mark_pieces(shared: &Shared, next: &mut usize, end: usize, cursor: u64) -> Result<()> {
+    // A short/truncated response (fewer bytes than requested, cleanly ended) is
+    // NOT success: don't mark anything, so the worker releases + retries.
+    if cursor != byte_end_excl {
+        return Err(Error::Http("short segment read".to_owned()));
+    }
+    // Every byte of the run is now durable, so it is safe to record its pieces
+    // complete - the control file never claims a piece whose data isn't fsync'd.
     let mut map = shared.lock_map()?;
-    while *next < end {
-        let piece_end = as_u64(*next)
-            .saturating_add(1)
-            .saturating_mul(shared.piece_len)
-            .min(shared.total);
-        if cursor >= piece_end {
-            map.mark_done(*next);
-            *next = next.saturating_add(1);
-        } else {
-            break;
-        }
+    for piece in start..end {
+        map.mark_done(piece);
     }
     Ok(())
 }
@@ -402,6 +426,9 @@ async fn single_stream(
     dest: &Path,
     handle: &Arc<DownloadHandle>,
 ) -> Result<u64> {
+    // A stale segmented control file must not survive into a single-stream
+    // download (which has no resume) - else a later run could trust it.
+    let _ = Control::remove(&control_path(dest)).await;
     let headers = borrow(&req.headers);
     let response = http.get(&req.url, &headers).await?;
     if response.status != 200 {
@@ -443,6 +470,14 @@ async fn single_stream(
 }
 
 // --- small helpers ---------------------------------------------------------
+
+/// Whether `part` exists and is exactly `total` bytes (i.e. a real interrupted
+/// transfer we can trust to resume, since we preallocate to `total` up front).
+async fn part_at_full_length(part: &Path, total: u64) -> bool {
+    tokio::fs::metadata(part)
+        .await
+        .is_ok_and(|m| m.len() == total)
+}
 
 async fn preallocate(part: &Path, total: u64) -> Result<()> {
     let file = tokio::fs::OpenOptions::new()

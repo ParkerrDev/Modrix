@@ -4,11 +4,13 @@
 //! single-stream fallback are all exercised end to end).
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
 
 use super::{DownloadHandle, run};
+use crate::control::Control;
 use crate::http::HttpClient;
 use crate::manager::DownloadManager;
 use crate::types::{Checksum, DownloadEvent, DownloadRequest, SegmentLimits};
@@ -288,6 +290,106 @@ async fn manager_submits_and_completes() {
     assert!(completed.is_ok(), "download did not complete in time");
     assert_eq!(
         tokio::fs::read(dir.path().join("m.bin")).await.unwrap(),
+        data
+    );
+}
+
+// --- regression tests for the adversarial-review findings ------------------
+
+/// A server that cleanly serves *fewer* bytes than requested for the first few
+/// segment requests (a truncated-but-well-formed 206), then serves fully.
+async fn serve_flaky(body: Vec<u8>) -> String {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let body = Arc::new(body);
+    let count = Arc::new(AtomicUsize::new(0));
+    tokio::spawn(async move {
+        loop {
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            let body = Arc::clone(&body);
+            let count = Arc::clone(&count);
+            tokio::spawn(async move {
+                let _ = handle_flaky(stream, &body, &count).await;
+            });
+        }
+    });
+    format!("http://127.0.0.1:{port}/file.bin")
+}
+
+async fn handle_flaky(
+    mut stream: TcpStream,
+    body: &[u8],
+    count: &AtomicUsize,
+) -> std::io::Result<()> {
+    let request = read_request(&mut stream).await?;
+    let total = body.len() as u64;
+    let response = match parse_range(&request, total) {
+        // Probe (bytes=0-0): serve it honestly so ranged mode is detected.
+        Some((start, end)) if start == end => partial(body, start, end, total),
+        // A real segment: short-serve (1 byte) the first three times, then fully.
+        Some((start, end)) => {
+            if count.fetch_add(1, Ordering::Relaxed) < 3 {
+                partial(body, start, start, total)
+            } else {
+                partial(body, start, end, total)
+            }
+        }
+        None => full(body, total),
+    };
+    stream.write_all(&response).await?;
+    stream.flush().await
+}
+
+#[tokio::test]
+async fn a_short_read_is_retried_not_accepted() {
+    let data = payload(60_000);
+    let url = serve_flaky(data.clone()).await;
+    let dir = tempfile::tempdir().unwrap();
+    // Despite several truncated segment responses, retries recover and the file
+    // is reassembled exactly - a short read is never silently accepted.
+    run(
+        &HttpClient::new().unwrap(),
+        &request(&url, dir.path(), "flaky.bin", None),
+        &Arc::new(DownloadHandle::default()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        tokio::fs::read(dir.path().join("flaky.bin")).await.unwrap(),
+        data
+    );
+}
+
+#[tokio::test]
+async fn a_stale_control_file_without_a_part_is_discarded() {
+    let data = payload(80_000);
+    let url = serve(data.clone(), true).await;
+    let dir = tempfile::tempdir().unwrap();
+    let control = dir.path().join("g.bin.mmdl");
+
+    // A control file that LIES: it claims the first pieces are done, but there is
+    // no .part on disk at all. Trusting it would leave those pieces as zeros.
+    let piece_len = 8192_u32;
+    let mut ctl = Control::fresh(piece_len, data.len() as u64, "\"v1\"".into(), false).unwrap();
+    for slot in ctl.done.iter_mut().take(5) {
+        *slot = true;
+    }
+    ctl.save(&control).await.unwrap();
+
+    let mut req = request(&url, dir.path(), "g.bin", None);
+    req.limits.piece_len = piece_len;
+    run(
+        &HttpClient::new().unwrap(),
+        &req,
+        &Arc::new(DownloadHandle::default()),
+    )
+    .await
+    .unwrap();
+    // The lie is ignored: the whole file is downloaded correctly.
+    assert_eq!(
+        tokio::fs::read(dir.path().join("g.bin")).await.unwrap(),
         data
     );
 }

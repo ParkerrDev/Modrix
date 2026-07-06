@@ -12,11 +12,14 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow, bail};
 use modman_core::{Engine, GameId};
-use modman_download::{DownloadEvent, DownloadId, DownloadManager, DownloadStatus, HandoffJob};
+use modman_download::{
+    DownloadEvent, DownloadId, DownloadManager, DownloadState, DownloadStatus, HandoffJob,
+};
 use modman_ipc::{Message, Reply, Role, acquire};
 
 /// Simultaneously-active downloads.
@@ -43,6 +46,7 @@ async fn serve(engine: Engine, port: u16) -> Result<()> {
         manager: DownloadManager::new(MAX_CONCURRENT).context("building the download manager")?,
         download_dir,
         routes: Arc::new(Mutex::new(HashMap::new())),
+        seq: Arc::new(AtomicU64::new(1)),
     };
     handler.spawn_stager();
 
@@ -74,6 +78,7 @@ struct Handler {
     manager: DownloadManager,
     download_dir: PathBuf,
     routes: Arc<Mutex<HashMap<DownloadId, Route>>>,
+    seq: Arc<AtomicU64>,
 }
 
 impl Handler {
@@ -103,9 +108,11 @@ impl Handler {
     fn try_enqueue(&self, body: &str) -> Result<DownloadId> {
         let job = HandoffJob::from_json(body).context("parsing the hand-off")?;
         let game = self.route(&job);
-        let request = job
-            .into_request(&self.download_dir)
-            .context("validating the job")?;
+        // Each hand-off downloads into its own subdirectory, so two downloads
+        // that share a filename never collide on .part / .mmdl / destination.
+        let n = self.seq.fetch_add(1, Ordering::Relaxed);
+        let dir = self.download_dir.join(n.to_string());
+        let request = job.into_request(&dir).context("validating the job")?;
         let mod_name = mod_name_from(&request.out);
         let id = self
             .manager
@@ -113,6 +120,24 @@ impl Handler {
             .context("queuing the download")?;
         lock(&self.routes)?.insert(id, Route { game, mod_name });
         Ok(id)
+    }
+
+    /// Stage any completed routed downloads whose events we may have missed
+    /// (e.g. after a broadcast lag). Idempotent - staging removes the route.
+    fn reconcile(&self) {
+        let ids: Vec<DownloadId> = match lock(&self.routes) {
+            Ok(routes) => routes.keys().copied().collect(),
+            Err(_) => return,
+        };
+        for id in ids {
+            match self.manager.status(id) {
+                Some(s) if s.state == DownloadState::Complete => self.stage(id, &s.file),
+                Some(s) if s.state == DownloadState::Failed => {
+                    let _ = lock(&self.routes).map(|mut r| r.remove(&id));
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Decide which registered game this job installs into (domain → game); no
@@ -162,8 +187,10 @@ impl Handler {
                         tracing::warn!(%error, "download failed");
                     }
                     Err(RecvError::Closed) => return,
-                    // Started/Progress events, and dropped events under lag.
-                    Ok(_) | Err(RecvError::Lagged(_)) => {}
+                    // Under broadcast lag some events were dropped - recover by
+                    // reconciling routed downloads against their live status.
+                    Err(RecvError::Lagged(_)) => handler.reconcile(),
+                    Ok(_) => {}
                 }
             }
         });

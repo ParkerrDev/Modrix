@@ -118,8 +118,24 @@ impl Control {
                 limit: MAX_PIECES,
             });
         }
+        // The piece count must be exactly consistent with total/piece_len, else a
+        // short bitfield could mark a truncated file "complete".
+        let expected = if disk.single_stream {
+            0
+        } else {
+            disk.total.div_ceil(u64::from(disk.piece_len.max(1)))
+        };
+        if disk.num_pieces != expected {
+            return Err(Error::ControlFile(
+                "piece count inconsistent with total/piece_len".to_owned(),
+            ));
+        }
         let num_pieces = usize::try_from(disk.num_pieces)
             .map_err(|_| Error::ControlFile("piece count".into()))?;
+        // Bound the hex we decode by the (already-bounded) piece count.
+        if disk.bitfield_hex.len() > num_pieces.div_ceil(8).saturating_mul(2) {
+            return Err(Error::ControlFile("bitfield too long".to_owned()));
+        }
         let done = bits::unpack_hex(&disk.bitfield_hex, num_pieces)
             .ok_or_else(|| Error::ControlFile("bad bitfield".to_owned()))?;
         Ok(Some(Self {
