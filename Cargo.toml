@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.96"
+license = "GPL-2.0-only"
+authors = ["ModManager contributors"]
+
+[workspace.dependencies]
+# --- internal crates ---
+modman-core = { path = "crates/modman-core" }
+modman-plugin = { path = "crates/modman-plugin" }
+modman-nexus = { path = "crates/modman-nexus" }
+modman-ipc = { path = "crates/modman-ipc" }
+# --- external (pinned; further deps added per phase as they are used) ---
+anyhow = "1"
+thiserror = "2"
+directories = "5"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+tempfile = "3"
+
+# --- Power of Ten for Rust - enforced workspace-wide (see docs/ARCHITECTURE.md §9.3) ---
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unreachable_code = "deny"
+unreachable_patterns = "deny"
+unused = { level = "deny", priority = -1 }
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"                 # `.unwrap()` is a silent abort-on-error
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+expect_used = "warn"                 # justified form: `.expect("why it can't fail")`
+indexing_slicing = "deny"            # `v[i]` can panic; use `.get(i)`
+arithmetic_side_effects = "warn"     # promote to "deny" in modman-core
+mem_forget = "deny"
+undocumented_unsafe_blocks = "warn"
+allow_attributes = "warn"            # prefer `#[expect(..)]` over `#[allow(..)]`
+allow_attributes_without_reason = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"                # frontends print via their own sink, not core
+print_stderr = "warn"
+
+[profile.release]
+overflow-checks = true               # Power of Ten: no silent integer wraparound

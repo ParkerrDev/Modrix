@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Power of Ten thresholds (see docs/ARCHITECTURE.md §9.3).
+too-many-lines-threshold = 60
+too-many-arguments-threshold = 5
+# Extend clippy's doc_markdown identifier allow-list with project terms (".." keeps clippy's defaults).
+# These are product/technology names, not code, so they read better unbackticked in prose.
+doc-valid-idents = ["ModManager", "NexusMods", "SQLite", "OverlayFS", "USVFS", "macOS", ".."]
+
+# Production code stays panic-free and bounded (see the workspace lint table).
+# Test code may use these directly: a panicking assertion in a test is a test
+# failure, not a corrupted game directory. Arithmetic discipline still applies
+# everywhere - use `checked_*`/`saturating_*` even in tests.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+allow-indexing-slicing-in-tests = true

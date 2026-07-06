@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[package]
+name = "modman-plugin"
+description = "ModManager plugin host: sandboxed Lua (mlua) API, game.toml loader, FOMOD engine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+modman-core.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

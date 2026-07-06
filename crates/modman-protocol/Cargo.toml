@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[package]
+name = "modman-protocol"
+description = "Tiny OS-registered nxm:// handler; forwards the URL to the running instance."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "modman-protocol"
+path = "src/main.rs"
+
+# Dependencies (anyhow, modman-ipc) are added in Phase 2 when this forwards
+# nxm:// URLs to the running instance.
+[dependencies]
+
+[lints]
+workspace = true

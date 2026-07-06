@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Pinned toolchain: strict lints change between releases, so we pin to keep CI
+# reproducible. Bump deliberately.
+[toolchain]
+channel = "1.96.0"
+components = ["clippy", "rustfmt"]

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[package]
+name = "modman-core"
+description = "ModManager engine: domain model, deployment, manifest, storage. No UI dependencies."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+directories.workspace = true
+rusqlite.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

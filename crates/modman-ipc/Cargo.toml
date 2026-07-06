@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[package]
+name = "modman-ipc"
+description = "Single-instance guard + loopback listener: the one ingress for protocol and extension."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true

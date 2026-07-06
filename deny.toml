@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# cargo-deny: make GPLv2 compliance a mechanical CI gate. Anything not in the
+# `allow` list below fails the build. Apache-2.0 is intentionally ABSENT - it is
+# incompatible with GPL-2.0-only; dual `MIT OR Apache-2.0` crates still pass via
+# their MIT arm.
+
+[advisories]
+ignore = []
+
+[licenses]
+# Only GPLv2-compatible licenses. Add here (with a note) if a legitimately
+# compatible license shows up in the tree; never add Apache-2.0-only or GPL/LGPL-3.0.
+allow = [
+    "GPL-2.0-only",     # our own license
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unlicense",
+    "LGPL-2.1-only",
+    "CC0-1.0",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "MIT-0",
+    "BSL-1.0",
+    # MPL-2.0 is GPL-2.0-compatible: MPL 2.0 §1.12 names "GNU GPL Version 2.0" a
+    # Secondary License and §3.3 grants distribution of a Larger Work under it,
+    # unless a file is flagged "Incompatible With Secondary Licenses" (none here
+    # are). Pulled in by `option-ext` via the locked `directories` dependency.
+    "MPL-2.0",
+]
+confidence-threshold = 0.9
+# The allow list is a curated superset of acceptable licenses, so entries that
+# no current dependency uses are expected - don't fail CI on them.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
