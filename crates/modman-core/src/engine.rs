@@ -69,8 +69,9 @@ impl Engine {
         std::fs::create_dir_all(&staging_root).map_err(|e| Error::io(&staging_root, e))?;
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
-            "INSERT INTO games (plugin_id, name, install_path, mod_root, store, steam_appid, staging_root) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO games \
+                 (plugin_id, name, install_path, mod_root, store, steam_appid, nexus_domain, staging_root) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
                 def.id,
                 def.name,
@@ -78,6 +79,7 @@ impl Engine {
                 def.mod_root,
                 store_kind,
                 def.steam_appid,
+                def.nexus_domain,
                 staging_root.to_string_lossy(),
             ],
         )?;
@@ -99,6 +101,22 @@ impl Engine {
         let mut stmt = self.conn.prepare(GAME_COLUMNS)?;
         let rows = stmt.query_map([], game_from_row)?;
         collect(rows)
+    }
+
+    /// Find the game an `nxm://` link's game domain routes to, matching a
+    /// game's `nexus_domain` (or, as a fallback, its `plugin_id`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotFound`] if no registered game matches `domain`.
+    pub fn game_by_nexus_domain(&self, domain: &str) -> Result<Game> {
+        self.games()?
+            .into_iter()
+            .find(|g| g.nexus_domain.as_deref() == Some(domain) || g.plugin_id == domain)
+            .ok_or_else(|| Error::NotFound {
+                kind: "game for nexus domain",
+                key: domain.to_owned(),
+            })
     }
 
     /// Look up one game by id.
@@ -441,7 +459,7 @@ fn is_zip(path: &Path) -> bool {
 // --- row mapping -----------------------------------------------------------
 
 const GAME_COLUMNS: &str = "SELECT id, plugin_id, name, install_path, mod_root, store, \
-                            steam_appid, staging_root FROM games";
+                            steam_appid, nexus_domain, staging_root FROM games";
 const PROFILE_COLUMNS: &str = "SELECT id, game_id, name, is_active FROM profiles";
 const MOD_COLUMNS: &str = "SELECT id, game_id, name, version, source, staged_path FROM mods";
 
@@ -454,7 +472,8 @@ fn game_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Game> {
         mod_root: row.get(4)?,
         store: row.get(5)?,
         steam_appid: row.get(6)?,
-        staging_root: row.get::<_, String>(7)?.into(),
+        nexus_domain: row.get(7)?,
+        staging_root: row.get::<_, String>(8)?.into(),
     })
 }
 

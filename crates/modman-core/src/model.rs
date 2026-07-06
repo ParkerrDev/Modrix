@@ -64,6 +64,8 @@ pub struct Game {
     pub store: String,
     /// Steam AppID, when known.
     pub steam_appid: Option<i64>,
+    /// The Nexus game domain, used to route `nxm://` links to this game.
+    pub nexus_domain: Option<String>,
     /// Root under which this game's mods are staged.
     pub staging_root: PathBuf,
 }

@@ -7,6 +7,7 @@
 //! parses arguments, calls engine methods, and formats the result.
 
 mod output;
+mod serve;
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -66,6 +67,19 @@ enum Command {
     Undeploy,
     /// Verify the current deployment against the manifest.
     Verify,
+    /// Run the headless background service that handles nxm:// links (downloads
+    /// and installs mods clicked in the browser). Blocks until killed.
+    Serve {
+        /// Nexus personal API key (or set the `NEXUS_API_KEY` environment variable).
+        #[arg(long, env = "NEXUS_API_KEY")]
+        api_key: String,
+        /// Loopback port to bind (single-instance mutex).
+        #[arg(long, default_value_t = modman_ipc::DEFAULT_PORT)]
+        port: u16,
+        /// Override the Nexus API base URL (for testing against a mock server).
+        #[arg(long, hide = true)]
+        api_base: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -136,6 +150,17 @@ fn main() -> Result<()> {
     };
     let engine = Engine::open(&paths).context("opening the ModManager engine")?;
 
+    // `serve` runs its own async runtime and owns the engine; everything else is
+    // a quick synchronous action.
+    if let Command::Serve {
+        api_key,
+        port,
+        api_base,
+    } = &cli.command
+    {
+        return serve::run(engine, api_key.clone(), *port, api_base.clone());
+    }
+
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     dispatch(&cli, &engine, &mut out)
@@ -151,6 +176,8 @@ fn dispatch(cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
         Command::Deploy { dry_run } => deploy(cli, engine, *dry_run, out),
         Command::Undeploy => undeploy(cli, engine, out),
         Command::Verify => verify(cli, engine, out),
+        // Handled in `main` before dispatch (needs to own the engine).
+        Command::Serve { .. } => Ok(()),
     }
 }
 

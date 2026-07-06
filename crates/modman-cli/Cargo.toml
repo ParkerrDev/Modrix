@@ -14,8 +14,11 @@ path = "src/main.rs"
 
 [dependencies]
 modman-core.workspace = true
+modman-ipc.workspace = true
+modman-nexus.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 

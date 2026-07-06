@@ -8,26 +8,39 @@
 
 use std::io::Write;
 
+use std::path::{Path, PathBuf};
+
 use anyhow::{Context, Result, bail};
 use modman_core::Paths;
 use modman_ipc::secondary_from_lock;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    let arg = std::env::args()
-        .nth(1)
-        .context("usage: modman-protocol <nxm://…> | --register | --unregister")?;
-    match arg.as_str() {
-        "--help" | "-h" => usage(),
-        "--register" => register::install(),
-        "--unregister" => register::uninstall(),
-        uri => forward(uri).await,
+    let mut data_dir: Option<PathBuf> = None;
+    let mut link: Option<String> = None;
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--help" | "-h" => return usage(),
+            "--register" => return register::install(),
+            "--unregister" => return register::uninstall(),
+            "--data-dir" => {
+                let dir = args.next().context("--data-dir needs a path")?;
+                data_dir = Some(PathBuf::from(dir));
+            }
+            _ => link = Some(arg),
+        }
     }
+    let uri = link.context("usage: modman-protocol <nxm://…> | --register | --unregister")?;
+    forward(&uri, data_dir.as_deref()).await
 }
 
 /// Forward an `nxm://` URL to the running primary instance.
-async fn forward(uri: &str) -> Result<()> {
-    let paths = Paths::resolve().context("resolving the ModManager data directory")?;
+async fn forward(uri: &str, data_dir: Option<&Path>) -> Result<()> {
+    let paths = match data_dir {
+        Some(dir) => Paths::rooted_at(dir),
+        None => Paths::resolve().context("resolving the ModManager data directory")?,
+    };
     let secondary = secondary_from_lock(&paths.instance_lock()).context(
         "ModManager does not appear to be running - start it (or the background \
          service), then click the download link again",

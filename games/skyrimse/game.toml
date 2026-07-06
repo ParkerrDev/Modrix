@@ -6,6 +6,7 @@ api_version   = 1
 id            = "skyrimse"
 name          = "The Elder Scrolls V: Skyrim Special Edition"
 steam_appid   = 489830
+nexus_domain  = "skyrimspecialedition"   # routes nxm://skyrimspecialedition/… here
 mod_root      = "Data"          # mods deploy into <install>/Data
 deploy        = "link"          # hardlink → symlink → copy (applier falls back)
 install_probe = ["steam", "registry", "path-hint"]

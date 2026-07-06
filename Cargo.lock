@@ -1184,6 +1184,9 @@ dependencies = [
  "anyhow",
  "clap",
  "modman-core",
+ "modman-ipc",
+ "modman-nexus",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

@@ -23,7 +23,7 @@ directories = "5"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 tempfile = "3"
 # --- async runtime (Phase 2) ---
 # NOTE: the HTTP *client* stack does NOT use reqwest - it transitively pulls

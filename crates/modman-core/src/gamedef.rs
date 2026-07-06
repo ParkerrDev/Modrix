@@ -26,6 +26,10 @@ pub struct GameDef {
     /// Steam AppID, when the game is on Steam.
     #[serde(default)]
     pub steam_appid: Option<i64>,
+    /// The Nexus Mods game domain (e.g. `skyrimspecialedition`), used to route
+    /// incoming `nxm://` links to this game.
+    #[serde(default)]
+    pub nexus_domain: Option<String>,
     /// Where mods deploy, relative to the install path (e.g. `Data`). May be
     /// empty to deploy at the install root.
     #[serde(default)]
