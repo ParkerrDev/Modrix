@@ -40,7 +40,7 @@ engine that touches users' files.
 | CLI | **clap** (derive) | Standard, scriptable. |
 | Plugins | **Two-tier: `game.toml` + `game.lua` (`mlua`, vendored Lua 5.4)** | Most games are just data; Lua only when logic is needed. |
 | Deployment | **Link → symlink → copy, transactional manifest** | Cross-platform, reversible, ships sooner. VFS deferred. |
-| Async/net | **tokio + reqwest** (rustls) | Concurrent, resumable downloads; Nexus API. |
+| Async/net | **tokio + hyper + rustls** (RustCrypto provider) | Concurrent, resumable downloads; Nexus API. *Not reqwest:* it transitively pulls Apache-2.0-only crates (`ring`, `sync_wrapper`), which are GPLv2-incompatible. We assemble a pure-Rust, all-MIT/ISC HTTPS stack instead (see §11). |
 | Storage | **SQLite via `rusqlite`** | mods × profiles × files × conflicts is relational + transactional. |
 | Reliability | **Power of Ten for Rust** | forbid `unsafe`, panic-free, bounded loops, lint-enforced in CI - the deploy engine is safety-critical (§9.3). |
 | Steam | **`steamlocate`** | Parses `libraryfolders.vdf` / `appmanifest_*.acf`. |
@@ -337,11 +337,25 @@ is GPL-2.0 cleanly. We give up Slint's free "Cupertino" theme and instead theme 
 toward the macOS-like look - a little more styling, no blocker. Iced is also arguably
 *more* suckless: pure Rust, one language, no DSL, no external framework.
 
-**Rest of the tree is clean:** tokio, reqwest, rusqlite, ratatui, clap, mlua, serde,
+**Rest of the tree is clean:** tokio, rusqlite, ratatui, clap, mlua, serde,
 directories, steamlocate, zip, sevenz-rust are all MIT or dual-licensed with an MIT
 arm → GPLv2-compatible. Rule: take the MIT arm on dual-licensed crates, and avoid any
 **Apache-2.0-only** dependency (Apache-2.0 is incompatible with GPLv2). `unrar` is
 excluded for a related reason (§8). All of this is a mechanical `cargo-deny` gate.
+
+**The HTTP client is where this bit hardest.** The obvious choice, `reqwest`,
+transitively pulls **`ring`** (its rustls crypto backend, `Apache-2.0 AND ISC`)
+and **`sync_wrapper`** (`Apache-2.0`-only, via `tower-http`). Apache-2.0 is
+one-way-incompatible with GPLv2, so `cargo-deny` rejects both. We therefore do
+**not** use reqwest. Instead we assemble the client from **hyper + rustls**, with
+rustls's crypto provided by **`rustls-rustcrypto`** (pure-Rust RustCrypto
+primitives - aes-gcm, chacha20poly1305, p256/p384, rsa, sha2) and roots from the
+OS trust store via **`rustls-native-certs`** (avoiding the `CDLA-Permissive-2.0`
+`webpki-roots`). Every crate in that stack is MIT/ISC. The TLS state machine is
+still audited rustls; only the primitives change. Trade-off accepted with the
+maintainer: `rustls-rustcrypto` is young (0.0.x), in exchange for a 100%
+GPLv2-clean tree with no license exception. `zip` likewise uses the pure-Rust
+`flate2` backend, never `zopfli` (Apache-2.0-only).
 
 **v2-only vs "v2 or later":** we ship **GPL-2.0-only**, which most faithfully honors
 "v2 over v3." "GPL-2.0-or-later" would be the flexible alternative, but it lets v3 back

@@ -25,6 +25,16 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
+# --- async runtime (Phase 2) ---
+# NOTE: the HTTP *client* stack does NOT use reqwest - it transitively pulls
+# Apache-2.0-encumbered crates (`ring`, `sync_wrapper`), which are GPLv2-
+# incompatible. The download pipeline (added next) assembles a pure-Rust,
+# GPLv2-clean stack instead: hyper + rustls + a RustCrypto crypto provider +
+# the OS trust store, all MIT/ISC. See docs/ARCHITECTURE.md §8/§11.
+tokio = { version = "1", default-features = false, features = [
+    "rt-multi-thread", "macros", "net", "io-util", "fs", "sync", "time",
+] }
+getrandom = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"

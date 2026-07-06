@@ -103,6 +103,12 @@ impl Paths {
         self.data.join("deploy.commit.json")
     }
 
+    /// The single-instance lockfile holding the loopback port and session token.
+    #[must_use]
+    pub fn instance_lock(&self) -> PathBuf {
+        self.data.join("instance.json")
+    }
+
     /// Create every directory this installation needs, if absent.
     ///
     /// # Errors
