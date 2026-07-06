@@ -47,22 +47,25 @@ byte-identical.
 
 ---
 
-## Phase 2 - Downloads: Nexus + `nxm://` end-to-end
-Make "click in browser → installed" real.
-- `modman-nexus`: API client (auth via API key, metadata, `download_link.json`),
-  the `nxm://` resolver (validate every URI field), rate-limit handling, behind a
-  `ModSource` trait.
-- `modman-ipc`: loopback listener + single-instance guard + session token.
-- `modman-protocol`: the tiny OS-registered forwarder; per-OS scheme registration.
-- Download queue: concurrent, resumable, checksum-verified, progress; on completion
-  route to install.
-- `extension/`: v1 **userscript** - a "Download with ModManager" button that hits
-  the loopback endpoint; optional auto-slow-download for free users.
+## Phase 2 - Downloads: browser hand-off end-to-end
+Make "click in browser → installed" real - **with no site API and no API key**
+(corrected from the original API-based plan; see `ARCHITECTURE.md §6`).
+- `modman-download`: a segmented, multi-connection, **resumable, checksum-verified**
+  download engine (a clean-room aria2/Motrix-style engine, no aria2 code), on the
+  GPLv2-clean hyper + rustls stack. FIFO queue + concurrency cap + progress events.
+  Retains an `nxm://` identity parser (not a download mechanism).
+- `modman-ipc`: loopback listener + single-instance guard + session token; a JSON
+  `POST /download` hand-off endpoint (+ `GET /download/<id>`, `/downloads`).
+- `modman-protocol`: the tiny OS-registered forwarder (dormant; identity-only).
+- `extension/`: the **MV3 WebExtension** (Chrome + Firefox) that intercepts the
+  browser's own download, captures URL + cookies + User-Agent + referrer, cancels
+  it, and hands it to the loopback endpoint with the session token.
+- `serve`: routes a hand-off to a game by domain and stages it on completion.
 
-**Done when:** clicking "Download with Manager" on Nexus (GUI closed) downloads and
-installs to the correct game automatically. (If a live API key / OS registration
-can't be exercised in the build environment, ship behind tests + a mock server and
-flag the manual verification step to the human.)
+**Done when:** with the GUI closed, an extension hand-off downloads and installs to
+the correct game automatically. (Live sites' download DOM and OS registration can't
+be exercised in CI, so those are behind tests + a mock server and flagged for manual
+verification; the headless pipeline is proven end-to-end against a mock.)
 
 ---
 
