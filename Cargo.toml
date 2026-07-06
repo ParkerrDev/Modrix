@@ -34,11 +34,20 @@ tempfile = "3"
 tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread", "macros", "net", "io-util", "fs", "sync", "time",
 ] }
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
+http-body-util = "0.1"
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12", "logging"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "logging"] }
+rustls-rustcrypto = "=0.0.2-alpha"      # pure-Rust CryptoProvider (RustCrypto primitives)
+rustls-native-certs = "0.8"             # OS trust store (avoids CDLA webpki-roots)
 getrandom = "0.3"
 serde = { version = "1", features = ["derive"] }
+wiremock = "0.6"
 serde_json = "1"
 toml = "0.8"
 sha2 = "0.10"
+md-5 = "0.10"      # Nexus publishes file MD5s; RustCrypto, MIT/Apache
 # zip for reading mod archives. We DECOMPRESS only, so we take the pure-Rust
 # flate2 (miniz_oxide) backend and never enable `deflate` (which would pull in
 # zopfli, an Apache-2.0-only crate rejected by our GPLv2 license gate).

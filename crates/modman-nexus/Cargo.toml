@@ -11,6 +11,22 @@ authors.workspace = true
 [dependencies]
 modman-core.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+http-body-util.workspace = true
+tokio-rustls.workspace = true
+rustls.workspace = true
+rustls-rustcrypto.workspace = true
+rustls-native-certs.workspace = true
+md-5.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+wiremock.workspace = true
 
 [lints]
 workspace = true

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 //! Error types for the Nexus source.
 
+use std::path::PathBuf;
+
 /// The maximum length of an `nxm://` URI we will even look at, so a hostile
 /// handler argument cannot make us allocate or scan unboundedly.
 pub(crate) const MAX_NXM_URI_LEN: usize = 8192;
@@ -36,3 +38,63 @@ pub enum NxmError {
     #[error("malformed nxm query string")]
     BadQuery,
 }
+
+/// Failures talking to Nexus, downloading, or verifying a download.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    /// An `nxm://` URI failed to parse.
+    #[error("nxm uri: {0}")]
+    Nxm(#[from] NxmError),
+
+    /// The TLS layer could not be configured or negotiated.
+    #[error("tls error: {0}")]
+    Tls(String),
+
+    /// An HTTP transport-level failure.
+    #[error("http error: {0}")]
+    Http(String),
+
+    /// The Nexus API returned an error status or unexpected payload.
+    #[error("nexus api: {0}")]
+    Api(String),
+
+    /// We are rate limited; retry no sooner than the given number of seconds.
+    #[error("rate limited by Nexus; retry after {0}s")]
+    RateLimited(u64),
+
+    /// A JSON payload could not be parsed.
+    #[error("malformed json: {0}")]
+    Json(String),
+
+    /// A downloaded file did not match its expected checksum.
+    #[error("checksum mismatch: expected {expected}, got {actual}")]
+    Checksum {
+        /// The expected digest.
+        expected: String,
+        /// The digest actually computed.
+        actual: String,
+    },
+
+    /// A filesystem operation failed.
+    #[error("i/o error at `{path}`: {source}")]
+    Io {
+        /// The path involved.
+        path: PathBuf,
+        /// The underlying error.
+        source: std::io::Error,
+    },
+}
+
+impl Error {
+    /// Wrap an I/O error with the path it happened on.
+    pub(crate) fn io(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
+        Self::Io {
+            path: path.into(),
+            source,
+        }
+    }
+}
+
+/// Result alias for the Nexus source.
+pub type Result<T> = std::result::Result<T, Error>;

@@ -5,7 +5,31 @@
 # their MIT arm.
 
 [advisories]
-ignore = []
+# Each ignore is justified by our *actual* usage, not waved away. All stem from
+# `rustls-rustcrypto` (the pure-Rust TLS crypto provider we use to stay
+# GPLv2-clean instead of the Apache-encumbered ring/aws-lc). Re-audit if that
+# provider is bumped.
+ignore = [
+    # `paste`: unmaintained, but a *build-time* proc-macro with no runtime or
+    # security surface, pulled transitively by RustCrypto crates. No upgrade.
+    "RUSTSEC-2024-0436",
+    # `rsa` "Marvin Attack": a timing sidechannel in RSA PKCS#1 v1.5
+    # *decryption* (a private-key operation). We are a TLS *client*:
+    # rustls-rustcrypto uses `rsa` only to VERIFY the server's certificate
+    # signature (a public-key operation) - no RSA private-key decryption ever
+    # happens on our side - so the vulnerable path is not exercised. No fix
+    # exists upstream.
+    "RUSTSEC-2023-0071",
+    # `rustls-webpki` 0.102.8 (CRL matching, URI/wildcard name constraints, CRL
+    # parse panic): our certificate chain verification runs through
+    # rustls-webpki 0.103.13 (patched, via rustls 0.23). We only pull 0.102.8
+    # because rustls-rustcrypto imports its `alg_id` OID *constants*; the
+    # vulnerable CRL/name-constraint code is never invoked.
+    "RUSTSEC-2026-0049",
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0104",
+]
 
 [licenses]
 # Only GPLv2-compatible licenses. Add here (with a note) if a legitimately

@@ -1,16 +1,24 @@
 // SPDX-License-Identifier: GPL-2.0-only
 //! Nexus Mods integration.
 //!
-//! Implements the Nexus source: the `nxm://` link parser (this module tree),
-//! and - added in the rest of Phase 2 - the authenticated API client, the
-//! resumable download queue, and rate-limit handling, all behind a `ModSource`
-//! abstraction so a second site is a new impl rather than a rewrite.
+//! - [`NxmUri`]: the pure, network-free `nxm://` link parser (validated at the
+//!   trust boundary).
+//! - [`NexusClient`]: the authenticated API client that resolves a link to a CDN
+//!   URL via `download_link.json`, tracking rate limits.
+//! - The download engine (resumable, checksummed) and the `ModSource` trait,
+//!   which keep a second site a new impl rather than a rewrite.
 //!
-//! The `nxm://` parser is pure and network-free; it validates every field of an
-//! untrusted URI before anything reaches the network.
+//! The HTTP stack is pure-Rust and GPLv2-clean - hyper + rustls with the
+//! RustCrypto crypto provider and the OS trust store, never reqwest/ring (see
+//! `docs/ARCHITECTURE.md` §11).
 
+mod client;
+mod download;
 mod error;
+mod http;
 mod nxm;
 
-pub use error::NxmError;
+pub use client::{DownloadTarget, NexusClient, RateLimit};
+pub use download::Progress;
+pub use error::{Error, NxmError, Result};
 pub use nxm::NxmUri;

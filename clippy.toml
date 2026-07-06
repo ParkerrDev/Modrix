@@ -4,7 +4,7 @@ too-many-lines-threshold = 60
 too-many-arguments-threshold = 5
 # Extend clippy's doc_markdown identifier allow-list with project terms (".." keeps clippy's defaults).
 # These are product/technology names, not code, so they read better unbackticked in prose.
-doc-valid-idents = ["ModManager", "NexusMods", "SQLite", "OverlayFS", "USVFS", "macOS", "AppID", ".."]
+doc-valid-idents = ["ModManager", "NexusMods", "SQLite", "OverlayFS", "USVFS", "macOS", "AppID", "ModSource", "RustCrypto", ".."]
 
 # Production code stays panic-free and bounded (see the workspace lint table).
 # Test code may use these directly: a panicking assertion in a test is a test
