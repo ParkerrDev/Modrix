@@ -111,7 +111,11 @@ pub(crate) fn clear(paths: &Paths) -> Result<()> {
 
 /// Recover any interrupted deploy. Call this on engine open, before anything
 /// else touches game files.
-pub(crate) fn recover(conn: &Connection, paths: &Paths) -> Result<Recovered> {
+pub(crate) fn recover(
+    conn: &Connection,
+    paths: &Paths,
+    progress: &crate::Progress,
+) -> Result<Recovered> {
     let journal_path = paths.journal_file();
     if !journal_path.exists() {
         return Ok(Recovered::Nothing);
@@ -121,7 +125,7 @@ pub(crate) fn recover(conn: &Connection, paths: &Paths) -> Result<Recovered> {
         let rows = roll_forward(conn, paths)?;
         Ok(Recovered::RolledForward { rows })
     } else {
-        let targets = roll_back(paths, &journal)?;
+        let targets = roll_back(paths, &journal, progress)?;
         Ok(Recovered::RolledBack { targets })
     }
 }
@@ -155,11 +159,21 @@ fn roll_forward(conn: &Connection, paths: &Paths) -> Result<usize> {
 }
 
 /// Roll an unfinished deploy fully back: restore every target's pre-state.
-pub(crate) fn roll_back(paths: &Paths, journal: &Journal) -> Result<usize> {
+pub(crate) fn roll_back(
+    paths: &Paths,
+    journal: &Journal,
+    progress: &crate::Progress,
+) -> Result<usize> {
+    progress.begin(
+        "Recovering interrupted deploy",
+        u64::try_from(journal.entries.len()).unwrap_or(u64::MAX),
+    );
     for entry in &journal.entries {
         restore_entry(journal, entry)?;
+        progress.advance_with(1, &format!("Recovering · {}", entry.target_rel));
     }
     clear(paths)?;
+    progress.finish();
     Ok(journal.entries.len())
 }
 

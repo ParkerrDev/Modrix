@@ -38,11 +38,62 @@ pub fn view(app: &App) -> El<'_> {
     if let Some(error) = &app.boot_error {
         return boot_error(error);
     }
+    // Until the embedded service finishes starting (which includes recovering
+    // an interrupted deploy - potentially thousands of file restores), show a
+    // deliberate loading screen so a slow boot never looks like a hang.
+    if app.service.is_none() {
+        return starting(app);
+    }
     let base: El<'_> = row![sidebar(app), content(app)].into();
     match &app.wizard {
         Some(wizard) => stack![base, wizard::overlay(app, wizard)].into(),
         None => base,
     }
+}
+
+/// The boot screen: wordmark plus a live progress bar and status line while
+/// the engine starts (crash recovery can take a while on big libraries).
+fn starting(app: &App) -> El<'_> {
+    let mut body = column![
+        row![
+            text("MOD").size(24).font(BOLD).color(theme::ACCENT),
+            text("MANAGER").size(24).font(BOLD).color(theme::TEXT),
+        ],
+    ]
+    .spacing(14)
+    .align_x(Alignment::Center);
+    body = body.push(progress_line(app, 360.0, "Starting…"));
+    container(body)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .into()
+}
+
+/// A progress bar + percentage + status line for the live operation, or a
+/// quiet fallback message when nothing is running.
+fn progress_line<'a>(app: &'a App, width: f32, idle: &'a str) -> El<'a> {
+    let Some(op) = &app.op else {
+        return text(idle).size(13).color(theme::MUTED).into();
+    };
+    let (value, pct): (f32, String) = match op.fraction() {
+        Some(f) => (f, format!("{:.0}%", f64::from(f) * 100.0)),
+        None => (0.0, "…".to_owned()),
+    };
+    column![
+        row![
+            iced::widget::progress_bar(0.0..=1.0, value)
+                .height(6)
+                .width(width)
+                .style(theme::progress),
+            text(pct).size(12).color(theme::ACCENT),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+        text(op.message.clone()).size(12).color(theme::MUTED),
+    ]
+    .spacing(6)
+    .align_x(Alignment::Center)
+    .into()
 }
 
 fn boot_error(error: &str) -> El<'_> {
@@ -180,8 +231,8 @@ fn header(app: &App) -> El<'_> {
     ]
     .spacing(14)
     .align_y(Alignment::Center);
-    if app.busy {
-        bar = bar.push(text("Working…").size(13).color(theme::ACCENT));
+    if app.busy || app.op.is_some() {
+        bar = bar.push(progress_line(app, 220.0, "Working…"));
     }
     bar.push(bell(app)).into()
 }

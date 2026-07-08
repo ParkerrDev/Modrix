@@ -28,6 +28,7 @@ mod model;
 pub mod naming;
 mod paths;
 pub mod plugins;
+pub mod progress;
 mod store;
 
 pub use deploy::{Conflict, DeployPlan, DeployReport, FileStatus, VerifyIssue, VerifyReport};
@@ -38,3 +39,4 @@ pub use health::{Issue, Severity};
 pub use id::{GameId, ModId, ProfileId};
 pub use model::{Game, LinkType, Mod, Profile};
 pub use paths::Paths;
+pub use progress::{Progress, ProgressSnapshot};

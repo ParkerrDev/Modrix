@@ -312,6 +312,11 @@ pub struct App {
     pub conflicts: Vec<ConflictRow>,
     /// Setup health issues, worst-first.
     pub health: Vec<modman_core::Issue>,
+    /// The engine's live progress sink (shared before the engine exists so
+    /// boot-time crash recovery reports too).
+    pub progress: std::sync::Arc<modman_core::Progress>,
+    /// Latest progress snapshot (polled every tick).
+    pub op: Option<modman_core::ProgressSnapshot>,
     /// Notification center entries, newest first.
     pub notes: Vec<Note>,
     /// Notifications not yet seen.
@@ -528,6 +533,8 @@ pub fn boot() -> (App, Task<Message>) {
         drag: None,
         conflicts: Vec::new(),
         health: Vec::new(),
+        progress: std::sync::Arc::new(modman_core::Progress::default()),
+        op: None,
         notes: Vec::new(),
         unread: 0,
         notes_open: false,
@@ -540,9 +547,10 @@ pub fn boot() -> (App, Task<Message>) {
         paths: None,
         theme: theme::app_theme(),
     };
+    let progress = std::sync::Arc::clone(&app.progress);
     (
         app,
-        Task::perform(async { start_service() }, Message::Booted),
+        Task::perform(async move { start_service(&progress) }, Message::Booted),
     )
 }
 
@@ -562,14 +570,15 @@ pub fn subscription(app: &App) -> Subscription<Message> {
         }
         _ => None,
     });
-    if app.service.is_some() {
-        Subscription::batch([
-            events,
-            iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick),
-        ])
+    // The tick runs from the very start: it drives the boot/recovery
+    // progress display before the service exists. Faster while an operation
+    // is live so the bar and status line feel alive.
+    let period = if app.op.is_some() || app.service.is_none() {
+        Duration::from_millis(150)
     } else {
-        events
-    }
+        Duration::from_secs(1)
+    };
+    Subscription::batch([events, iced::time::every(period).map(|_| Message::Tick)])
 }
 
 /// The stable scrollable id for a pane's list.
@@ -597,9 +606,10 @@ fn step(index: usize, delta: i8, len: usize) -> usize {
 /// Open the engine, start the download manager, and bind the loopback
 /// listener so browser hand-offs reach this window. Must run on the
 /// executor (the listener and stager are spawned onto it).
-fn start_service() -> Result<Booted, String> {
+fn start_service(progress: &std::sync::Arc<modman_core::Progress>) -> Result<Booted, String> {
     let paths = Paths::resolve().map_err(|e| e.to_string())?;
-    let engine = Engine::open(&paths).map_err(|e| e.to_string())?;
+    let engine = Engine::open_with_progress(&paths, std::sync::Arc::clone(progress))
+        .map_err(|e| e.to_string())?;
     let lockfile = paths.instance_lock();
     let defs = discover_defs(&paths);
     let service = Service::new(engine, MAX_CONCURRENT).map_err(|e| format!("{e:#}"))?;
@@ -659,7 +669,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::Booted(result) => app.on_booted(result),
         Message::Navigate(screen) => app.on_navigate(screen),
-        Message::Tick => app.refresh(),
+        Message::Tick => {
+            app.op = app.progress.snapshot();
+            app.refresh();
+        }
         Message::GamePicked(choice) => {
             app.selected_game = Some(choice.id);
             app.mod_sel.clear();
@@ -784,6 +797,7 @@ impl App {
                 self.paths = Some(booted.paths);
                 self.service = Some(booted.service);
                 self.refresh();
+                self.refresh_heavy();
             }
             Err(error) => self.boot_error = Some(error),
         }
@@ -793,7 +807,7 @@ impl App {
         self.screen = screen;
         self.notes_open = false;
         if screen == Screen::LoadOrder {
-            self.refresh_conflicts();
+            self.refresh_heavy();
         }
     }
 
@@ -878,19 +892,37 @@ impl App {
             Some(profile) => engine.enabled_mods(profile.id).unwrap_or_default(),
             None => Vec::new(),
         };
-        self.plugins = match &self.active_profile {
-            Some(profile) => engine.plugins(profile.id).unwrap_or_default(),
-            None => Vec::new(),
-        };
-        self.health = match &self.active_profile {
-            Some(profile) => engine.health(profile.id).unwrap_or_default(),
-            None => Vec::new(),
-        };
         drop(engine);
         self.apply_mod_sort();
         self.mod_sel.retain_below(self.mods.len());
-        self.plugin_sel.retain_below(self.plugins.len());
         self.queue_unreviewed_fomods();
+    }
+
+    /// Recompute the plugin load order, conflicts, and health - the
+    /// expensive pass (it parses plugin headers and walks staged trees), so
+    /// it runs only after a mutation or a Load Order visit, never per tick.
+    fn refresh_heavy(&mut self) {
+        let Some(service) = self.service.clone() else {
+            return;
+        };
+        let Some(profile) = self.active_profile.as_ref().map(|p| p.id) else {
+            self.plugins = Vec::new();
+            self.health = Vec::new();
+            self.conflicts = Vec::new();
+            return;
+        };
+        let Ok(engine) = service.engine().try_lock() else {
+            return;
+        };
+        self.plugins = engine.plugins(profile).unwrap_or_default();
+        self.health = engine.health(profile).unwrap_or_default();
+        let conflicts = engine
+            .plan(profile)
+            .map(|p| summarize_conflicts(p.conflicts(), &self.mods))
+            .unwrap_or_default();
+        drop(engine);
+        self.conflicts = conflicts;
+        self.plugin_sel.retain_below(self.plugins.len());
         self.push_health_notes();
     }
 
@@ -954,19 +986,6 @@ impl App {
         self.open_next_wizard();
     }
 
-    /// Recompute the conflict summary (plan the active profile).
-    fn refresh_conflicts(&mut self) {
-        let Some(profile) = self.active_profile.clone() else {
-            self.conflicts = Vec::new();
-            return;
-        };
-        let plan = self.with_engine(|e| e.plan(profile.id));
-        let Some(plan) = plan else {
-            return;
-        };
-        self.conflicts = summarize_conflicts(plan.conflicts(), &self.mods);
-    }
-
     /// Run a quick engine call, reporting failures as notifications.
     fn with_engine<T>(
         &mut self,
@@ -1024,7 +1043,7 @@ impl App {
             .is_some()
         {
             self.refresh();
-            self.refresh_conflicts();
+            self.refresh_heavy();
         }
     }
 
@@ -1048,7 +1067,7 @@ impl App {
         if done.is_some() {
             self.note(Tone::Ok, format!("{count} mods enabled"));
             self.refresh();
-            self.refresh_conflicts();
+            self.refresh_heavy();
         }
     }
 
@@ -1077,7 +1096,7 @@ impl App {
             let verb = if on { "enabled" } else { "disabled" };
             self.note(Tone::Ok, format!("{count} mods {verb}"));
             self.refresh();
-            self.refresh_conflicts();
+            self.refresh_heavy();
         }
     }
 
@@ -1413,7 +1432,7 @@ impl App {
         }
         self.refresh();
         if self.screen == Screen::LoadOrder {
-            self.refresh_conflicts();
+            self.refresh_heavy();
         }
     }
 

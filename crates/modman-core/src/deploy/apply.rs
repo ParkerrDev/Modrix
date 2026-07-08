@@ -94,26 +94,64 @@ fn now_string() -> String {
         .map_or_else(|_| "0".to_owned(), |d| d.as_secs().to_string())
 }
 
+/// A progress sink plus the operation label it reports under.
+pub(crate) struct Reporter<'a> {
+    /// The shared sink.
+    pub progress: &'a crate::Progress,
+    /// "Deploying" / "Purging".
+    pub label: &'a str,
+}
+
+impl Reporter<'_> {
+    fn advance(&self, what: &str) {
+        self.progress
+            .advance_with(1, &format!("{} · {what}", self.label));
+    }
+}
+
 /// Apply `plan` with no fault injection - the production entry point.
+/// Reports live per-file progress through `reporter`.
 pub(crate) fn run(
     conn: &Connection,
     paths: &crate::paths::Paths,
     plan: &DeployPlan,
     profile: ProfileId,
+    reporter: &Reporter<'_>,
 ) -> Result<DeployReport> {
-    apply(conn, paths, plan, profile, &Faults::none())
+    let total = plan.adds.len().saturating_add(plan.removes.len());
+    reporter
+        .progress
+        .begin(reporter.label, u64::try_from(total).unwrap_or(u64::MAX));
+    let ctx = ApplyCtx {
+        faults: &Faults::none(),
+        reporter,
+    };
+    let outcome = apply(conn, paths, plan, profile, &ctx);
+    reporter.progress.finish();
+    outcome
 }
 
 /// Apply `plan`, recording the result under `profile`. Transactional and
 /// journalled: on success the game tree and manifest both reflect the plan; on
 /// any failure the caller (or the next engine open) recovers to a clean state.
+pub(crate) struct ApplyCtx<'a> {
+    /// Fault injection (tests only; `Faults::none()` in production).
+    pub faults: &'a Faults,
+    /// Live progress reporting.
+    pub reporter: &'a Reporter<'a>,
+}
+
 pub(crate) fn apply(
     conn: &Connection,
     paths: &crate::paths::Paths,
     plan: &DeployPlan,
     profile: ProfileId,
-    faults: &Faults,
+    ctx: &ApplyCtx<'_>,
 ) -> Result<DeployReport> {
+    let (faults, reporter) = (ctx.faults, ctx.reporter);
+    reporter
+        .progress
+        .set_message(&format!("{} · preparing (hashing + backups)", reporter.label));
     let snapshot = snapshot(plan, faults)?;
 
     faults.checkpoint()?;
@@ -125,7 +163,7 @@ pub(crate) fn apply(
     };
     journal::write(paths, &journal)?;
 
-    let (new_rows, mut report) = mutate(plan, &snapshot.add_backups, faults)?;
+    let (new_rows, mut report) = mutate(plan, &snapshot.add_backups, faults, reporter)?;
 
     faults.checkpoint()?;
     let deployed_at = now_string();
@@ -224,12 +262,14 @@ fn mutate(
     plan: &DeployPlan,
     add_backups: &[Option<std::path::PathBuf>],
     faults: &Faults,
+    reporter: &Reporter<'_>,
 ) -> Result<(Vec<DeployedRow>, DeployReport)> {
     let mut report = DeployReport::default();
 
     for remove in &plan.removes {
         faults.checkpoint()?;
         apply_remove(&plan.target_root, &remove.row, &mut report)?;
+        reporter.advance(&remove.row.target_rel);
     }
 
     let mut rows = plan.keep.clone();
@@ -241,6 +281,7 @@ fn mutate(
             carried.clone(),
             &mut report,
         )?);
+        reporter.advance(&add.target_rel);
     }
     Ok((rows, report))
 }

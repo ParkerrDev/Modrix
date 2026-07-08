@@ -117,7 +117,13 @@ impl Harness {
             ordered,
             &current,
         );
-        apply(&self.conn, &self.paths, &p, self.profile, faults)
+        let progress = crate::Progress::default();
+        let reporter = super::Reporter {
+            progress: &progress,
+            label: "Deploying",
+        };
+        let ctx = super::ApplyCtx { faults, reporter: &reporter };
+        apply(&self.conn, &self.paths, &p, self.profile, &ctx)
     }
 
     fn undeploy(&self, faults: &Faults) -> crate::Result<crate::DeployReport> {
@@ -129,7 +135,7 @@ impl Harness {
     }
 
     fn recover(&self) -> journal::Recovered {
-        journal::recover(&self.conn, &self.paths).unwrap()
+        journal::recover(&self.conn, &self.paths, &crate::Progress::default()).unwrap()
     }
 
     fn journal_files_gone(&self) -> bool {

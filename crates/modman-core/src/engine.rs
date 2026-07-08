@@ -23,6 +23,7 @@ use crate::{db, model};
 pub struct Engine {
     paths: Paths,
     conn: Connection,
+    progress: std::sync::Arc<crate::Progress>,
 }
 
 impl Engine {
@@ -36,17 +37,37 @@ impl Engine {
     /// [`Error::Database`]/[`Error::Journal`] if the database cannot be opened,
     /// migrated, or a pending deploy cannot be recovered.
     pub fn open(paths: &Paths) -> Result<Self> {
+        Self::open_with_progress(paths, std::sync::Arc::default())
+    }
+
+    /// [`Engine::open`], reporting long work (crash recovery) into `progress`
+    /// so a frontend can show it live.
+    ///
+    /// # Errors
+    ///
+    /// As for [`Engine::open`].
+    pub fn open_with_progress(
+        paths: &Paths,
+        progress: std::sync::Arc<crate::Progress>,
+    ) -> Result<Self> {
         paths.ensure_dirs()?;
         let conn = db::open(&paths.database_file())?;
         // Crash recovery must run before anything else touches game files.
-        match journal::recover(&conn, paths)? {
+        match journal::recover(&conn, paths, &progress)? {
             journal::Recovered::Nothing => {}
             other => tracing::warn!(?other, "recovered an interrupted deploy on open"),
         }
         Ok(Self {
             paths: paths.clone(),
             conn,
+            progress,
         })
+    }
+
+    /// The live progress sink long operations report into.
+    #[must_use]
+    pub fn progress(&self) -> std::sync::Arc<crate::Progress> {
+        std::sync::Arc::clone(&self.progress)
     }
 
     /// The resolved on-disk locations this engine uses.
@@ -262,7 +283,10 @@ impl Engine {
         let nexus_mod_id = detected.and_then(|d| d.nexus_mod_id);
         let mod_root = self.game(game)?.mod_root;
         let staged = self.paths.staging_root().join(game.to_string()).join(name);
-        if let Err(error) = extract_into(path, &staged, &mod_root) {
+        self.progress.begin(&format!("Installing · {name}"), 0);
+        let extracted = extract_into(path, &staged, &mod_root);
+        self.progress.finish();
+        if let Err(error) = extracted {
             // Never leave a half-staged tree behind a failed stage.
             let _ = std::fs::remove_dir_all(&staged);
             return Err(error);
@@ -661,7 +685,11 @@ impl Engine {
     /// left recoverable via the journal.
     pub fn deploy(&self, profile: ProfileId) -> Result<DeployReport> {
         let (_, plan) = self.build_plan(profile)?;
-        let report = apply::run(&self.conn, &self.paths, &plan, profile)?;
+        let reporter = apply::Reporter {
+            progress: &self.progress,
+            label: "Deploying",
+        };
+        let report = apply::run(&self.conn, &self.paths, &plan, profile, &reporter)?;
         self.set_active_profile(profile)?;
         // Activate the deployed plugins; the game reads its order from here.
         if let Err(error) = self.sync_plugins_txt(profile) {
@@ -687,7 +715,11 @@ impl Engine {
             &empty,
             &current,
         );
-        let report = apply::run(&self.conn, &self.paths, &plan, profile)?;
+        let reporter = apply::Reporter {
+            progress: &self.progress,
+            label: "Purging",
+        };
+        let report = apply::run(&self.conn, &self.paths, &plan, profile, &reporter)?;
         // Nothing is deployed any more; deactivate every managed plugin.
         if let Some(dir) =
             crate::plugins::plugins_txt_dir(&game.install_path, game.steam_appid)
