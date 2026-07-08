@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 //! The FOMOD wizard: a modal that walks the installer's steps and groups.
 
-use iced::widget::{button, checkbox, column, container, mouse_area, row, scrollable, text};
+use iced::widget::{button, checkbox, column, container, opaque, row, scrollable, text};
 use iced::{Alignment, Length};
 use modman_plugin::fomod;
 
@@ -10,26 +10,23 @@ use crate::app::{App, Message, Wizard};
 use crate::theme;
 
 /// The dimmed backdrop + centered wizard card.
+///
+/// The whole layer is `opaque` so no event leaks through to the UI below,
+/// and there is deliberately **no** click-outside-to-dismiss: passive spots
+/// inside the card do not capture presses, so a backdrop dismiss handler
+/// would swallow ordinary clicks and close the wizard. Only `×` closes.
 pub(super) fn overlay<'a>(_app: &'a App, wizard: &'a Wizard) -> El<'a> {
-    let backdrop = mouse_area(
-        container(iced::widget::Space::new(Length::Fill, Length::Fill))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(theme::backdrop),
-    )
-    .on_press(Message::WizardCancel);
     let card = container(card_body(wizard))
         .padding(24)
         .width(680)
         .max_height(720)
         .style(theme::card);
-    iced::widget::stack![
-        backdrop,
+    opaque(
         container(card)
             .center_x(Length::Fill)
-            .center_y(Length::Fill),
-    ]
-    .into()
+            .center_y(Length::Fill)
+            .style(theme::backdrop),
+    )
 }
 
 fn card_body(wizard: &Wizard) -> El<'_> {
