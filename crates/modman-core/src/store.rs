@@ -218,10 +218,41 @@ pub(crate) fn normalize_staged(dest: &Path, mod_root: &str) -> Result<()> {
             break;
         }
     }
+    // A FOMOD-packaged tree stays pristine (past wrapper hoisting): its
+    // installer references sources relative to this root, and the FOMOD
+    // engine decides the final layout - remapping would break both.
+    if has_fomod(dest) {
+        return Ok(());
+    }
     if !mod_root.is_empty() {
         remap_mod_root(dest, mod_root)?;
     }
     Ok(())
+}
+
+/// Whether the tree root carries a `fomod/ModuleConfig.xml` (any case).
+fn has_fomod(dest: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(dest) else {
+        return false;
+    };
+    for entry in entries.flatten().take(MAX_FILES) {
+        let path = entry.path();
+        if path.is_dir()
+            && file_name_of(&path).eq_ignore_ascii_case("fomod")
+            && fs::read_dir(&path).is_ok_and(|mut inner| {
+                inner.any(|e| {
+                    e.is_ok_and(|e| {
+                        e.file_name()
+                            .to_string_lossy()
+                            .eq_ignore_ascii_case("ModuleConfig.xml")
+                    })
+                })
+            })
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// Directory names that ARE mod content, never a wrapper to hoist. A lone

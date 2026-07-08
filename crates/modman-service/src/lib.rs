@@ -28,20 +28,57 @@ use modman_ipc::{Message, Reply, Role, acquire};
 /// Where a completed download should be installed.
 struct Route {
     game: Option<GameId>,
-    mod_name: String,
 }
 
 /// How a completed download's *install* phase ended (the download state
 /// itself is [`DownloadStatus::state`]).
 #[derive(Debug, Clone)]
 pub enum InstallOutcome {
-    /// Staged into the library under this mod name.
-    Installed(String),
+    /// Staged into the library.
+    Installed {
+        /// The (auto-detected) mod name.
+        name: String,
+        /// Whether a FOMOD installer configured it (defaults applied; the
+        /// user can re-run the wizard).
+        configurable: bool,
+    },
     /// Downloaded fine, but no registered game matched the source page -
     /// the file stays in the download directory.
     NoGame,
     /// Staging failed (unsupported archive, extraction error, …).
     Failed(String),
+}
+
+/// Post-stage FOMOD pass shared by every install path: if the staged tree
+/// carries an installer, apply its **default** selections (parking the
+/// original layout for later re-configuration) and adopt its metadata.
+/// Returns whether the mod is FOMOD-configurable.
+///
+/// # Errors
+///
+/// Returns an error if the installer parses but cannot be applied.
+pub fn fomod_pass(engine: &Engine, staged: &modman_core::Mod) -> Result<bool> {
+    use modman_plugin::fomod;
+    let Some(installer) = fomod::parse(&staged.staged_path)? else {
+        return Ok(false);
+    };
+    let selections = fomod::defaults(&installer);
+    let ops = fomod::resolve(&installer, &selections);
+    fomod::apply(&staged.staged_path, &ops).context("applying FOMOD defaults")?;
+    // Adopt the installer's (usually cleaner) name - unless another mod of
+    // this game already uses it (some archives ship stale metadata).
+    let name = installer
+        .info_name
+        .filter(|n| !n.trim().is_empty())
+        .filter(|n| {
+            engine
+                .mods(staged.game_id)
+                .is_ok_and(|mods| !mods.iter().any(|m| m.id != staged.id && m.name == *n))
+        });
+    let version = installer.info_version.filter(|v| !v.trim().is_empty());
+    engine.set_mod_meta(staged.id, name.as_deref(), version.as_deref())?;
+    engine.set_install_state(staged.id, "fomod")?;
+    Ok(true)
 }
 
 /// The outcome of [`Service::bind`].
@@ -194,12 +231,11 @@ impl Service {
         let n = self.seq.fetch_add(1, Ordering::Relaxed);
         let dir = self.download_dir.join(n.to_string());
         let request = job.into_request(&dir).context("validating the job")?;
-        let mod_name = mod_name_from(&request.out);
         let id = self
             .manager
             .submit(request)
             .context("queuing the download")?;
-        lock(&self.routes)?.insert(id, Route { game, mod_name });
+        lock(&self.routes)?.insert(id, Route { game });
         Ok(id)
     }
 
@@ -257,9 +293,10 @@ impl Service {
     fn status_json(&self, status: &DownloadStatus) -> String {
         let install = match self.install_outcome(status.id) {
             None => "null".to_owned(),
-            Some(InstallOutcome::Installed(name)) => {
-                format!("{{\"state\":\"installed\",\"mod\":\"{}\"}}", json_escape(&name))
-            }
+            Some(InstallOutcome::Installed { name, configurable }) => format!(
+                "{{\"state\":\"installed\",\"mod\":\"{}\",\"configurable\":{configurable}}}",
+                json_escape(&name)
+            ),
             Some(InstallOutcome::NoGame) => "{\"state\":\"no_game\"}".to_owned(),
             Some(InstallOutcome::Failed(error)) => {
                 format!("{{\"state\":\"failed\",\"error\":\"{}\"}}", json_escape(&error))
@@ -323,22 +360,22 @@ impl Service {
             self.record(id, InstallOutcome::NoGame);
             return;
         };
-        let staged = {
+        let outcome = {
             let Ok(engine) = self.engine.lock() else {
                 tracing::warn!("engine lock poisoned; cannot stage");
                 self.record(id, InstallOutcome::Failed("engine lock poisoned".to_owned()));
                 return;
             };
-            engine.stage(game, &route.mod_name, file)
+            install_file(&engine, game, file)
         };
-        match staged {
-            Ok(m) => {
-                tracing::info!(mod = %m.name, "installed via extension hand-off");
-                self.record(id, InstallOutcome::Installed(m.name));
+        match outcome {
+            Ok(outcome) => {
+                tracing::info!(?outcome, "hand-off install finished");
+                self.record(id, outcome);
             }
             Err(error) => {
                 tracing::warn!(%error, "failed to stage downloaded mod");
-                self.record(id, InstallOutcome::Failed(error.to_string()));
+                self.record(id, InstallOutcome::Failed(format!("{error:#}")));
             }
         }
     }
@@ -366,15 +403,17 @@ fn nexus_domain_from_url(url: &str) -> Option<String> {
     (!segment.is_empty()).then(|| segment.to_owned())
 }
 
-/// Derive a mod name from a downloaded file name (strip a trailing archive
-/// extension).
-fn mod_name_from(file_name: &str) -> String {
-    for ext in [".zip", ".7z", ".rar", ".tar.gz"] {
-        if let Some(stem) = file_name.strip_suffix(ext) {
-            return stem.to_owned();
-        }
-    }
-    file_name.to_owned()
+/// Stage one archive into a game with automatic naming and the FOMOD pass -
+/// the single install path used for hand-offs, local files, and reinstalls.
+///
+/// # Errors
+///
+/// Returns any staging or FOMOD-application error.
+pub fn install_file(engine: &Engine, game: GameId, file: &Path) -> Result<InstallOutcome> {
+    let staged = engine.stage_auto(game, file).context("staging")?;
+    let configurable = fomod_pass(engine, &staged)?;
+    let name = engine.get_mod(staged.id).map_or(staged.name, |m| m.name);
+    Ok(InstallOutcome::Installed { name, configurable })
 }
 
 /// Minimal JSON string escaping (backslash, quote, control characters).
@@ -425,10 +464,18 @@ mod tests {
     }
 
     #[test]
-    fn derives_mod_names_by_stripping_archive_suffixes() {
-        assert_eq!(mod_name_from("SkyUI_5_2_SE.zip"), "SkyUI_5_2_SE");
-        assert_eq!(mod_name_from("mod.tar.gz"), "mod");
-        assert_eq!(mod_name_from("plain-directory"), "plain-directory");
+    fn install_file_reports_staging_failures() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = modman_core::Paths::rooted_at(dir.path());
+        let engine = Engine::open(&paths).expect("open engine");
+        let def = modman_core::GameDef::from_toml_str(
+            "api_version = 1\nid = \"g\"\nname = \"G\"\nmod_root = \"Data\"\n",
+            std::path::Path::new("<test>"),
+        )
+        .expect("def");
+        let game = engine.add_game(&def, dir.path(), "manual").expect("game");
+        let missing = dir.path().join("nope.zip");
+        assert!(install_file(&engine, game.id, &missing).is_err());
     }
 
     #[test]

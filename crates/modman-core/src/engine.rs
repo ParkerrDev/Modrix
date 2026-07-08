@@ -231,6 +231,35 @@ impl Engine {
     /// Returns [`Error::Io`]/[`Error::Archive`]/[`Error::BoundExceeded`] on a
     /// staging failure, or [`Error::Database`] on insert failure.
     pub fn stage(&self, game: GameId, name: &str, path: &Path) -> Result<Mod> {
+        self.stage_with(game, name, path, None)
+    }
+
+    /// Stage a mod, detecting its name, version, and Nexus mod id from the
+    /// archive filename (`SkyUI-12604-6-11-….zip` → `SkyUI 6.11`). A taken
+    /// name gets a ` (2)`-style suffix rather than colliding.
+    ///
+    /// # Errors
+    ///
+    /// As for [`Engine::stage`].
+    pub fn stage_auto(&self, game: GameId, path: &Path) -> Result<Mod> {
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let detected = crate::naming::detect(&file_name);
+        let name = self.unique_name(game, &detected.name)?;
+        self.stage_with(game, &name, path, Some(&detected))
+    }
+
+    fn stage_with(
+        &self,
+        game: GameId,
+        name: &str,
+        path: &Path,
+        detected: Option<&crate::naming::Detected>,
+    ) -> Result<Mod> {
+        let version = detected.and_then(|d| d.version.as_deref());
+        let nexus_mod_id = detected.and_then(|d| d.nexus_mod_id);
         let mod_root = self.game(game)?.mod_root;
         let staged = self.paths.staging_root().join(game.to_string()).join(name);
         if let Err(error) = extract_into(path, &staged, &mod_root) {
@@ -238,11 +267,113 @@ impl Engine {
             let _ = std::fs::remove_dir_all(&staged);
             return Err(error);
         }
+        let source = if nexus_mod_id.is_some() { "nexus" } else { "local" };
+        let archive = (!path.is_dir()).then(|| path.to_string_lossy().into_owned());
         self.conn.execute(
-            "INSERT INTO mods (game_id, name, source, staged_path) VALUES (?1, ?2, 'local', ?3)",
-            rusqlite::params![game.get(), name, staged.to_string_lossy()],
+            "INSERT INTO mods (game_id, name, version, source, staged_path, archive_path, nexus_mod_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                game.get(),
+                name,
+                version,
+                source,
+                staged.to_string_lossy(),
+                archive,
+                nexus_mod_id,
+            ],
         )?;
         self.get_mod(ModId::from_raw(self.conn.last_insert_rowid()))
+    }
+
+    /// `name`, or `name (2)`, `name (3)`, … - whichever is free for `game`.
+    fn unique_name(&self, game: GameId, name: &str) -> Result<String> {
+        let taken: Vec<String> = self
+            .mods(game)?
+            .into_iter()
+            .map(|m| m.name)
+            .collect();
+        if !taken.iter().any(|t| t == name) {
+            return Ok(name.to_owned());
+        }
+        for n in 2_u32..100 {
+            let candidate = format!("{name} ({n})");
+            if !taken.contains(&candidate) {
+                return Ok(candidate);
+            }
+        }
+        Err(Error::BoundExceeded {
+            what: "duplicate mod names",
+            limit: 100,
+        })
+    }
+
+    /// Update a mod's display name and/or version (e.g. from FOMOD metadata).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Database`] on update failure.
+    pub fn set_mod_meta(&self, id: ModId, name: Option<&str>, version: Option<&str>) -> Result<()> {
+        if let Some(name) = name {
+            self.conn
+                .execute("UPDATE mods SET name = ?2 WHERE id = ?1", rusqlite::params![id.get(), name])?;
+        }
+        if let Some(version) = version {
+            self.conn.execute(
+                "UPDATE mods SET version = ?2 WHERE id = ?1",
+                rusqlite::params![id.get(), version],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Set a mod's install lifecycle state (`staged`, `fomod`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Database`] on update failure.
+    pub fn set_install_state(&self, id: ModId, state: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE mods SET install_state = ?2 WHERE id = ?1",
+            rusqlite::params![id.get(), state],
+        )?;
+        Ok(())
+    }
+
+    /// Remove a mod from the library: its profile memberships, its row, and
+    /// its staged tree. Files it deployed disappear on the next deploy.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Database`] on delete failure or [`Error::NotFound`]
+    /// if the mod does not exist.
+    pub fn delete_mod(&self, id: ModId) -> Result<()> {
+        let m = self.get_mod(id)?;
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM profile_mods WHERE mod_id = ?1", [id.get()])?;
+        tx.execute("DELETE FROM mods WHERE id = ?1", [id.get()])?;
+        tx.commit()?;
+        let _ = std::fs::remove_dir_all(&m.staged_path);
+        Ok(())
+    }
+
+    /// Re-stage a mod from its recorded source archive (fresh extraction,
+    /// fresh normalization). The mod gets a new id and starts disabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Archive`] if the mod has no recorded archive or the
+    /// archive is gone, or any staging error.
+    pub fn reinstall_mod(&self, id: ModId) -> Result<Mod> {
+        let m = self.get_mod(id)?;
+        let Some(archive) = m.archive_path.clone().filter(|p| p.exists()) else {
+            return Err(Error::Archive {
+                path: m.archive_path.unwrap_or_default(),
+                message: "no source archive recorded for this mod (re-download it instead)"
+                    .to_owned(),
+            });
+        };
+        self.delete_mod(id)?;
+        self.stage_auto(m.game_id, &archive)
     }
 
     /// All mods staged for a game.
@@ -318,7 +449,8 @@ impl Engine {
     /// Returns [`Error::Database`] on query failure.
     pub fn enabled_mods(&self, profile: ProfileId) -> Result<Vec<Mod>> {
         let mut stmt = self.conn.prepare(
-            "SELECT m.id, m.game_id, m.name, m.version, m.source, m.staged_path \
+            "SELECT m.id, m.game_id, m.name, m.version, m.source, m.staged_path, \
+                    m.install_state, m.archive_path, m.nexus_mod_id \
              FROM profile_mods pm JOIN mods m ON m.id = pm.mod_id \
              WHERE pm.profile_id = ?1 AND pm.enabled = 1 \
              ORDER BY pm.load_order, m.id",
@@ -490,7 +622,8 @@ fn extract_into(path: &Path, staged: &Path, mod_root: &str) -> Result<()> {
 const GAME_COLUMNS: &str = "SELECT id, plugin_id, name, install_path, mod_root, store, \
                             steam_appid, nexus_domain, staging_root FROM games";
 const PROFILE_COLUMNS: &str = "SELECT id, game_id, name, is_active FROM profiles";
-const MOD_COLUMNS: &str = "SELECT id, game_id, name, version, source, staged_path FROM mods";
+const MOD_COLUMNS: &str = "SELECT id, game_id, name, version, source, staged_path, \
+                           install_state, archive_path, nexus_mod_id FROM mods";
 
 fn game_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Game> {
     Ok(Game {
@@ -523,6 +656,9 @@ fn mod_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Mod> {
         version: row.get(3)?,
         source: row.get(4)?,
         staged_path: row.get::<_, String>(5)?.into(),
+        install_state: row.get(6)?,
+        archive_path: row.get::<_, Option<String>>(7)?.map(Into::into),
+        nexus_mod_id: row.get(8)?,
     })
 }
 
@@ -563,6 +699,29 @@ mod tests {
         assert_eq!(game.plugin_id, "testgame");
         let active = engine.active_profile(game.id).unwrap();
         assert_eq!(active.name, "default");
+    }
+
+    #[test]
+    fn enabled_mods_returns_full_rows_in_load_order() {
+        let (tmp, engine) = engine();
+        let install = tmp.path().join("game");
+        std::fs::create_dir_all(install.join("Data")).unwrap();
+        let game = engine.add_game(&sample_def(), &install, "manual").unwrap();
+        let profile = engine.active_profile(game.id).unwrap();
+        let src = tmp.path().join("m");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("a.esp"), b"a").unwrap();
+        let first = engine.stage(game.id, "first", &src).unwrap();
+        let second = engine.stage(game.id, "second", &src).unwrap();
+        engine.set_enabled(profile.id, first.id, true).unwrap();
+        engine.set_enabled(profile.id, second.id, true).unwrap();
+        engine.set_load_order(profile.id, &[second.id, first.id]).unwrap();
+
+        // Regression: this query must stay in sync with the mods columns.
+        let enabled = engine.enabled_mods(profile.id).unwrap();
+        let names: Vec<_> = enabled.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names, vec!["second", "first"]);
+        assert_eq!(enabled.first().unwrap().install_state, "staged");
     }
 
     #[test]

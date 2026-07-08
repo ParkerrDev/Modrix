@@ -6,16 +6,17 @@
 //! browser hand-off installs mods while the window is open. All business
 //! logic stays in the engine; this module only shuttles state.
 
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use iced::{Subscription, Task, Theme};
 use modman_core::{
-    DeployReport, Engine, Game, GameDef, GameId, Mod, ModId, Paths, Profile, ProfileId,
-    VerifyReport,
+    Conflict, Engine, Game, GameDef, GameId, Mod, ModId, Paths, Profile, ProfileId,
 };
 use modman_download::{DownloadId, DownloadState, DownloadStatus};
+use modman_plugin::fomod;
 use modman_service::{Binding, InstallOutcome, Service};
 
 use crate::theme;
@@ -29,6 +30,9 @@ const BUILTIN_DEFS: [&str; 1] = [include_str!("../../../games/skyrimse/game.toml
 /// Most files a definition scan will consider (bounded loop).
 const MAX_DEF_SCAN: usize = 256;
 
+/// Notifications kept before the oldest are dropped.
+const MAX_NOTES: usize = 200;
+
 /// Which main view is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -38,7 +42,7 @@ pub enum Screen {
     Games,
     /// The mod table for the selected game.
     Mods,
-    /// Reorderable enabled-mod list.
+    /// Reorderable enabled-mod list + conflicts.
     LoadOrder,
     /// Live download list + hand-off state.
     Downloads,
@@ -88,18 +92,20 @@ impl std::fmt::Display for GameChoice {
     }
 }
 
-/// The tone of the status banner.
+/// Notification severity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tone {
-    /// A completed action.
+    /// Completed.
     Ok,
-    /// A failed action.
+    /// Failed.
     Error,
+    /// Informational.
+    Info,
 }
 
-/// A dismissible one-line result banner.
+/// One entry in the notification center.
 #[derive(Debug, Clone)]
-pub struct StatusLine {
+pub struct Note {
     /// Severity.
     pub tone: Tone,
     /// The message.
@@ -115,6 +121,47 @@ pub struct Link {
     pub token: String,
 }
 
+/// A summarized file conflict between two mods.
+#[derive(Debug, Clone)]
+pub struct ConflictRow {
+    /// The mod whose files win (later in load order).
+    pub winner: String,
+    /// The mod being overridden.
+    pub loser: String,
+    /// How many files overlap.
+    pub files: usize,
+}
+
+/// The FOMOD wizard modal.
+#[derive(Debug, Clone)]
+pub struct Wizard {
+    /// The mod being configured.
+    pub mod_id: ModId,
+    /// Its display name.
+    pub mod_name: String,
+    /// The parsed installer.
+    pub installer: fomod::Installer,
+    /// Current selections.
+    pub selections: fomod::Selections,
+    /// Position within the *visible* steps.
+    pub step: usize,
+}
+
+impl Wizard {
+    /// Indices of steps visible under the current selections.
+    #[must_use]
+    pub fn visible_steps(&self) -> Vec<usize> {
+        let flags = fomod::flags_of(&self.installer, &self.selections);
+        self.installer
+            .steps
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.visible.as_ref().is_none_or(|d| d.eval(&flags)))
+            .map(|(i, _)| i)
+            .collect()
+    }
+}
+
 /// Form inputs, kept separate from engine-derived state so a refresh never
 /// clobbers what the user is typing.
 #[derive(Debug, Clone, Default)]
@@ -125,10 +172,6 @@ pub struct Forms {
     pub def_path: String,
     /// The game's install directory.
     pub install_path: String,
-    /// Path of a local archive/directory to stage.
-    pub mod_path: String,
-    /// Optional name override for the staged mod.
-    pub mod_name: String,
     /// Name for a new profile.
     pub profile_name: String,
 }
@@ -160,10 +203,24 @@ pub struct App {
     /// Download snapshots, newest first.
     pub downloads: Vec<DownloadStatus>,
     /// Install phase of each completed download.
-    pub outcomes: std::collections::HashMap<DownloadId, InstallOutcome>,
-    /// Result banner.
-    pub status: Option<StatusLine>,
-    /// A deploy/purge/verify/stage is in flight.
+    pub outcomes: HashMap<DownloadId, InstallOutcome>,
+    /// Download ids whose outcome was already notified.
+    pub outcome_seen: HashSet<DownloadId>,
+    /// Selected mod rows (mass actions).
+    pub selection: HashSet<ModId>,
+    /// Load-order drag source, while a drag is in flight.
+    pub drag: Option<usize>,
+    /// Conflict summary for the active profile.
+    pub conflicts: Vec<ConflictRow>,
+    /// Notification center entries, newest first.
+    pub notes: Vec<Note>,
+    /// Notifications not yet seen.
+    pub unread: usize,
+    /// Whether the notification panel is open.
+    pub notes_open: bool,
+    /// The FOMOD wizard, when open.
+    pub wizard: Option<Wizard>,
+    /// A slow engine action is in flight.
     pub busy: bool,
     /// Selectable game definitions.
     pub defs: Vec<DefChoice>,
@@ -203,8 +260,26 @@ pub enum Message {
     CreateProfile,
     /// Enable/disable a mod in the active profile.
     ToggleMod(ModId, bool),
+    /// Toggle a mod row's selection highlight.
+    RowClicked(ModId),
+    /// Clear the row selection.
+    ClearSelection,
+    /// Enable every currently disabled mod.
+    EnableAll,
+    /// Enable/disable all selected mods.
+    SetSelectedEnabled(bool),
+    /// Delete all selected mods.
+    DeleteSelected,
+    /// Reinstall all selected mods from their archives.
+    ReinstallSelected,
     /// Move an enabled mod one slot up/down in the load order.
     MoveMod(usize, i8),
+    /// Begin dragging the load-order row at this index.
+    DragStart(usize),
+    /// The cursor entered another row while dragging.
+    DragOver(usize),
+    /// The drag ended; commit the current order.
+    DragEnd,
     /// Deploy the active profile.
     Deploy,
     /// Undeploy (purge) the active profile.
@@ -221,18 +296,39 @@ pub enum Message {
     InstallPathChanged(String),
     /// Register the game.
     AddGame,
-    /// Local mod path input.
-    ModPathChanged(String),
-    /// Local mod name input.
-    ModNameChanged(String),
-    /// Stage the local mod.
-    AddLocalMod,
+    /// Open the file picker for local archives.
+    PickFiles,
+    /// Files chosen in the picker.
+    FilesPicked(Vec<PathBuf>),
+    /// A file was dropped onto the window.
+    FileDropped(PathBuf),
     /// Cancel a download.
     CancelDownload(DownloadId),
     /// Copy text to the clipboard.
     CopyText(String),
-    /// Dismiss the status banner.
-    DismissStatus,
+    /// Open/close the notification panel.
+    ToggleNotes,
+    /// Empty the notification center.
+    ClearNotes,
+    /// Open the FOMOD wizard for a mod.
+    Configure(ModId),
+    /// Wizard: toggle a plugin.
+    WizardPick {
+        /// Step index (absolute).
+        step: usize,
+        /// Group index.
+        group: usize,
+        /// Plugin index.
+        plugin: usize,
+    },
+    /// Wizard: next page.
+    WizardNext,
+    /// Wizard: previous page.
+    WizardBack,
+    /// Wizard: apply the chosen options.
+    WizardFinish,
+    /// Wizard: close without applying.
+    WizardCancel,
 }
 
 /// A long-running engine action executed off the UI thread.
@@ -241,10 +337,16 @@ enum Action {
     Deploy(ProfileId),
     Undeploy(ProfileId),
     Verify(ProfileId),
-    Stage {
+    Install {
         game: GameId,
-        name: String,
         path: PathBuf,
+    },
+    ReinstallMany(Vec<ModId>),
+    ApplyWizard {
+        mod_id: ModId,
+        staged: PathBuf,
+        installer: Box<fomod::Installer>,
+        selections: fomod::Selections,
     },
 }
 
@@ -276,8 +378,15 @@ pub fn boot() -> (App, Task<Message>) {
         mods: Vec::new(),
         order: Vec::new(),
         downloads: Vec::new(),
-        outcomes: std::collections::HashMap::new(),
-        status: None,
+        outcomes: HashMap::new(),
+        outcome_seen: HashSet::new(),
+        selection: HashSet::new(),
+        drag: None,
+        conflicts: Vec::new(),
+        notes: Vec::new(),
+        unread: 0,
+        notes_open: false,
+        wizard: None,
         busy: false,
         defs: Vec::new(),
         form: Forms::default(),
@@ -290,12 +399,21 @@ pub fn boot() -> (App, Task<Message>) {
     )
 }
 
-/// Poll for download progress and hand-off installs once per second.
+/// Ticks for live refresh + window file drops.
 pub fn subscription(app: &App) -> Subscription<Message> {
+    let drops = iced::event::listen_with(|event, _status, _window| match event {
+        iced::Event::Window(iced::window::Event::FileDropped(path)) => {
+            Some(Message::FileDropped(path))
+        }
+        _ => None,
+    });
     if app.service.is_some() {
-        iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick)
+        Subscription::batch([
+            drops,
+            iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick),
+        ])
     } else {
-        Subscription::none()
+        drops
     }
 }
 
@@ -363,17 +481,31 @@ fn choice_from_toml(text: &str) -> Option<DefChoice> {
 pub fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::Booted(result) => app.on_booted(result),
-        Message::Navigate(screen) => app.screen = screen,
+        Message::Navigate(screen) => app.on_navigate(screen),
         Message::Tick => app.refresh(),
         Message::GamePicked(choice) => {
             app.selected_game = Some(choice.id);
+            app.selection.clear();
             app.refresh();
         }
         Message::ProfilePicked(name) => app.on_profile_picked(&name),
         Message::ProfileNameChanged(name) => app.form.profile_name = name,
         Message::CreateProfile => app.on_create_profile(),
         Message::ToggleMod(id, on) => app.on_toggle_mod(id, on),
+        Message::RowClicked(id) => {
+            if !app.selection.remove(&id) {
+                app.selection.insert(id);
+            }
+        }
+        Message::ClearSelection => app.selection.clear(),
+        Message::EnableAll => app.on_enable_all(),
+        Message::SetSelectedEnabled(on) => app.on_set_selected(on),
+        Message::DeleteSelected => app.on_delete_selected(),
+        Message::ReinstallSelected => return app.on_reinstall_selected(),
         Message::MoveMod(index, delta) => app.on_move_mod(index, delta),
+        Message::DragStart(index) => app.drag = Some(index),
+        Message::DragOver(index) => app.on_drag_over(index),
+        Message::DragEnd => app.on_drag_end(),
         Message::Deploy => return app.on_profile_action(Action::Deploy),
         Message::Purge => return app.on_profile_action(Action::Undeploy),
         Message::Verify => return app.on_profile_action(Action::Verify),
@@ -382,14 +514,58 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::DefPathChanged(path) => app.form.def_path = path,
         Message::InstallPathChanged(path) => app.form.install_path = path,
         Message::AddGame => app.on_add_game(),
-        Message::ModPathChanged(path) => app.form.mod_path = path,
-        Message::ModNameChanged(name) => app.form.mod_name = name,
-        Message::AddLocalMod => return app.on_add_local_mod(),
+        Message::PickFiles => return pick_files(),
+        Message::FilesPicked(paths) => return app.on_install_files(paths),
+        Message::FileDropped(path) => return app.on_install_files(vec![path]),
         Message::CancelDownload(id) => app.on_cancel_download(id),
         Message::CopyText(text) => return iced::clipboard::write(text),
-        Message::DismissStatus => app.status = None,
+        ref other => return update_overlay(app, other),
     }
     Task::none()
+}
+
+/// Notification-center and wizard messages, split out of [`update`].
+fn update_overlay(app: &mut App, message: &Message) -> Task<Message> {
+    match *message {
+        Message::ToggleNotes => {
+            app.notes_open = !app.notes_open;
+            app.unread = 0;
+        }
+        Message::ClearNotes => {
+            app.notes.clear();
+            app.unread = 0;
+            app.notes_open = false;
+        }
+        Message::Configure(id) => app.on_configure(id),
+        Message::WizardPick {
+            step,
+            group,
+            plugin,
+        } => app.on_wizard_pick(step, group, plugin),
+        Message::WizardNext => app.on_wizard_step(1),
+        Message::WizardBack => app.on_wizard_step(-1),
+        Message::WizardFinish => return app.on_wizard_finish(),
+        Message::WizardCancel => app.wizard = None,
+        _ => {}
+    }
+    Task::none()
+}
+
+fn pick_files() -> Task<Message> {
+    Task::perform(
+        async {
+            rfd::AsyncFileDialog::new()
+                .add_filter("mod archives", &["zip", "7z", "rar", "tar", "gz"])
+                .set_title("Add mods")
+                .pick_files()
+                .await
+                .unwrap_or_default()
+                .iter()
+                .map(|f| f.path().to_path_buf())
+                .collect()
+        },
+        Message::FilesPicked,
+    )
 }
 
 impl App {
@@ -407,6 +583,14 @@ impl App {
         }
     }
 
+    fn on_navigate(&mut self, screen: Screen) {
+        self.screen = screen;
+        self.notes_open = false;
+        if screen == Screen::LoadOrder {
+            self.refresh_conflicts();
+        }
+    }
+
     /// Re-pull downloads and engine state. Never blocks: if the engine is
     /// mid-deploy the refresh silently waits for the next tick.
     fn refresh(&mut self) {
@@ -419,8 +603,38 @@ impl App {
                 .filter_map(|d| service.install_outcome(d.id).map(|o| (d.id, o)))
                 .collect();
             self.downloads = downloads;
+            self.notify_new_outcomes();
         }
         self.refresh_engine();
+    }
+
+    /// Turn newly finished installs into notifications.
+    fn notify_new_outcomes(&mut self) {
+        let new: Vec<(DownloadId, InstallOutcome)> = self
+            .outcomes
+            .iter()
+            .filter(|(id, _)| !self.outcome_seen.contains(*id))
+            .map(|(id, o)| (*id, o.clone()))
+            .collect();
+        for (id, outcome) in new {
+            self.outcome_seen.insert(id);
+            match outcome {
+                InstallOutcome::Installed { name, configurable } => {
+                    let text = if configurable {
+                        format!("{name} installed · options set to defaults")
+                    } else {
+                        format!("{name} installed")
+                    };
+                    self.note(Tone::Ok, text);
+                }
+                InstallOutcome::Failed(error) => {
+                    self.note(Tone::Error, format!("Install failed: {error}"));
+                }
+                InstallOutcome::NoGame => {
+                    self.note(Tone::Info, "Download kept: no game matched".to_owned());
+                }
+            }
+        }
     }
 
     fn refresh_engine(&mut self) {
@@ -435,7 +649,7 @@ impl App {
             Err(error) => {
                 let text = error.to_string();
                 drop(engine);
-                self.fail(text);
+                self.note(Tone::Error, text);
                 return;
             }
         };
@@ -458,27 +672,38 @@ impl App {
             Some(profile) => engine.enabled_mods(profile.id).unwrap_or_default(),
             None => Vec::new(),
         };
+        self.selection.retain(|id| self.mods.iter().any(|m| m.id == *id));
     }
 
-    /// Run a quick engine call, reporting failures in the status banner.
+    /// Recompute the conflict summary (plan the active profile).
+    fn refresh_conflicts(&mut self) {
+        let Some(profile) = self.active_profile.clone() else {
+            self.conflicts = Vec::new();
+            return;
+        };
+        let plan = self.with_engine(|e| e.plan(profile.id));
+        let Some(plan) = plan else {
+            return;
+        };
+        self.conflicts = summarize_conflicts(plan.conflicts(), &self.mods);
+    }
+
+    /// Run a quick engine call, reporting failures as notifications.
     fn with_engine<T>(
         &mut self,
         act: impl FnOnce(&Engine) -> modman_core::Result<T>,
     ) -> Option<T> {
         let outcome = {
-            let Some(service) = self.service.as_ref() else {
-                self.fail("the engine is still starting".to_owned());
-                return None;
-            };
+            let service = self.service.as_ref()?;
             match service.engine().try_lock() {
                 Ok(engine) => act(&engine).map_err(|e| e.to_string()),
-                Err(_) => Err("the engine is busy - try again in a moment".to_owned()),
+                Err(_) => Err("engine busy, try again".to_owned()),
             }
         };
         match outcome {
             Ok(value) => Some(value),
             Err(error) => {
-                self.fail(error);
+                self.note(Tone::Error, error);
                 None
             }
         }
@@ -499,13 +724,13 @@ impl App {
     fn on_create_profile(&mut self) {
         let name = self.form.profile_name.trim().to_owned();
         let Some(game) = self.selected_game else {
-            return self.fail("register a game first".to_owned());
+            return;
         };
         if name.is_empty() {
-            return self.fail("give the profile a name".to_owned());
+            return;
         }
         if let Some(profile) = self.with_engine(|e| e.create_profile(game, &name)) {
-            self.ok(format!("Created profile “{}”", profile.name));
+            self.note(Tone::Ok, format!("Profile “{}” created", profile.name));
             self.form.profile_name.clear();
             self.refresh();
         }
@@ -513,20 +738,87 @@ impl App {
 
     fn on_toggle_mod(&mut self, id: ModId, on: bool) {
         let Some(profile) = self.active_profile.clone() else {
-            return self.fail("no active profile".to_owned());
+            return;
         };
         if self
             .with_engine(|e| e.set_enabled(profile.id, id, on))
             .is_some()
         {
             self.refresh();
+            self.refresh_conflicts();
         }
     }
 
-    fn on_move_mod(&mut self, index: usize, delta: i8) {
+    fn on_enable_all(&mut self) {
         let Some(profile) = self.active_profile.clone() else {
             return;
         };
+        let disabled: Vec<ModId> = self
+            .mods
+            .iter()
+            .filter(|m| !self.order.iter().any(|e| e.id == m.id))
+            .map(|m| m.id)
+            .collect();
+        let count = disabled.len();
+        let done = self.with_engine(|e| {
+            for id in disabled {
+                e.set_enabled(profile.id, id, true)?;
+            }
+            Ok(())
+        });
+        if done.is_some() {
+            self.note(Tone::Ok, format!("{count} mods enabled"));
+            self.refresh();
+            self.refresh_conflicts();
+        }
+    }
+
+    fn on_set_selected(&mut self, on: bool) {
+        let Some(profile) = self.active_profile.clone() else {
+            return;
+        };
+        let ids: Vec<ModId> = self.selection.iter().copied().collect();
+        let count = ids.len();
+        let done = self.with_engine(|e| {
+            for id in ids {
+                e.set_enabled(profile.id, id, on)?;
+            }
+            Ok(())
+        });
+        if done.is_some() {
+            let verb = if on { "enabled" } else { "disabled" };
+            self.note(Tone::Ok, format!("{count} mods {verb}"));
+            self.refresh();
+            self.refresh_conflicts();
+        }
+    }
+
+    fn on_delete_selected(&mut self) {
+        let ids: Vec<ModId> = self.selection.iter().copied().collect();
+        let count = ids.len();
+        let done = self.with_engine(|e| {
+            for id in ids {
+                e.delete_mod(id)?;
+            }
+            Ok(())
+        });
+        if done.is_some() {
+            self.note(Tone::Ok, format!("{count} mods deleted"));
+            self.selection.clear();
+            self.refresh();
+        }
+    }
+
+    fn on_reinstall_selected(&mut self) -> Task<Message> {
+        let ids: Vec<ModId> = self.selection.iter().copied().collect();
+        if ids.is_empty() {
+            return Task::none();
+        }
+        self.selection.clear();
+        self.spawn_action(Action::ReinstallMany(ids))
+    }
+
+    fn on_move_mod(&mut self, index: usize, delta: i8) {
         let target = if delta < 0 {
             index.checked_sub(1)
         } else {
@@ -537,43 +829,59 @@ impl App {
             return;
         };
         self.order.swap(index, target);
+        self.commit_order();
+    }
+
+    fn on_drag_over(&mut self, index: usize) {
+        let Some(from) = self.drag else {
+            return;
+        };
+        if from == index || from >= self.order.len() || index >= self.order.len() {
+            return;
+        }
+        let moved = self.order.remove(from);
+        self.order.insert(index, moved);
+        self.drag = Some(index);
+    }
+
+    fn on_drag_end(&mut self) {
+        if self.drag.take().is_some() {
+            self.commit_order();
+        }
+    }
+
+    fn commit_order(&mut self) {
+        let Some(profile) = self.active_profile.clone() else {
+            return;
+        };
         let ids: Vec<ModId> = self.order.iter().map(|m| m.id).collect();
         if self
             .with_engine(|e| e.set_load_order(profile.id, &ids))
             .is_some()
         {
             self.refresh();
+            self.refresh_conflicts();
         }
     }
 
     fn on_profile_action(&mut self, make: impl FnOnce(ProfileId) -> Action) -> Task<Message> {
         let Some(profile) = self.active_profile.clone() else {
-            self.fail("no active profile".to_owned());
             return Task::none();
         };
         self.spawn_action(make(profile.id))
     }
 
-    fn on_add_local_mod(&mut self) -> Task<Message> {
+    fn on_install_files(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
         let Some(game) = self.selected_game else {
-            self.fail("register a game first".to_owned());
+            self.note(Tone::Error, "Register a game first".to_owned());
             return Task::none();
         };
-        let path = PathBuf::from(self.form.mod_path.trim());
-        if !path.exists() {
-            self.fail(format!("{} does not exist", path.display()));
-            return Task::none();
-        }
-        let typed = self.form.mod_name.trim();
-        let name = if typed.is_empty() {
-            path.file_stem()
-                .map_or_else(|| "mod".to_owned(), |s| s.to_string_lossy().into_owned())
-        } else {
-            typed.to_owned()
-        };
-        self.form.mod_path.clear();
-        self.form.mod_name.clear();
-        self.spawn_action(Action::Stage { game, name, path })
+        let tasks: Vec<Task<Message>> = paths
+            .into_iter()
+            .filter(|p| p.exists())
+            .map(|path| self.spawn_action(Action::Install { game, path }))
+            .collect();
+        Task::batch(tasks)
     }
 
     /// Run a slow engine action on a worker thread so the UI stays live.
@@ -597,23 +905,26 @@ impl App {
     fn on_action_finished(&mut self, result: Result<String, String>) {
         self.busy = false;
         match result {
-            Ok(text) => self.ok(text),
-            Err(text) => self.fail(text),
+            Ok(text) => self.note(Tone::Ok, text),
+            Err(text) => self.note(Tone::Error, text),
         }
         self.refresh();
+        if self.screen == Screen::LoadOrder {
+            self.refresh_conflicts();
+        }
     }
 
     fn on_add_game(&mut self) {
         let install = PathBuf::from(self.form.install_path.trim());
         if !install.is_dir() {
-            return self.fail(format!("{} is not a directory", install.display()));
+            return self.note(Tone::Error, format!("{} is not a directory", install.display()));
         }
         let def = match self.load_chosen_def() {
             Ok(def) => def,
-            Err(error) => return self.fail(error),
+            Err(error) => return self.note(Tone::Error, error),
         };
         if let Some(game) = self.with_engine(|e| e.add_game(&def, &install, "manual")) {
-            self.ok(format!("Registered {}", game.name));
+            self.note(Tone::Ok, format!("{} registered", game.name));
             self.selected_game = Some(game.id);
             self.form.install_path.clear();
             self.form.def_path.clear();
@@ -631,7 +942,7 @@ impl App {
                 GameDef::from_toml_str(&choice.toml, std::path::Path::new("<built-in>"))
                     .map_err(|e| e.to_string())
             }
-            None => Err("pick a game definition (or point at a game.toml)".to_owned()),
+            None => Err("Pick a game definition".to_owned()),
         }
     }
 
@@ -640,23 +951,144 @@ impl App {
             return;
         };
         if let Err(error) = service.manager().cancel(id) {
-            self.fail(error.to_string());
+            self.note(Tone::Error, error.to_string());
         }
         self.refresh();
     }
 
-    fn ok(&mut self, text: String) {
-        self.status = Some(StatusLine {
-            tone: Tone::Ok,
-            text,
-        });
+    fn on_configure(&mut self, id: ModId) {
+        let Some(m) = self.mods.iter().find(|m| m.id == id).cloned() else {
+            return;
+        };
+        match fomod::parse(&m.staged_path) {
+            Ok(Some(installer)) => {
+                let selections = fomod::defaults(&installer);
+                self.wizard = Some(Wizard {
+                    mod_id: m.id,
+                    mod_name: m.name,
+                    installer,
+                    selections,
+                    step: 0,
+                });
+            }
+            Ok(None) => self.note(Tone::Info, "No installer options in this mod".to_owned()),
+            Err(error) => self.note(Tone::Error, error.to_string()),
+        }
     }
 
-    fn fail(&mut self, text: String) {
-        self.status = Some(StatusLine {
-            tone: Tone::Error,
-            text,
-        });
+    fn on_wizard_pick(&mut self, step: usize, group: usize, plugin: usize) {
+        let Some(wizard) = &mut self.wizard else {
+            return;
+        };
+        let Some(kind) = wizard
+            .installer
+            .steps
+            .get(step)
+            .and_then(|s| s.groups.get(group))
+            .map(|g| g.kind)
+        else {
+            return;
+        };
+        let Some(sel) = wizard
+            .selections
+            .get_mut(step)
+            .and_then(|s| s.get_mut(group))
+        else {
+            return;
+        };
+        match kind {
+            fomod::GroupKind::All => {}
+            fomod::GroupKind::ExactlyOne => {
+                sel.clear();
+                sel.insert(plugin);
+            }
+            fomod::GroupKind::AtMostOne => {
+                let had = sel.remove(&plugin);
+                sel.clear();
+                if !had {
+                    sel.insert(plugin);
+                }
+            }
+            fomod::GroupKind::Any | fomod::GroupKind::AtLeastOne => {
+                if !sel.remove(&plugin) {
+                    sel.insert(plugin);
+                }
+            }
+        }
+    }
+
+    fn on_wizard_step(&mut self, delta: i8) {
+        let Some(wizard) = &mut self.wizard else {
+            return;
+        };
+        let pages = wizard.visible_steps().len().max(1);
+        let next = if delta < 0 {
+            wizard.step.saturating_sub(1)
+        } else {
+            wizard.step.saturating_add(1)
+        };
+        wizard.step = next.min(pages.saturating_sub(1));
+    }
+
+    fn on_wizard_finish(&mut self) -> Task<Message> {
+        let Some(wizard) = self.wizard.take() else {
+            return Task::none();
+        };
+        let Some(m) = self.mods.iter().find(|m| m.id == wizard.mod_id).cloned() else {
+            return Task::none();
+        };
+        self.spawn_action(Action::ApplyWizard {
+            mod_id: wizard.mod_id,
+            staged: m.staged_path,
+            installer: Box::new(wizard.installer),
+            selections: wizard.selections,
+        })
+    }
+
+    fn note(&mut self, tone: Tone, text: String) {
+        self.notes.insert(0, Note { tone, text });
+        self.notes.truncate(MAX_NOTES);
+        if !self.notes_open {
+            self.unread = self.unread.saturating_add(1);
+        }
+    }
+}
+
+/// Aggregate raw file conflicts into per-mod-pair rows.
+fn summarize_conflicts(conflicts: &[Conflict], mods: &[Mod]) -> Vec<ConflictRow> {
+    let name_of = |id: ModId| {
+        mods.iter()
+            .find(|m| m.id == id)
+            .map_or_else(|| id.to_string(), |m| m.name.clone())
+    };
+    let mut pairs: HashMap<(ModId, ModId), usize> = HashMap::new();
+    for conflict in conflicts {
+        for loser in &conflict.shadowed {
+            let count = pairs.entry((conflict.winner, *loser)).or_insert(0);
+            *count = count.saturating_add(1);
+        }
+    }
+    let mut rows: Vec<ConflictRow> = pairs
+        .into_iter()
+        .map(|((winner, loser), files)| ConflictRow {
+            winner: name_of(winner),
+            loser: name_of(loser),
+            files,
+        })
+        .collect();
+    rows.sort_by_key(|r| std::cmp::Reverse(r.files));
+    rows
+}
+
+fn run_install(engine: &Engine, game: GameId, path: &std::path::Path) -> Result<String, String> {
+    match modman_service::install_file(engine, game, path) {
+        Ok(InstallOutcome::Installed { name, configurable }) => Ok(if configurable {
+            format!("{name} installed · options set to defaults")
+        } else {
+            format!("{name} installed")
+        }),
+        Ok(other) => Err(format!("install did not finish: {other:?}")),
+        Err(error) => Err(format!("{error:#}")),
     }
 }
 
@@ -668,57 +1100,50 @@ fn run_action(engine: &Mutex<Engine>, action: &Action) -> Result<String, String>
     match action {
         Action::Deploy(profile) => engine
             .deploy(*profile)
-            .map(|r| summarize_deploy(&r))
+            .map(|r| {
+                format!(
+                    "Deployed · {} added · {} removed · {} unchanged",
+                    r.added(),
+                    r.removed(),
+                    r.unchanged()
+                )
+            })
             .map_err(|e| e.to_string()),
         Action::Undeploy(profile) => engine
             .undeploy(*profile)
-            .map(|r| format!("Purged - {} file(s) removed, originals restored", r.removed()))
+            .map(|r| format!("Purged · {} files restored", r.removed()))
             .map_err(|e| e.to_string()),
         Action::Verify(profile) => engine
             .verify(*profile)
-            .map(|r| summarize_verify(&r))
+            .map(|r| {
+                if r.is_clean() {
+                    format!("Verified · {} files healthy", r.checked())
+                } else {
+                    format!("Verify: {} of {} files changed", r.issues().len(), r.checked())
+                }
+            })
             .map_err(|e| e.to_string()),
-        Action::Stage { game, name, path } => engine
-            .stage(*game, name, path)
-            .map(|m| format!("Staged “{}” - enable it, then deploy", m.name))
-            .map_err(|e| e.to_string()),
-    }
-}
-
-fn summarize_deploy(report: &DeployReport) -> String {
-    use std::fmt::Write as _;
-    let (hard, sym, copy) = report.link_breakdown();
-    let mut text = format!(
-        "Deployed - {} added, {} removed, {} unchanged ({hard} hardlinks, {sym} symlinks, {copy} copies)",
-        report.added(),
-        report.removed(),
-        report.unchanged(),
-    );
-    if !report.conflicts().is_empty() {
-        let _ = write!(
-            text,
-            "; {} conflict(s) resolved by load order",
-            report.conflicts().len()
-        );
-    }
-    if report.skipped_modified() > 0 {
-        let _ = write!(
-            text,
-            "; {} user-modified file(s) left untouched",
-            report.skipped_modified()
-        );
-    }
-    text
-}
-
-fn summarize_verify(report: &VerifyReport) -> String {
-    if report.is_clean() {
-        format!("Verified - {} file(s), all healthy", report.checked())
-    } else {
-        format!(
-            "Verified - {} of {} file(s) missing or modified",
-            report.issues().len(),
-            report.checked()
-        )
+        Action::Install { game, path } => run_install(&engine, *game, path),
+        Action::ReinstallMany(ids) => {
+            let mut done: usize = 0;
+            for id in ids {
+                engine.reinstall_mod(*id).map_err(|e| e.to_string())?;
+                done = done.saturating_add(1);
+            }
+            Ok(format!("{done} mods reinstalled"))
+        }
+        Action::ApplyWizard {
+            mod_id,
+            staged,
+            installer,
+            selections,
+        } => {
+            let ops = fomod::resolve(installer, selections);
+            let placed = fomod::apply(staged, &ops).map_err(|e| e.to_string())?;
+            engine
+                .set_install_state(*mod_id, "fomod")
+                .map_err(|e| e.to_string())?;
+            Ok(format!("Options applied · {placed} files"))
+        }
     }
 }

@@ -23,6 +23,7 @@ mod error;
 mod gamedef;
 mod id;
 mod model;
+pub mod naming;
 mod paths;
 mod store;
 

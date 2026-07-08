@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 modman-core.workspace = true
 modman-download.workspace = true
+modman-plugin.workspace = true
 modman-ipc.workspace = true
 anyhow.workspace = true
 tokio.workspace = true

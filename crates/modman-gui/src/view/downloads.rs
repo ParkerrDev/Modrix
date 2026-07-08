@@ -8,17 +8,14 @@ use modman_service::InstallOutcome;
 
 use super::{El, copy_button, empty_state};
 use crate::app::{App, Message};
-use crate::{fmt, theme};
+use crate::{fmt, icons, theme};
 
 /// The downloads body.
 pub(super) fn body(app: &App) -> El<'_> {
-    let mut page = column![].spacing(16);
+    let mut page = column![].spacing(14);
     page = page.push(pairing_strip(app));
     if app.downloads.is_empty() {
-        page = page.push(empty_state(
-            "No downloads yet. With the extension installed, click Download on nexusmods.com - \
-             the transfer appears here and installs itself when done.",
-        ));
+        page = page.push(empty_state("No downloads yet."));
     } else {
         let mut rows = column![].spacing(8);
         for status in &app.downloads {
@@ -37,23 +34,19 @@ pub(super) fn body(app: &App) -> El<'_> {
 fn pairing_strip(app: &App) -> El<'_> {
     let inner: El<'_> = match (&app.link, app.already_running) {
         (Some(link), _) => row![
-            text("•").size(16).color(theme::OK),
-            text(format!("Hand-off listener on 127.0.0.1:{}", link.port)).size(13),
+            icons::dot(7.0, theme::OK),
+            text(format!("127.0.0.1:{}", link.port)).size(13),
             iced::widget::Space::with_width(Length::Fill),
-            text("extension token").size(12).color(theme::FAINT),
             copy_button(link.token.clone()),
         ]
         .spacing(10)
         .align_y(Alignment::Center)
         .into(),
-        (None, true) => text(
-            "Another ModManager instance (e.g. `modman serve`) is receiving browser \
-             downloads - close it and restart the GUI to manage them here.",
-        )
-        .size(13)
-        .color(theme::INFO)
-        .into(),
-        (None, false) => text("The hand-off listener is not running.")
+        (None, true) => text("Another ModManager instance is receiving downloads.")
+            .size(13)
+            .color(theme::INFO)
+            .into(),
+        (None, false) => text("Hand-off listener not running.")
             .size(13)
             .color(theme::DANGER)
             .into(),
@@ -91,39 +84,13 @@ fn download_row<'a>(status: &'a DownloadStatus, outcome: Option<&'a InstallOutco
         meta,
     ]
     .spacing(7);
-    if let Some(detail) = outcome_detail(outcome) {
-        inner = inner.push(detail);
+    if let Some(InstallOutcome::Failed(error)) = outcome {
+        inner = inner.push(text(error).size(12).color(theme::DANGER));
     }
     container(inner)
         .padding([10, 14])
         .style(theme::table_row(true))
         .into()
-}
-
-/// The extra line explaining how the install phase ended.
-fn outcome_detail(outcome: Option<&InstallOutcome>) -> Option<El<'_>> {
-    match outcome {
-        Some(InstallOutcome::Installed(name)) => Some(
-            text(format!("installed as “{name}” - enable it under Mods, then deploy"))
-                .size(12)
-                .color(theme::OK)
-                .into(),
-        ),
-        Some(InstallOutcome::Failed(error)) => Some(
-            text(format!("install failed: {error}"))
-                .size(12)
-                .color(theme::DANGER)
-                .into(),
-        ),
-        Some(InstallOutcome::NoGame) => Some(
-            text("no registered game matched this download - register the game, then \
-                  stage the file from the Mods screen")
-                .size(12)
-                .color(theme::INFO)
-                .into(),
-        ),
-        None => None,
-    }
 }
 
 fn cancel_slot(status: &DownloadStatus) -> El<'_> {
@@ -141,10 +108,8 @@ fn cancel_slot(status: &DownloadStatus) -> El<'_> {
 fn size_line(status: &DownloadStatus) -> String {
     let done = fmt::bytes(status.done);
     match status.total {
-        Some(total) if total > 0 => {
-            format!("{done} of {} · {} connection(s)", fmt::bytes(total), status.connections)
-        }
-        _ => format!("{done} · {} connection(s)", status.connections),
+        Some(total) if total > 0 => format!("{done} of {}", fmt::bytes(total)),
+        _ => done,
     }
 }
 
@@ -155,10 +120,10 @@ fn badge(state: DownloadState, outcome: Option<&InstallOutcome>) -> (Color, &'st
         DownloadState::Paused => (theme::INFO, "PAUSED"),
         DownloadState::Failed => (theme::DANGER, "FAILED"),
         DownloadState::Complete => match outcome {
-            Some(InstallOutcome::Installed(_)) => (theme::OK, "INSTALLED"),
+            Some(InstallOutcome::Installed { .. }) => (theme::OK, "INSTALLED"),
             Some(InstallOutcome::Failed(_)) => (theme::DANGER, "INSTALL FAILED"),
             Some(InstallOutcome::NoGame) => (theme::INFO, "DOWNLOADED"),
-            None => (theme::ACCENT, "FINISHING…"),
+            None => (theme::ACCENT, "FINISHING"),
         },
     }
 }

@@ -21,6 +21,8 @@ iced.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+rfd.workspace = true
+modman-plugin.workspace = true
 
 [lints]
 workspace = true

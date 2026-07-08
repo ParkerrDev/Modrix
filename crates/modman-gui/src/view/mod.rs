@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
-//! The view layer: a fixed sidebar shell around one of six screens.
-//!
-//! Purely structural - every color and widget style comes from
-//! [`crate::theme`], every fact on screen comes from [`crate::app::App`].
+//! The view layer: a fixed sidebar shell around one of six screens, with a
+//! notification center and the FOMOD wizard overlay.
 
 mod dashboard;
 mod downloads;
@@ -10,12 +8,13 @@ mod games;
 mod load_order;
 mod mods;
 mod settings;
+mod wizard;
 
-use iced::widget::{Space, button, column, container, pick_list, row, text};
+use iced::widget::{Space, button, column, container, pick_list, row, scrollable, stack, text};
 use iced::{Alignment, Font, Length};
 
-use crate::app::{App, GameChoice, Message, Screen, StatusLine, Tone};
-use crate::theme;
+use crate::app::{App, GameChoice, Message, Note, Screen, Tone};
+use crate::{icons, theme};
 
 /// The message-typed element every view helper returns.
 pub type El<'a> = iced::Element<'a, Message>;
@@ -39,7 +38,11 @@ pub fn view(app: &App) -> El<'_> {
     if let Some(error) = &app.boot_error {
         return boot_error(error);
     }
-    row![sidebar(app), content(app)].into()
+    let base: El<'_> = row![sidebar(app), content(app)].into();
+    match &app.wizard {
+        Some(wizard) => stack![base, wizard::overlay(app, wizard)].into(),
+        None => base,
+    }
 }
 
 fn boot_error(error: &str) -> El<'_> {
@@ -61,7 +64,6 @@ fn sidebar(app: &App) -> El<'_> {
     let column = column![
         wordmark(),
         game_picker(app),
-        section_label("LIBRARY"),
         nav_items(app),
         Space::with_height(Length::Fill),
         service_dot(app),
@@ -93,14 +95,11 @@ fn game_picker(app: &App) -> El<'_> {
             name: g.name.clone(),
         })
         .collect();
-    let selected = app.selected_game.and_then(|id| {
-        choices
-            .iter()
-            .find(|c| c.id == id)
-            .cloned()
-    });
+    let selected = app
+        .selected_game
+        .and_then(|id| choices.iter().find(|c| c.id == id).cloned());
     pick_list(choices, selected, Message::GamePicked)
-        .placeholder("No game registered")
+        .placeholder("No game")
         .text_size(13)
         .padding([8, 10])
         .width(Length::Fill)
@@ -119,7 +118,7 @@ fn nav_items(app: &App) -> El<'_> {
 fn nav_item<'a>(app: &App, screen: Screen, label: &'a str) -> El<'a> {
     let active = app.screen == screen;
     let inner = row![
-        dot(6.0, if active { theme::ACCENT } else { theme::HAIRLINE }),
+        icons::dot(6.0, if active { theme::ACCENT } else { theme::HAIRLINE }),
         text(label).size(14).font(if active { BOLD } else { Font::DEFAULT }),
     ]
     .spacing(10)
@@ -132,36 +131,15 @@ fn nav_item<'a>(app: &App, screen: Screen, label: &'a str) -> El<'a> {
         .into()
 }
 
-/// A small colored circle drawn as a widget (no font-coverage worries).
-fn dot(size: f32, color: iced::Color) -> El<'static> {
-    container(Space::new(size, size))
-        .style(move |_| iced::widget::container::Style {
-            background: Some(iced::Background::Color(color)),
-            border: iced::Border {
-                color: iced::Color::TRANSPARENT,
-                width: 0.0,
-                radius: 99.0.into(),
-            },
-            ..iced::widget::container::Style::default()
-        })
-        .into()
-}
-
-fn section_label(label: &str) -> El<'_> {
-    container(text(label).size(10).color(theme::FAINT))
-        .padding([6, 6])
-        .into()
-}
-
 fn service_dot(app: &App) -> El<'_> {
     let (color, label) = match (&app.link, app.already_running, app.service.is_some()) {
-        (Some(link), _, _) => (theme::OK, format!("Hand-off active · :{}", link.port)),
-        (None, true, _) => (theme::INFO, "Served by another instance".to_owned()),
+        (Some(link), _, _) => (theme::OK, format!("Hand-off · :{}", link.port)),
+        (None, true, _) => (theme::INFO, "Another instance active".to_owned()),
         (None, false, true) => (theme::DANGER, "Hand-off inactive".to_owned()),
         _ => (theme::FAINT, "Starting…".to_owned()),
     };
     let inner = row![
-        dot(7.0, color),
+        icons::dot(7.0, color),
         text(label).size(11).color(theme::MUTED),
     ]
     .spacing(7)
@@ -181,8 +159,8 @@ fn content(app: &App) -> El<'_> {
         Screen::Settings => settings::body(app),
     };
     let mut shell = column![header(app)].spacing(16).padding(28);
-    if let Some(status) = &app.status {
-        shell = shell.push(banner(status));
+    if app.notes_open {
+        shell = shell.push(notes_panel(app));
     }
     container(shell.push(body))
         .width(Length::Fill)
@@ -200,11 +178,70 @@ fn header(app: &App) -> El<'_> {
         .spacing(3),
         Space::with_width(Length::Fill),
     ]
+    .spacing(14)
     .align_y(Alignment::Center);
     if app.busy {
         bar = bar.push(text("Working…").size(13).color(theme::ACCENT));
     }
-    bar.into()
+    bar.push(bell(app)).into()
+}
+
+/// The notification bell: a dot that lights up with the unread count.
+fn bell(app: &App) -> El<'_> {
+    let color = if app.unread > 0 {
+        theme::ACCENT
+    } else {
+        theme::FAINT
+    };
+    let mut inner = row![icons::dot(8.0, color)]
+        .spacing(6)
+        .align_y(Alignment::Center);
+    if app.unread > 0 {
+        inner = inner.push(text(app.unread).size(12).color(theme::ACCENT));
+    }
+    button(inner)
+        .padding([8, 12])
+        .style(theme::ghost)
+        .on_press(Message::ToggleNotes)
+        .into()
+}
+
+fn notes_panel(app: &App) -> El<'_> {
+    let mut list = column![].spacing(6);
+    if app.notes.is_empty() {
+        list = list.push(text("Nothing new").size(12).color(theme::FAINT));
+    }
+    for note in app.notes.iter().take(50) {
+        list = list.push(note_row(note));
+    }
+    let head = row![
+        text("Notifications").size(13).font(BOLD).width(Length::Fill),
+        button(text("Clear all").size(11))
+            .padding([3, 10])
+            .style(theme::ghost)
+            .on_press(Message::ClearNotes),
+    ]
+    .align_y(Alignment::Center);
+    container(column![head, scrollable(list).height(Length::Shrink)].spacing(10))
+        .padding(14)
+        .width(Length::Fill)
+        .style(theme::panel)
+        .into()
+}
+
+fn note_row(note: &Note) -> El<'_> {
+    let color = match note.tone {
+        Tone::Ok => theme::OK,
+        Tone::Error => theme::DANGER,
+        Tone::Info => theme::INFO,
+    };
+    row![
+        icons::dot(6.0, color),
+        text(&note.text).size(12).color(theme::TEXT),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .into()
 }
 
 fn title_of(app: &App) -> (&'static str, String) {
@@ -212,14 +249,14 @@ fn title_of(app: &App) -> (&'static str, String) {
         .games
         .iter()
         .find(|g| Some(g.id) == app.selected_game)
-        .map_or_else(|| "no game selected".to_owned(), |g| g.name.clone());
+        .map_or_else(String::new, |g| g.name.clone());
     match app.screen {
         Screen::Dashboard => ("Dashboard", game),
         Screen::Games => ("Games", format!("{} registered", app.games.len())),
         Screen::Mods => ("Mods", game),
-        Screen::LoadOrder => ("Load Order", "later mods win file conflicts".to_owned()),
-        Screen::Downloads => ("Downloads", "hand-offs from your browser".to_owned()),
-        Screen::Settings => ("Settings", "service, locations, extension".to_owned()),
+        Screen::LoadOrder => ("Load Order", "later mods win conflicts".to_owned()),
+        Screen::Downloads => ("Downloads", String::new()),
+        Screen::Settings => ("Settings", String::new()),
     }
 }
 
@@ -250,26 +287,5 @@ fn copy_button(value: String) -> El<'static> {
         .padding([4, 10])
         .style(theme::ghost)
         .on_press(Message::CopyText(value))
-        .into()
-}
-
-fn banner(status: &StatusLine) -> El<'_> {
-    let color = match status.tone {
-        Tone::Ok => theme::OK,
-        Tone::Error => theme::DANGER,
-    };
-    let inner = row![
-        text(&status.text).size(13).color(color).width(Length::Fill),
-        button(text("×").size(14))
-            .padding([2, 8])
-            .style(theme::icon)
-            .on_press(Message::DismissStatus),
-    ]
-    .spacing(10)
-    .align_y(Alignment::Center);
-    container(inner)
-        .padding([10, 14])
-        .width(Length::Fill)
-        .style(theme::chip(color))
         .into()
 }

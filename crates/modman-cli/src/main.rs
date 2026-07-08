@@ -198,11 +198,22 @@ fn mod_cmd(cmd: &ModCmd, cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Res
     match cmd {
         ModCmd::Add { source, name } => {
             let game = resolve_game(cli, engine)?;
-            let name = mod_name(source, name.as_deref())?;
-            let m = engine
-                .stage(game.id, &name, source)
-                .context("staging the mod")?;
-            writeln!(out, "staged mod {} ({})", m.name, m.id)?;
+            // An explicit name skips detection; otherwise the shared install
+            // path handles naming, versioning, and the FOMOD default pass.
+            if let Some(name) = name.as_deref() {
+                let m = engine
+                    .stage(game.id, name, source)
+                    .context("staging the mod")?;
+                writeln!(out, "staged mod {} ({})", m.name, m.id)?;
+                return Ok(());
+            }
+            match modman_service::install_file(engine, game.id, source)? {
+                modman_service::InstallOutcome::Installed { name, configurable } => {
+                    let extra = if configurable { " [fomod defaults]" } else { "" };
+                    writeln!(out, "installed {name}{extra}")?;
+                }
+                other => writeln!(out, "install did not finish: {other:?}")?,
+            }
             Ok(())
         }
         ModCmd::List => {
@@ -347,16 +358,6 @@ fn find_profile(engine: &Engine, game: &Game, name: &str) -> Result<Profile> {
 }
 
 /// Derive a mod name from the source path when one is not given.
-fn mod_name(source: &std::path::Path, given: Option<&str>) -> Result<String> {
-    if let Some(name) = given {
-        return Ok(name.to_owned());
-    }
-    source
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .context("could not derive a mod name from the source path; pass --name")
-}
-
 /// Install a stderr tracing subscriber honouring `RUST_LOG` (default `info`).
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt};

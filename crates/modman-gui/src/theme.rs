@@ -128,6 +128,67 @@ pub fn table_row(even: bool) -> impl Fn(&Theme) -> container::Style {
     }
 }
 
+/// A selected (highlighted) table row.
+pub fn table_row_selected(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(faded(ACCENT, 0.14))),
+        border: Border {
+            color: faded(ACCENT, 0.45),
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
+/// The row currently being dragged in the load order.
+pub fn table_row_dragging(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(faded(ACCENT, 0.20))),
+        border: Border {
+            color: ACCENT,
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
+/// The click/drop target for adding mod archives.
+pub fn drop_zone(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(faded(ACCENT, 0.04))),
+        border: Border {
+            color: faded(ACCENT, 0.35),
+            width: 1.0,
+            radius: 12.0.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
+/// The dimmed backdrop behind the wizard modal.
+pub fn backdrop(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(faded(Color::BLACK, 0.6))),
+        ..container::Style::default()
+    }
+}
+
+/// The notification panel.
+pub fn panel(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(CARD_HI)),
+        border: hairline(10.0),
+        shadow: Shadow {
+            color: faded(Color::BLACK, 0.4),
+            offset: iced::Vector::new(0.0, 4.0),
+            blur_radius: 16.0,
+        },
+        ..container::Style::default()
+    }
+}
+
 /// A small tinted status chip.
 pub fn chip(color: Color) -> impl Fn(&Theme) -> container::Style {
     move |_| container::Style {

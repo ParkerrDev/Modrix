@@ -29,17 +29,11 @@ fn service_card(app: &App) -> El<'_> {
         (Some(link), _) => column![
             kv_copy("Address", format!("127.0.0.1:{}", link.port)),
             kv_copy("Extension token", link.token.clone()),
-            text("The token rotates each session - re-paste it into the extension after \
-                  restarting ModManager.")
-                .size(12)
-                .color(theme::FAINT),
+            text("Rotates each restart.").size(12).color(theme::FAINT),
         ]
         .spacing(10)
         .into(),
-        (None, true) => text(
-            "Another instance (e.g. `modman serve`) holds the loopback port; it prints its \
-             own token. Close it and restart the GUI to pair the extension here.",
-        )
+        (None, true) => text("Another instance holds the port. Close it and restart the GUI.")
         .size(13)
         .color(theme::INFO)
         .into(),
@@ -53,10 +47,9 @@ fn service_card(app: &App) -> El<'_> {
 
 fn extension_card() -> El<'static> {
     let steps = column![
-        bullet("Open your browser's extension page (chrome://extensions or about:debugging)."),
-        bullet("Enable developer mode and load the repository's `extension/` folder unpacked."),
-        bullet("Open the extension's options and paste the address and token shown above."),
-        bullet("Click any Download button on nexusmods.com - ModManager takes it from there."),
+        bullet("Load the `extension/` folder unpacked (developer mode)."),
+        bullet("Paste the address and token above into its options."),
+        bullet("Click Download on nexusmods.com."),
     ]
     .spacing(6);
     labeled_card("BROWSER EXTENSION", steps.into())
@@ -68,7 +61,7 @@ fn locations_card(app: &App) -> El<'_> {
             kv_copy("Data", paths.data_dir().display().to_string()),
             kv_copy("Config", paths.config_dir().display().to_string()),
             kv_copy("Cache", paths.cache_dir().display().to_string()),
-            text("Drop extra game definitions in <config>/games/<id>/game.toml.")
+            text("Extra game definitions: <config>/games/<id>/game.toml")
                 .size(12)
                 .color(theme::FAINT),
         ]
@@ -125,8 +118,7 @@ fn about_card() -> El<'static> {
         ]
         .spacing(8)
         .align_y(Alignment::Center),
-        text("GPL-2.0-only · no site APIs, no API keys, no telemetry - your browser downloads, \
-              ModManager installs.")
+        text("GPL-2.0-only · no API keys · no telemetry")
             .size(12)
             .color(theme::FAINT),
     ]

@@ -8,6 +8,7 @@
 
 mod app;
 mod fmt;
+mod icons;
 mod theme;
 mod view;
 

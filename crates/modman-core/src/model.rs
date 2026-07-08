@@ -111,4 +111,11 @@ pub struct Mod {
     pub source: String,
     /// Absolute path to the extracted mod tree in the staging store.
     pub staged_path: PathBuf,
+    /// Install lifecycle: `staged`, or `fomod` when a FOMOD installer
+    /// configured this tree (re-configurable from its parked sources).
+    pub install_state: String,
+    /// The source archive, kept for reinstall/reconfigure when known.
+    pub archive_path: Option<PathBuf>,
+    /// The Nexus mod id recovered from the filename, when known.
+    pub nexus_mod_id: Option<i64>,
 }

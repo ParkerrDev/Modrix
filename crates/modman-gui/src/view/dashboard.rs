@@ -24,15 +24,15 @@ pub(super) fn body(app: &App) -> El<'_> {
 
 fn game_card(app: &App) -> El<'_> {
     let Some(game) = app.games.iter().find(|g| Some(g.id) == app.selected_game) else {
-        return empty_state("Select a game in the sidebar.");
+        return empty_state("Select a game.");
     };
-    let stats = format!("{} staged · {} enabled", app.mods.len(), app.order.len());
+    let stats = format!("{} mods · {} enabled", app.mods.len(), app.order.len());
     let inner = column![
         text(&game.name).size(17).font(BOLD),
         text(game.install_path.display().to_string())
             .size(12)
             .color(theme::MUTED),
-        text(stats).size(13).color(theme::TEXT),
+        text(stats).size(13),
         button(text("Manage mods").size(13))
             .padding([8, 14])
             .style(theme::ghost)
@@ -46,8 +46,8 @@ fn deploy_card(app: &App) -> El<'_> {
     let profile = app
         .active_profile
         .as_ref()
-        .map_or_else(|| "no profile".to_owned(), |p| format!("profile “{}”", p.name));
-    let hint = format!("{} mod(s) will deploy · {profile}", app.order.len());
+        .map_or_else(|| "no profile".to_owned(), |p| p.name.clone());
+    let hint = format!("{} mods will deploy · {profile}", app.order.len());
     let mut actions = row![].spacing(10);
     if app.busy {
         actions = actions.push(text("Working…").size(13).color(theme::ACCENT));
@@ -66,7 +66,7 @@ fn deploy_card(app: &App) -> El<'_> {
                     .on_press(Message::Verify),
             );
     }
-    let inner = column![text(hint).size(13).color(theme::TEXT), actions].spacing(14);
+    let inner = column![text(hint).size(13), actions].spacing(14);
     labeled_card("DEPLOYMENT", inner.into())
 }
 
@@ -77,12 +77,12 @@ fn downloads_card(app: &App) -> El<'_> {
         .filter(|d| matches!(d.state, DownloadState::Active | DownloadState::Queued))
         .count();
     let summary = if app.downloads.is_empty() {
-        "Nothing yet - downloads appear here the moment you click one in your browser.".to_owned()
+        "None yet".to_owned()
     } else {
         format!("{active} active · {} total", app.downloads.len())
     };
     let inner = column![
-        text(summary).size(13).color(theme::TEXT),
+        text(summary).size(13),
         button(text("View downloads").size(13))
             .padding([8, 14])
             .style(theme::ghost)
@@ -94,18 +94,13 @@ fn downloads_card(app: &App) -> El<'_> {
 
 fn handoff_card(app: &App) -> El<'_> {
     let line = match (&app.link, app.already_running) {
-        (Some(link), _) => format!(
-            "Listening on 127.0.0.1:{} - clicks on nexusmods.com install automatically.",
-            link.port
-        ),
-        (None, true) => {
-            "Another ModManager instance is receiving browser downloads.".to_owned()
-        }
-        (None, false) => "The hand-off listener is not running.".to_owned(),
+        (Some(link), _) => format!("Listening on 127.0.0.1:{}", link.port),
+        (None, true) => "Another instance is receiving downloads".to_owned(),
+        (None, false) => "Not running".to_owned(),
     };
     let inner = column![
-        text(line).size(13).color(theme::TEXT),
-        button(text("Pairing details").size(13))
+        text(line).size(13),
+        button(text("Pairing").size(13))
             .padding([8, 14])
             .style(theme::ghost)
             .on_press(Message::Navigate(Screen::Settings)),
@@ -120,26 +115,14 @@ fn onboarding(app: &App) -> El<'_> {
         .as_ref()
         .map_or_else(|| "-".to_owned(), |l| l.port.to_string());
     let steps = column![
-        step(
-            "1",
-            "Register your game",
-            "Pick a definition and point at the install directory.",
-        ),
-        step(
-            "2",
-            "Install the browser extension",
-            "Load the `extension/` folder unpacked, then paste the port and token from Settings.",
-        ),
-        step(
-            "3",
-            "Click Download on nexusmods.com",
-            "The file lands here, staged and ready to enable + deploy.",
-        ),
+        step("1", "Register your game"),
+        step("2", "Load the browser extension and paste the token from Settings"),
+        step("3", "Click Download on nexusmods.com"),
     ]
-    .spacing(14);
+    .spacing(12);
     let inner = column![
-        text("Welcome to ModManager").size(18).font(BOLD),
-        text(format!("Hand-off service on port {port} - no API keys, ever."))
+        text("Welcome").size(18).font(BOLD),
+        text(format!("Hand-off service on port {port}. No API keys."))
             .size(13)
             .color(theme::MUTED),
         steps,
@@ -156,17 +139,14 @@ fn onboarding(app: &App) -> El<'_> {
         .into()
 }
 
-fn step<'a>(n: &'a str, title: &'a str, detail: &'a str) -> El<'a> {
+fn step<'a>(n: &'a str, title: &'a str) -> El<'a> {
     row![
         container(text(n).size(13).font(BOLD).color(theme::ACCENT))
             .padding([4, 11])
             .style(theme::chip(theme::ACCENT)),
-        column![
-            text(title).size(14).font(BOLD),
-            text(detail).size(12).color(theme::MUTED),
-        ]
-        .spacing(3),
+        text(title).size(14),
     ]
     .spacing(14)
+    .align_y(iced::Alignment::Center)
     .into()
 }

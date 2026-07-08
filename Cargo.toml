@@ -43,7 +43,11 @@ rustls = { version = "0.23", default-features = false, features = ["std", "tls12
 rustls-rustcrypto = "=0.0.2-alpha"      # pure-Rust CryptoProvider (RustCrypto primitives)
 rustls-native-certs = "0.8"             # OS trust store (avoids CDLA webpki-roots)
 getrandom = "0.3"
-iced = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "auto-detect-theme"] }
+iced = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "auto-detect-theme", "canvas"] }
+# FOMOD installer config parsing (read-only XML DOM; MIT arm of MIT/Apache dual).
+roxmltree = "0.20"
+# Native file-open dialogs via the XDG portal (MIT; no GTK linkage).
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 serde = { version = "1", features = ["derive"] }
 wiremock = "0.6"
 serde_json = "1"
