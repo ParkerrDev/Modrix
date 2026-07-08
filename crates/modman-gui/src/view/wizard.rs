@@ -35,7 +35,7 @@ fn card_body(wizard: &Wizard) -> El<'_> {
     let Some(step_index) = visible.get(page).copied() else {
         return finish_only(wizard);
     };
-    let flags = fomod::flags_of(&wizard.installer, &wizard.selections);
+    let flags = fomod::flags_of(&wizard.installer, &wizard.selections, &wizard.present);
     let step = wizard.installer.steps.get(step_index);
     let step_name = step.map_or("", |s| s.name.as_str());
     let mut groups = column![].spacing(16);
@@ -208,23 +208,33 @@ fn group_view<'a>(
             step,
             group: g,
             plugin: p,
-            kind: fomod::plugin_kind(&plugin.kind, flags),
+            kind: fomod::plugin_kind(&plugin.kind, flags, &wizard.present),
             on: selected.is_some_and(|s| s.contains(&p)),
             group_kind: group.kind,
         };
         items = items.push(plugin_row(plugin, slot));
     }
-    column![
-        row![
-            text(&group.name).size(13).font(BOLD),
-            text(rule_hint(group.kind)).size(11).color(theme::FAINT),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
-        items,
+    let mut head = row![
+        text(&group.name).size(13).font(BOLD),
+        text(rule_hint(group.kind)).size(11).color(theme::FAINT),
     ]
     .spacing(8)
-    .into()
+    .align_y(Alignment::Center);
+    // Mass toggles for checkbox-style groups (a patch hub has hundreds).
+    if matches!(group.kind, fomod::GroupKind::Any | fomod::GroupKind::AtLeastOne) {
+        head = head
+            .push(group_button("all", Message::WizardGroupSet { step, group: g, all: true }))
+            .push(group_button("none", Message::WizardGroupSet { step, group: g, all: false }));
+    }
+    column![head, items].spacing(8).into()
+}
+
+fn group_button(label: &str, message: Message) -> El<'_> {
+    button(text(label).size(10))
+        .padding([2, 8])
+        .style(theme::ghost)
+        .on_press(message)
+        .into()
 }
 
 const fn rule_hint(kind: fomod::GroupKind) -> &'static str {

@@ -155,7 +155,16 @@ pub struct Pattern {
 pub enum Dep {
     /// `<flagDependency flag value>`.
     Flag(String, String),
-    /// Conditions we cannot evaluate (game/file/fomod) - treated satisfied.
+    /// `<fileDependency file state>`: whether a file is present in the
+    /// install. `wants_missing` inverts (state="Missing").
+    File {
+        /// Lowercased filename.
+        file: String,
+        /// True when the condition requires the file to be absent.
+        wants_missing: bool,
+    },
+    /// Conditions we cannot evaluate (game version, fomod version) -
+    /// treated satisfied.
     Always,
     /// All children hold.
     And(Vec<Dep>),
@@ -163,17 +172,30 @@ pub enum Dep {
     Or(Vec<Dep>),
 }
 
+/// The set of lowercased filenames present in the install (game Data dir +
+/// files provided by enabled mods). Drives `fileDependency` conditions -
+/// exactly how Vortex decides which patches to recommend.
+pub type Present = std::collections::HashSet<String>;
+
 impl Dep {
-    /// Evaluate against the current flag set.
+    /// Evaluate against the current flags and installed files.
     #[must_use]
-    pub fn eval<S: std::hash::BuildHasher>(&self, flags: &HashMap<String, String, S>) -> bool {
+    pub fn eval<S: std::hash::BuildHasher>(
+        &self,
+        flags: &HashMap<String, String, S>,
+        present: &Present,
+    ) -> bool {
         match self {
-            Self::Flag(name, value) => {
-                flags.get(name).map_or("", String::as_str) == value
-            }
+            Self::Flag(name, value) => flags.get(name).map_or("", String::as_str) == value,
+            Self::File {
+                file,
+                wants_missing,
+            } => present.contains(file) != *wants_missing,
             Self::Always => true,
-            Self::And(children) => children.iter().all(|d| d.eval(flags)),
-            Self::Or(children) => children.is_empty() || children.iter().any(|d| d.eval(flags)),
+            Self::And(children) => children.iter().all(|d| d.eval(flags, present)),
+            Self::Or(children) => {
+                children.is_empty() || children.iter().any(|d| d.eval(flags, present))
+            }
         }
     }
 }
@@ -395,8 +417,12 @@ fn parse_dep_group(node: roxmltree::Node<'_, '_>) -> Dep {
         .filter(roxmltree::Node::is_element)
         .map(|c| match c.tag_name().name() {
             "flagDependency" => Dep::Flag(attr(c, "flag"), attr(c, "value")),
+            "fileDependency" => Dep::File {
+                file: attr(c, "file").to_ascii_lowercase(),
+                wants_missing: attr(c, "state").eq_ignore_ascii_case("missing"),
+            },
             "dependencies" => parse_dep_group(c),
-            // game / file / fomod dependencies: not decidable here.
+            // game / fomod version dependencies: not decidable here.
             _ => Dep::Always,
         })
         .collect();
@@ -470,12 +496,13 @@ fn attr(node: roxmltree::Node<'_, '_>, name: &str) -> String {
 pub fn plugin_kind<S: std::hash::BuildHasher>(
     descriptor: &TypeDescriptor,
     flags: &HashMap<String, String, S>,
+    present: &Present,
 ) -> PluginKind {
     match descriptor {
         TypeDescriptor::Simple(kind) => *kind,
         TypeDescriptor::Dependent { default, patterns } => patterns
             .iter()
-            .find(|(dep, _)| dep.eval(flags))
+            .find(|(dep, _)| dep.eval(flags, present))
             .map_or(*default, |(_, kind)| *kind),
     }
 }
@@ -486,19 +513,22 @@ pub fn plugin_kind<S: std::hash::BuildHasher>(
 /// `AtLeastOne`) take their first usable option because they cannot be
 /// empty. Nothing else is selected.
 #[must_use]
-pub fn defaults(installer: &Installer) -> Selections {
-    select_defaults(installer)
+pub fn defaults(installer: &Installer, present: &Present) -> Selections {
+    select_defaults(installer, present)
 }
 
-fn select_defaults(installer: &Installer) -> Selections {
+fn select_defaults(installer: &Installer, present: &Present) -> Selections {
     let mut flags = HashMap::new();
     let mut selections: Selections = Vec::new();
     for step in &installer.steps {
-        let visible = step.visible.as_ref().is_none_or(|d| d.eval(&flags));
+        let visible = step
+            .visible
+            .as_ref()
+            .is_none_or(|d| d.eval(&flags, present));
         let mut step_sel = Vec::new();
         for group in &step.groups {
             let sel = if visible {
-                default_group(group, &flags)
+                default_group(group, &flags, present)
             } else {
                 BTreeSet::new()
             };
@@ -516,12 +546,16 @@ fn select_defaults(installer: &Installer) -> Selections {
     selections
 }
 
-fn default_group(group: &Group, flags: &HashMap<String, String>) -> BTreeSet<usize> {
+fn default_group(
+    group: &Group,
+    flags: &HashMap<String, String>,
+    present: &Present,
+) -> BTreeSet<usize> {
     let kind = |i: usize| {
         group
             .plugins
             .get(i)
-            .map_or(PluginKind::NotUsable, |p| plugin_kind(&p.kind, flags))
+            .map_or(PluginKind::NotUsable, |p| plugin_kind(&p.kind, flags, present))
     };
     let mut sel: BTreeSet<usize> = (0..group.plugins.len())
         .filter(|i| match (group.kind == GroupKind::All, kind(*i)) {
@@ -547,10 +581,18 @@ fn default_group(group: &Group, flags: &HashMap<String, String>) -> BTreeSet<usi
 /// The flags produced by a selection set (used for step visibility and
 /// conditional installs).
 #[must_use]
-pub fn flags_of(installer: &Installer, selections: &Selections) -> HashMap<String, String> {
+pub fn flags_of(
+    installer: &Installer,
+    selections: &Selections,
+    present: &Present,
+) -> HashMap<String, String> {
     let mut flags = HashMap::new();
     for (s, step) in installer.steps.iter().enumerate() {
-        if !step.visible.as_ref().is_none_or(|d| d.eval(&flags)) {
+        if !step
+            .visible
+            .as_ref()
+            .is_none_or(|d| d.eval(&flags, present))
+        {
             continue;
         }
         for (g, group) in step.groups.iter().enumerate() {
@@ -571,12 +613,16 @@ pub fn flags_of(installer: &Installer, selections: &Selections) -> HashMap<Strin
 
 /// All file operations a selection set installs, in apply order.
 #[must_use]
-pub fn resolve(installer: &Installer, selections: &Selections) -> Vec<FileOp> {
-    let flags = flags_of(installer, selections);
+pub fn resolve(installer: &Installer, selections: &Selections, present: &Present) -> Vec<FileOp> {
+    let flags = flags_of(installer, selections, present);
     let mut ops = installer.required.clone();
     let mut visible_flags = HashMap::new();
     for (s, step) in installer.steps.iter().enumerate() {
-        if !step.visible.as_ref().is_none_or(|d| d.eval(&visible_flags)) {
+        if !step
+            .visible
+            .as_ref()
+            .is_none_or(|d| d.eval(&visible_flags, present))
+        {
             continue;
         }
         for (g, group) in step.groups.iter().enumerate() {
@@ -594,7 +640,7 @@ pub fn resolve(installer: &Installer, selections: &Selections) -> Vec<FileOp> {
         }
     }
     for pattern in &installer.conditional {
-        if pattern.dep.eval(&flags) {
+        if pattern.dep.eval(&flags, present) {
             ops.extend(pattern.files.iter().cloned());
         }
     }
@@ -874,7 +920,7 @@ mod tests {
         assert_eq!(installer.module_name, "Sample");
         assert_eq!(installer.info_name.as_deref(), Some("Sample Mod"));
         assert_eq!(installer.info_version.as_deref(), Some("1.2.3"));
-        let sel = defaults(&installer);
+        let sel = defaults(&installer, &Present::new());
         assert_eq!(sel[0][0], BTreeSet::from([0])); // Recommended "Full"
         assert!(sel[0][1].is_empty()); // NotUsable never picked
     }
@@ -884,7 +930,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         build_tree(tmp.path());
         let installer = parse(tmp.path()).unwrap().unwrap();
-        let ops = resolve(&installer, &defaults(&installer));
+        let ops = resolve(&installer, &defaults(&installer, &Present::new()), &Present::new());
         let sources: Vec<_> = ops.iter().map(|o| o.source.as_str()).collect();
         assert!(sources.contains(&"Required"));
         assert!(sources.contains(&"00 Core/Meshes"));
@@ -897,7 +943,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         build_tree(tmp.path());
         let installer = parse(tmp.path()).unwrap().unwrap();
-        let n = apply(tmp.path(), &resolve(&installer, &defaults(&installer))).unwrap();
+        let none = Present::new();
+        let n = apply(tmp.path(), &resolve(&installer, &defaults(&installer, &none), &none)).unwrap();
         assert_eq!(n, 3);
         assert!(tmp.path().join("base.esp").is_file());
         assert!(tmp.path().join("meshes/a.nif").is_file());
@@ -907,7 +954,7 @@ mod tests {
 
         // Re-configure: pick "Lite" instead.
         let sel: Selections = vec![vec![BTreeSet::from([1]), BTreeSet::new()]];
-        apply(tmp.path(), &resolve(&installer, &sel)).unwrap();
+        apply(tmp.path(), &resolve(&installer, &sel, &Present::new())).unwrap();
         assert_eq!(fs::read(tmp.path().join("meshes/a.nif")).unwrap(), b"lite");
         assert!(!tmp.path().join("full.esp").exists()); // flag no longer set
         assert!(tmp.path().join("base.esp").is_file()); // required stays

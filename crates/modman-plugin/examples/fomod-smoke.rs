@@ -18,13 +18,14 @@ fn main() {
             .unwrap_or_default();
         match modman_plugin::fomod::parse(&root) {
             Ok(Some(installer)) => {
-                let selections = modman_plugin::fomod::defaults(&installer);
-                let ops = modman_plugin::fomod::resolve(&installer, &selections);
-                let flags = modman_plugin::fomod::flags_of(&installer, &selections);
+                let present = modman_plugin::fomod::Present::new();
+                let selections = modman_plugin::fomod::defaults(&installer, &present);
+                let ops = modman_plugin::fomod::resolve(&installer, &selections, &present);
+                let flags = modman_plugin::fomod::flags_of(&installer, &selections, &present);
                 let visible = installer
                     .steps
                     .iter()
-                    .filter(|s| s.visible.as_ref().is_none_or(|d| d.eval(&flags)))
+                    .filter(|s| s.visible.as_ref().is_none_or(|d| d.eval(&flags, &present)))
                     .count();
                 println!(
                     "OK   {label}: steps={} visible={visible} ops={} name={:?} version={:?}",

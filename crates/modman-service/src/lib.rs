@@ -62,8 +62,9 @@ pub fn fomod_pass(engine: &Engine, staged: &modman_core::Mod) -> Result<bool> {
     let Some(installer) = fomod::parse(&staged.staged_path)? else {
         return Ok(false);
     };
-    let selections = fomod::defaults(&installer);
-    let ops = fomod::resolve(&installer, &selections);
+    let present = present_files(engine, staged.game_id);
+    let selections = fomod::defaults(&installer, &present);
+    let ops = fomod::resolve(&installer, &selections, &present);
     fomod::apply(&staged.staged_path, &ops).context("applying FOMOD defaults")?;
     // Adopt the installer's (usually cleaner) name - unless another mod of
     // this game already uses it (some archives ship stale metadata).
@@ -403,6 +404,34 @@ fn nexus_domain_from_url(url: &str) -> Option<String> {
     let after = url.split_once("nexusmods.com/")?.1;
     let segment = after.split(['/', '?', '#']).next()?;
     (!segment.is_empty()).then(|| segment.to_owned())
+}
+
+/// The lowercased filenames present in a game install: everything in its
+/// Data directory plus every file the game's enabled mods provide at their
+/// tree root. Drives FOMOD `fileDependency` conditions (a patch typed
+/// "Recommended if X.esp is active" stays unchecked when X is absent).
+#[must_use]
+pub fn present_files(engine: &Engine, game: GameId) -> modman_plugin::fomod::Present {
+    let mut present = modman_plugin::fomod::Present::new();
+    if let Ok(g) = engine.game(game)
+        && let Ok(entries) = std::fs::read_dir(g.deploy_target_root())
+    {
+        for entry in entries.flatten() {
+            present.insert(entry.file_name().to_string_lossy().to_ascii_lowercase());
+        }
+    }
+    let enabled = engine
+        .active_profile(game)
+        .and_then(|p| engine.enabled_mods(p.id))
+        .unwrap_or_default();
+    for m in enabled {
+        if let Ok(entries) = std::fs::read_dir(&m.staged_path) {
+            for entry in entries.flatten() {
+                present.insert(entry.file_name().to_string_lossy().to_ascii_lowercase());
+            }
+        }
+    }
+    present
 }
 
 /// Stage one archive into a game with automatic naming and the FOMOD pass -

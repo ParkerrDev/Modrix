@@ -229,18 +229,24 @@ pub struct Wizard {
     pub step: usize,
     /// The option under the cursor / last touched - drives the preview pane.
     pub focus: Option<(usize, usize, usize)>,
+    /// Files present in the install (drives fileDependency conditions).
+    pub present: fomod::Present,
 }
 
 impl Wizard {
     /// Indices of steps visible under the current selections.
     #[must_use]
     pub fn visible_steps(&self) -> Vec<usize> {
-        let flags = fomod::flags_of(&self.installer, &self.selections);
+        let flags = fomod::flags_of(&self.installer, &self.selections, &self.present);
         self.installer
             .steps
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.visible.as_ref().is_none_or(|d| d.eval(&flags)))
+            .filter(|(_, s)| {
+                s.visible
+                    .as_ref()
+                    .is_none_or(|d| d.eval(&flags, &self.present))
+            })
             .map(|(i, _)| i)
             .collect()
     }
@@ -453,6 +459,15 @@ pub enum Message {
         /// Plugin index.
         plugin: usize,
     },
+    /// Wizard: select all (or none) of a group's usable options.
+    WizardGroupSet {
+        /// Step index (absolute).
+        step: usize,
+        /// Group index.
+        group: usize,
+        /// True = check all usable; false = keep only Required.
+        all: bool,
+    },
     /// Wizard: toggle a plugin.
     WizardPick {
         /// Step index (absolute).
@@ -489,6 +504,7 @@ enum Action {
         staged: PathBuf,
         installer: Box<fomod::Installer>,
         selections: fomod::Selections,
+        present: fomod::Present,
     },
 }
 
@@ -756,6 +772,7 @@ fn update_overlay(app: &mut App, message: &Message) -> Task<Message> {
                 wizard.focus = Some((step, group, plugin));
             }
         }
+        Message::WizardGroupSet { step, group, all } => app.on_wizard_group_set(step, group, all),
         Message::WizardPick {
             step,
             group,
@@ -1482,9 +1499,12 @@ impl App {
         let Some(m) = self.mods.iter().find(|m| m.id == id).cloned() else {
             return;
         };
+        let present = self
+            .with_engine(|e| Ok(modman_service::present_files(e, m.game_id)))
+            .unwrap_or_default();
         match fomod::parse(&m.staged_path) {
             Ok(Some(installer)) => {
-                let selections = fomod::defaults(&installer);
+                let selections = fomod::defaults(&installer, &present);
                 self.wizard = Some(Wizard {
                     mod_id: m.id,
                     mod_name: m.name,
@@ -1493,10 +1513,51 @@ impl App {
                     selections,
                     step: 0,
                     focus: None,
+                    present,
                 });
             }
             Ok(None) => self.note(Tone::Info, "No installer options in this mod".to_owned()),
             Err(error) => self.note(Tone::Error, error.to_string()),
+        }
+    }
+
+    /// Check every usable option in a group, or uncheck all but Required.
+    fn on_wizard_group_set(&mut self, step: usize, group: usize, all: bool) {
+        let Some(wizard) = &mut self.wizard else {
+            return;
+        };
+        let flags = fomod::flags_of(&wizard.installer, &wizard.selections, &wizard.present);
+        let Some(g) = wizard
+            .installer
+            .steps
+            .get(step)
+            .and_then(|s| s.groups.get(group))
+        else {
+            return;
+        };
+        if g.kind == fomod::GroupKind::All {
+            return;
+        }
+        let picked: std::collections::BTreeSet<usize> = g
+            .plugins
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| {
+                let kind = fomod::plugin_kind(&p.kind, &flags, &wizard.present);
+                if all {
+                    kind != fomod::PluginKind::NotUsable
+                } else {
+                    kind == fomod::PluginKind::Required
+                }
+            })
+            .map(|(i, _)| i)
+            .collect();
+        if let Some(sel) = wizard
+            .selections
+            .get_mut(step)
+            .and_then(|s| s.get_mut(group))
+        {
+            *sel = picked;
         }
     }
 
@@ -1577,6 +1638,7 @@ impl App {
             staged: m.staged_path,
             installer: Box::new(wizard.installer),
             selections: wizard.selections,
+            present: wizard.present,
         })
     }
 
@@ -1625,6 +1687,20 @@ fn run_install(engine: &Engine, game: GameId, path: &std::path::Path) -> Result<
         Ok(other) => Err(format!("install did not finish: {other:?}")),
         Err(error) => Err(format!("{error:#}")),
     }
+}
+
+/// Materialize a wizard's resolved file operations and mark the mod reviewed.
+fn apply_wizard(
+    engine: &Engine,
+    mod_id: ModId,
+    staged: &std::path::Path,
+    ops: &[fomod::FileOp],
+) -> Result<String, String> {
+    let placed = fomod::apply(staged, ops).map_err(|e| e.to_string())?;
+    engine
+        .set_install_state(mod_id, "fomod")
+        .map_err(|e| e.to_string())?;
+    Ok(format!("Options applied · {placed} files · deploy to update"))
 }
 
 /// Execute one slow action while holding the engine lock (worker thread).
@@ -1680,13 +1756,10 @@ fn run_action(engine: &Mutex<Engine>, action: &Action) -> Result<String, String>
             staged,
             installer,
             selections,
+            present,
         } => {
-            let ops = fomod::resolve(installer, selections);
-            let placed = fomod::apply(staged, &ops).map_err(|e| e.to_string())?;
-            engine
-                .set_install_state(*mod_id, "fomod")
-                .map_err(|e| e.to_string())?;
-            Ok(format!("Options applied · {placed} files · deploy to update"))
+            let ops = fomod::resolve(installer, selections, present);
+            apply_wizard(&engine, *mod_id, staged, &ops)
         }
     }
 }
