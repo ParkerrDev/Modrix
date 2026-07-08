@@ -20,8 +20,14 @@ fn main() {
             Ok(Some(installer)) => {
                 let selections = modman_plugin::fomod::defaults(&installer);
                 let ops = modman_plugin::fomod::resolve(&installer, &selections);
+                let flags = modman_plugin::fomod::flags_of(&installer, &selections);
+                let visible = installer
+                    .steps
+                    .iter()
+                    .filter(|s| s.visible.as_ref().is_none_or(|d| d.eval(&flags)))
+                    .count();
                 println!(
-                    "OK   {label}: steps={} ops={} name={:?} version={:?}",
+                    "OK   {label}: steps={} visible={visible} ops={} name={:?} version={:?}",
                     installer.steps.len(),
                     ops.len(),
                     installer.info_name,

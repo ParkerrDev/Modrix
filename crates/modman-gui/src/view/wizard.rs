@@ -49,11 +49,12 @@ fn card_body(wizard: &Wizard) -> El<'_> {
     }
     column![
         header(wizard, step_name, page, visible.len()),
-        scrollable(groups).height(Length::Fill),
+        // Fixed viewport: a Fill scrollable inside a shrink-sized modal
+        // collapses to zero height in iced - never use Fill here.
+        scrollable(groups).height(440),
         footer(page, visible.len()),
     ]
     .spacing(16)
-    .height(Length::Shrink)
     .into()
 }
 
