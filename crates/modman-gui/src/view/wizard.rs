@@ -214,27 +214,37 @@ fn group_view<'a>(
         };
         items = items.push(plugin_row(plugin, slot));
     }
-    let mut head = row![
-        text(&group.name).size(13).font(BOLD),
-        text(rule_hint(group.kind)).size(11).color(theme::FAINT),
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center);
-    // Mass toggles for checkbox-style groups (a patch hub has hundreds).
+    let mut head = row![].spacing(8).align_y(Alignment::Center);
+    // A single "select all" checkbox for checkbox-style groups (a patch hub
+    // has hundreds); checked when every usable option is already selected.
     if matches!(group.kind, fomod::GroupKind::Any | fomod::GroupKind::AtLeastOne) {
-        head = head
-            .push(group_button("all", Message::WizardGroupSet { step, group: g, all: true }))
-            .push(group_button("none", Message::WizardGroupSet { step, group: g, all: false }));
+        let usable: Vec<usize> = group
+            .plugins
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| {
+                fomod::plugin_kind(&p.kind, flags, &wizard.present) != fomod::PluginKind::NotUsable
+            })
+            .map(|(i, _)| i)
+            .collect();
+        let all_on = !usable.is_empty()
+            && usable
+                .iter()
+                .all(|i| selected.is_some_and(|s| s.contains(i)));
+        head = head.push(
+            checkbox("", all_on)
+                .size(15)
+                .on_toggle(move |_| Message::WizardGroupSet {
+                    step,
+                    group: g,
+                    all: !all_on,
+                }),
+        );
     }
+    head = head
+        .push(text(&group.name).size(13).font(BOLD))
+        .push(text(rule_hint(group.kind)).size(11).color(theme::FAINT));
     column![head, items].spacing(8).into()
-}
-
-fn group_button(label: &str, message: Message) -> El<'_> {
-    button(text(label).size(10))
-        .padding([2, 8])
-        .style(theme::ghost)
-        .on_press(message)
-        .into()
 }
 
 const fn rule_hint(kind: fomod::GroupKind) -> &'static str {
