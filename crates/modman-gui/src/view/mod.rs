@@ -186,24 +186,60 @@ fn header(app: &App) -> El<'_> {
     bar.push(bell(app)).into()
 }
 
-/// The notification bell: a dot that lights up with the unread count.
+/// The notification bell: a drawn bell with a status dot coloured by the most
+/// severe pending notification (red errors/conflicts, yellow warnings, blue
+/// info, green all-clear).
 fn bell(app: &App) -> El<'_> {
-    let color = if app.unread > 0 {
-        theme::ACCENT
-    } else {
-        theme::FAINT
+    let severity = notification_severity(app);
+    let dot_color = match severity {
+        Severity::Error => theme::DANGER,
+        Severity::Warning => theme::ACCENT,
+        Severity::Info => theme::INFO,
+        Severity::Clear => theme::OK,
     };
-    let mut inner = row![icons::dot(8.0, color)]
+    let mut inner = row![icons::bell(theme::MUTED, dot_color)]
         .spacing(6)
         .align_y(Alignment::Center);
     if app.unread > 0 {
-        inner = inner.push(text(app.unread).size(12).color(theme::ACCENT));
+        inner = inner.push(text(app.unread).size(12).color(dot_color));
     }
     button(inner)
-        .padding([8, 12])
+        .padding([6, 12])
         .style(theme::ghost)
         .on_press(Message::ToggleNotes)
         .into()
+}
+
+/// Severity of the bell dot, from live health + unread notifications.
+enum Severity {
+    Error,
+    Warning,
+    Info,
+    Clear,
+}
+
+fn notification_severity(app: &App) -> Severity {
+    use modman_core::Severity as S;
+    if app.health.iter().any(|i| i.severity == S::Error) {
+        return Severity::Error;
+    }
+    if app.health.iter().any(|i| i.severity == S::Warning) {
+        return Severity::Warning;
+    }
+    if app.unread > 0 {
+        let worst = app.notes.iter().take(app.unread).map(|n| n.tone).fold(
+            Tone::Info,
+            |acc, t| match (acc, t) {
+                (Tone::Error, _) | (_, Tone::Error) => Tone::Error,
+                _ => acc,
+            },
+        );
+        return match worst {
+            Tone::Error => Severity::Error,
+            _ => Severity::Info,
+        };
+    }
+    Severity::Clear
 }
 
 fn notes_panel(app: &App) -> El<'_> {
@@ -254,7 +290,10 @@ fn title_of(app: &App) -> (&'static str, String) {
         Screen::Dashboard => ("Dashboard", game),
         Screen::Games => ("Games", format!("{} registered", app.games.len())),
         Screen::Mods => ("Mods", game),
-        Screen::LoadOrder => ("Load Order", "later mods win conflicts".to_owned()),
+        Screen::LoadOrder => (
+            "Load Order",
+            "plugins load top to bottom · masters first".to_owned(),
+        ),
         Screen::Downloads => ("Downloads", String::new()),
         Screen::Settings => ("Settings", String::new()),
     }

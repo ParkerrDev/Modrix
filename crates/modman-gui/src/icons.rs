@@ -76,6 +76,54 @@ pub fn grip<'a, M: 'a>() -> iced::Element<'a, M> {
         .into()
 }
 
+/// A bell glyph with a status dot on its shoulder, both drawn as geometry.
+struct Bell {
+    body: Color,
+    dot: Color,
+}
+
+impl<Message> canvas::Program<Message> for Bell {
+    type State = ();
+
+    fn draw(
+        &self,
+        (): &Self::State,
+        renderer: &Renderer,
+        _theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let (w, h) = (frame.width(), frame.height());
+        // Bell body: a rounded dome over a flared rim.
+        let dome = canvas::Path::new(|b| {
+            b.move_to(iced::Point::new(w * 0.2, h * 0.72));
+            b.line_to(iced::Point::new(w * 0.8, h * 0.72));
+            b.line_to(iced::Point::new(w * 0.68, h * 0.6));
+            b.line_to(iced::Point::new(w * 0.68, h * 0.38));
+            b.quadratic_curve_to(
+                iced::Point::new(w * 0.5, h * 0.12),
+                iced::Point::new(w * 0.32, h * 0.38),
+            );
+            b.line_to(iced::Point::new(w * 0.32, h * 0.6));
+            b.close();
+        });
+        frame.fill(&dome, self.body);
+        // Clapper.
+        let clapper = canvas::Path::circle(iced::Point::new(w * 0.5, h * 0.82), h * 0.07);
+        frame.fill(&clapper, self.body);
+        // Status dot.
+        let dot = canvas::Path::circle(iced::Point::new(w * 0.78, h * 0.28), h * 0.2);
+        frame.fill(&dot, self.dot);
+        vec![frame.into_geometry()]
+    }
+}
+
+/// The notification bell with a coloured status dot.
+pub fn bell<'a, M: 'a>(body: Color, dot: Color) -> iced::Element<'a, M> {
+    canvas(Bell { body, dot }).width(18).height(18).into()
+}
+
 /// A small colored circle (status/notification dot).
 pub fn dot<'a, M: 'a>(size: f32, color: Color) -> iced::Element<'a, M> {
     container(iced::widget::Space::new(size, size))

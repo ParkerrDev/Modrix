@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
-//! The Mods screen: selectable table, bulk actions, and the install drop zone.
+//! The Mods screen: the mod table, bulk actions, and the install drop zone.
+//!
+//! Selection: click a row (Shift+click or Shift+arrows for a range,
+//! Ctrl+click to toggle); clicking empty space or pressing Escape clears.
 
 use std::collections::HashSet;
 
@@ -10,19 +13,24 @@ use iced::{Alignment, Length};
 use modman_core::{Mod, ModId};
 
 use super::{BOLD, El, empty_state};
-use crate::app::{App, Message};
+use crate::app::{App, Message, Pane};
 use crate::theme;
 
 /// The mods body.
 pub(super) fn body(app: &App) -> El<'_> {
     let enabled: HashSet<ModId> = app.order.iter().map(|m| m.id).collect();
-    column![toolbar(app, &enabled), table(app, &enabled), drop_zone()]
-        .spacing(14)
-        .into()
+    // A click on the surrounding container (not a row) clears the selection.
+    let cleared = mouse_area(
+        column![toolbar(app, &enabled), table(app, &enabled), drop_zone()]
+            .spacing(14)
+            .height(Length::Fill),
+    )
+    .on_press(Message::ClearSelection);
+    cleared.into()
 }
 
 fn toolbar<'a>(app: &'a App, enabled: &HashSet<ModId>) -> El<'a> {
-    if !app.selection.is_empty() {
+    if !app.mod_sel.items.is_empty() {
         return selection_bar(app);
     }
     let names: Vec<String> = app.profiles.iter().map(|p| p.name.clone()).collect();
@@ -54,7 +62,7 @@ fn toolbar<'a>(app: &'a App, enabled: &HashSet<ModId>) -> El<'a> {
 
 /// The bar shown while rows are selected: mass enable/disable/delete/reinstall.
 fn selection_bar(app: &App) -> El<'_> {
-    let n = app.selection.len();
+    let n = app.mod_sel.items.len();
     row![
         text(format!("{n} selected")).size(13).font(BOLD).color(theme::ACCENT),
         iced::widget::Space::with_width(Length::Fill),
@@ -88,13 +96,13 @@ fn table<'a>(app: &'a App, enabled: &HashSet<ModId>) -> El<'a> {
     if app.mods.is_empty() {
         return empty_state("No mods yet.");
     }
-    let mut rows = column![].spacing(4);
+    let mut rows = column![].spacing(4).width(Length::Fill);
     for (i, m) in app.mods.iter().enumerate() {
         rows = rows.push(mod_row(
             m,
             i,
             enabled.contains(&m.id),
-            app.selection.contains(&m.id),
+            app.mod_sel.items.contains(&i),
         ));
     }
     let listing = column![
@@ -107,6 +115,7 @@ fn table<'a>(app: &'a App, enabled: &HashSet<ModId>) -> El<'a> {
     .spacing(8);
     container(listing)
         .padding(14)
+        .width(Length::Fill)
         .height(Length::Fill)
         .style(theme::card)
         .into()
@@ -116,7 +125,7 @@ fn header_row() -> El<'static> {
     let cell = |label: &'static str| text(label).size(10).color(theme::FAINT);
     container(
         row![
-            cell("ON").width(56),
+            cell("ON").width(48),
             cell("MOD").width(Length::Fill),
             cell("VERSION").width(100),
             cell("SOURCE").width(150),
@@ -127,8 +136,8 @@ fn header_row() -> El<'static> {
     .into()
 }
 
-fn mod_row(m: &Mod, index: usize, on: bool, selected: bool) -> El<'_> {
-    let switch = toggler(on)
+fn mod_row(m: &Mod, index: usize, enabled: bool, selected: bool) -> El<'_> {
+    let switch = toggler(enabled)
         .on_toggle(move |now| Message::ToggleMod(m.id, now))
         .size(18)
         .style(theme::toggle);
@@ -148,10 +157,10 @@ fn mod_row(m: &Mod, index: usize, on: bool, selected: bool) -> El<'_> {
         );
     }
     let inner = row![
-        container(switch).width(56),
+        container(switch).width(48),
         text(&m.name)
             .size(13)
-            .color(if on { theme::TEXT } else { theme::MUTED })
+            .color(if enabled { theme::TEXT } else { theme::MUTED })
             .width(Length::Fill),
         text(m.version.as_deref().unwrap_or("-"))
             .size(12)
@@ -161,7 +170,7 @@ fn mod_row(m: &Mod, index: usize, on: bool, selected: bool) -> El<'_> {
     ]
     .spacing(10)
     .align_y(Alignment::Center);
-    let styled = container(inner).padding([7, 12]).style(if selected {
+    let styled = container(inner).width(Length::Fill).padding([7, 12]).style(if selected {
         theme::table_row_selected as fn(&iced::Theme) -> iced::widget::container::Style
     } else if index.is_multiple_of(2) {
         |t: &iced::Theme| theme::table_row(true)(t)
@@ -169,7 +178,10 @@ fn mod_row(m: &Mod, index: usize, on: bool, selected: bool) -> El<'_> {
         |t: &iced::Theme| theme::table_row(false)(t)
     });
     mouse_area(styled)
-        .on_press(Message::RowClicked(m.id))
+        .on_press(Message::RowClick {
+            pane: Pane::Mods,
+            index,
+        })
         .into()
 }
 

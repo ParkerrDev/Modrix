@@ -15,11 +15,76 @@ use iced::{Subscription, Task, Theme};
 use modman_core::{
     Conflict, Engine, Game, GameDef, GameId, Mod, ModId, Paths, Profile, ProfileId,
 };
+use modman_core::plugins::GamePlugin;
 use modman_download::{DownloadId, DownloadState, DownloadStatus};
 use modman_plugin::fomod;
 use modman_service::{Binding, InstallOutcome, Service};
 
 use crate::theme;
+
+/// Which list has keyboard focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pane {
+    /// The Mods table.
+    Mods,
+    /// The Load Order (plugins) list.
+    Plugins,
+}
+
+/// A multi-selection over a list: selected indices, a fixed **anchor** (where
+/// a Shift-range starts), and a moving **cursor** (where it currently ends).
+#[derive(Debug, Clone, Default)]
+pub struct Selection {
+    /// Selected indices.
+    pub items: std::collections::BTreeSet<usize>,
+    /// The fixed end of a Shift-range (set by plain clicks/moves).
+    pub anchor: Option<usize>,
+    /// The moving end (last row touched).
+    pub cursor: Option<usize>,
+}
+
+impl Selection {
+    /// Clear everything.
+    pub fn clear(&mut self) {
+        self.items.clear();
+        self.anchor = None;
+        self.cursor = None;
+    }
+
+    /// Select exactly `index` (plain click / arrow move).
+    pub fn only(&mut self, index: usize) {
+        self.items.clear();
+        self.items.insert(index);
+        self.anchor = Some(index);
+        self.cursor = Some(index);
+    }
+
+    /// Toggle `index` (Ctrl semantics); it becomes the new anchor.
+    pub fn toggle(&mut self, index: usize) {
+        if !self.items.remove(&index) {
+            self.items.insert(index);
+        }
+        self.anchor = Some(index);
+        self.cursor = Some(index);
+    }
+
+    /// Extend from the fixed anchor to `index` (Shift semantics). The anchor
+    /// does not move, so repeated extensions grow the same range.
+    pub fn range_to(&mut self, index: usize) {
+        let anchor = self.anchor.or(self.cursor).unwrap_or(index);
+        let (lo, hi) = (anchor.min(index), anchor.max(index));
+        self.items = (lo..=hi).collect();
+        self.anchor = Some(anchor);
+        self.cursor = Some(index);
+    }
+
+    /// Keep only indices below `len` (after the list shrinks).
+    pub fn retain_below(&mut self, len: usize) {
+        self.items.retain(|i| *i < len);
+        self.anchor = self.anchor.filter(|a| *a < len);
+        self.cursor = self.cursor.filter(|c| *c < len);
+    }
+}
 
 /// Simultaneously-active downloads (matches `modman serve`).
 const MAX_CONCURRENT: u8 = 4;
@@ -204,18 +269,28 @@ pub struct App {
     pub mods: Vec<Mod>,
     /// Enabled mods in load order.
     pub order: Vec<Mod>,
+    /// The profile's plugin (.esp/.esm/.esl) load order.
+    pub plugins: Vec<GamePlugin>,
     /// Download snapshots, newest first.
     pub downloads: Vec<DownloadStatus>,
     /// Install phase of each completed download.
     pub outcomes: HashMap<DownloadId, InstallOutcome>,
     /// Download ids whose outcome was already notified.
     pub outcome_seen: HashSet<DownloadId>,
-    /// Selected mod rows (mass actions).
-    pub selection: HashSet<ModId>,
-    /// Load-order drag source, while a drag is in flight.
-    pub drag: Option<usize>,
+    /// Selected mod rows in the Mods table (indices into `mods`).
+    pub mod_sel: Selection,
+    /// Selected plugin rows in the Load Order (indices into `plugins`).
+    pub plugin_sel: Selection,
+    /// Which list owns the keyboard, set by the last click.
+    pub focus_pane: Pane,
+    /// Live modifier-key state (drives Shift/Ctrl-click selection).
+    pub modifiers: iced::keyboard::Modifiers,
+    /// Load-order drag: (source index, current hover index).
+    pub drag: Option<(usize, usize)>,
     /// Conflict summary for the active profile.
     pub conflicts: Vec<ConflictRow>,
+    /// Setup health issues, worst-first.
+    pub health: Vec<modman_core::Issue>,
     /// Notification center entries, newest first.
     pub notes: Vec<Note>,
     /// Notifications not yet seen.
@@ -268,10 +343,20 @@ pub enum Message {
     CreateProfile,
     /// Enable/disable a mod in the active profile.
     ToggleMod(ModId, bool),
-    /// Toggle a mod row's selection highlight.
-    RowClicked(ModId),
-    /// Clear the row selection.
+    /// A list row was clicked - updates the selection using the live
+    /// modifier state (Shift = range, Ctrl = toggle).
+    RowClick {
+        /// Which list.
+        pane: Pane,
+        /// Row index.
+        index: usize,
+    },
+    /// Click-away: clear the active list's selection.
     ClearSelection,
+    /// A key was pressed while a list had focus.
+    Key(iced::keyboard::Key, iced::keyboard::Modifiers),
+    /// The modifier-key state changed.
+    Modifiers(iced::keyboard::Modifiers),
     /// Enable every currently disabled mod.
     EnableAll,
     /// Enable/disable all selected mods.
@@ -280,10 +365,19 @@ pub enum Message {
     DeleteSelected,
     /// Reinstall all selected mods from their archives.
     ReinstallSelected,
-    /// Move an enabled mod one slot up/down in the load order.
-    MoveMod(usize, i8),
-    /// Begin dragging the load-order row at this index.
-    DragStart(usize),
+    /// Toggle a plugin's activation.
+    TogglePlugin(usize),
+    /// Auto-sort the plugin load order (LOOT-style).
+    AutoSort,
+    /// Move the current selection up/down by one (arrow buttons/keys).
+    MoveSelection {
+        /// Which list.
+        pane: Pane,
+        /// -1 up, +1 down.
+        delta: i8,
+    },
+    /// Begin dragging a row.
+    DragStart(Pane, usize),
     /// The cursor entered another row while dragging.
     DragOver(usize),
     /// The drag ended; commit the current order.
@@ -359,6 +453,7 @@ enum Action {
         path: PathBuf,
     },
     ReinstallMany(Vec<ModId>),
+    AutoSortPlugins(ProfileId),
     ApplyWizard {
         mod_id: ModId,
         staged: PathBuf,
@@ -394,12 +489,17 @@ pub fn boot() -> (App, Task<Message>) {
         active_profile: None,
         mods: Vec::new(),
         order: Vec::new(),
+        plugins: Vec::new(),
         downloads: Vec::new(),
         outcomes: HashMap::new(),
         outcome_seen: HashSet::new(),
-        selection: HashSet::new(),
+        mod_sel: Selection::default(),
+        plugin_sel: Selection::default(),
+        focus_pane: Pane::Mods,
+        modifiers: iced::keyboard::Modifiers::default(),
         drag: None,
         conflicts: Vec::new(),
+        health: Vec::new(),
         notes: Vec::new(),
         unread: 0,
         notes_open: false,
@@ -420,19 +520,36 @@ pub fn boot() -> (App, Task<Message>) {
 
 /// Ticks for live refresh + window file drops.
 pub fn subscription(app: &App) -> Subscription<Message> {
-    let drops = iced::event::listen_with(|event, _status, _window| match event {
+    // `listen_with` takes a plain fn pointer (no captures); `on_key` ignores
+    // navigation keys while the wizard is open.
+    let events = iced::event::listen_with(|event, _status, _window| match event {
         iced::Event::Window(iced::window::Event::FileDropped(path)) => {
             Some(Message::FileDropped(path))
+        }
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+            Some(Message::Key(key, modifiers))
+        }
+        iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(modifiers)) => {
+            Some(Message::Modifiers(modifiers))
         }
         _ => None,
     });
     if app.service.is_some() {
         Subscription::batch([
-            drops,
+            events,
             iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick),
         ])
     } else {
-        drops
+        events
+    }
+}
+
+/// Step an index by `delta` (clamped to `0..len`).
+fn step(index: usize, delta: i8, len: usize) -> usize {
+    if delta < 0 {
+        index.saturating_sub(1)
+    } else {
+        index.saturating_add(1).min(len.saturating_sub(1))
     }
 }
 
@@ -504,25 +621,35 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::Tick => app.refresh(),
         Message::GamePicked(choice) => {
             app.selected_game = Some(choice.id);
-            app.selection.clear();
+            app.mod_sel.clear();
+            app.plugin_sel.clear();
             app.refresh();
         }
         Message::ProfilePicked(name) => app.on_profile_picked(&name),
         Message::ProfileNameChanged(name) => app.form.profile_name = name,
         Message::CreateProfile => app.on_create_profile(),
         Message::ToggleMod(id, on) => app.on_toggle_mod(id, on),
-        Message::RowClicked(id) => {
-            if !app.selection.remove(&id) {
-                app.selection.insert(id);
-            }
+        Message::RowClick { pane, index } => {
+            let (ctrl, shift) = (app.modifiers.control(), app.modifiers.shift());
+            app.on_row_click(pane, index, ctrl, shift);
         }
-        Message::ClearSelection => app.selection.clear(),
+        Message::ClearSelection => app.active_selection().clear(),
+        Message::Key(key, mods) => {
+            app.modifiers = mods;
+            app.on_key(&key, mods);
+        }
+        Message::Modifiers(mods) => app.modifiers = mods,
         Message::EnableAll => app.on_enable_all(),
         Message::SetSelectedEnabled(on) => app.on_set_selected(on),
         Message::DeleteSelected => app.on_delete_selected(),
         Message::ReinstallSelected => return app.on_reinstall_selected(),
-        Message::MoveMod(index, delta) => app.on_move_mod(index, delta),
-        Message::DragStart(index) => app.drag = Some(index),
+        Message::TogglePlugin(index) => app.on_toggle_plugin(index),
+        Message::AutoSort => return app.on_auto_sort(),
+        Message::MoveSelection { pane, delta } => app.on_move_selection(pane, delta),
+        Message::DragStart(pane, index) => {
+            app.focus_pane = pane;
+            app.drag = Some((index, index));
+        }
         Message::DragOver(index) => app.on_drag_over(index),
         Message::DragEnd => app.on_drag_end(),
         Message::Deploy => return app.on_profile_action(Action::Deploy),
@@ -700,8 +827,45 @@ impl App {
             Some(profile) => engine.enabled_mods(profile.id).unwrap_or_default(),
             None => Vec::new(),
         };
-        self.selection.retain(|id| self.mods.iter().any(|m| m.id == *id));
+        self.plugins = match &self.active_profile {
+            Some(profile) => engine.plugins(profile.id).unwrap_or_default(),
+            None => Vec::new(),
+        };
+        self.health = match &self.active_profile {
+            Some(profile) => engine.health(profile.id).unwrap_or_default(),
+            None => Vec::new(),
+        };
+        drop(engine);
+        self.mod_sel.retain_below(self.mods.len());
+        self.plugin_sel.retain_below(self.plugins.len());
         self.queue_unreviewed_fomods();
+        self.push_health_notes();
+    }
+
+    /// Raise a red/amber notification for each health issue not seen this
+    /// refresh cycle (deduped by message text so ticks don't spam).
+    fn push_health_notes(&mut self) {
+        let fresh: Vec<modman_core::Issue> = self
+            .health
+            .iter()
+            .filter(|i| !self.notes.iter().any(|n| n.text == i.message))
+            .cloned()
+            .collect();
+        for issue in fresh {
+            let tone = match issue.severity {
+                modman_core::Severity::Error => Tone::Error,
+                modman_core::Severity::Warning | modman_core::Severity::Info => Tone::Info,
+            };
+            self.note(tone, issue.message);
+        }
+    }
+
+    /// The selection for whichever list currently has focus.
+    fn active_selection(&mut self) -> &mut Selection {
+        match self.focus_pane {
+            Pane::Mods => &mut self.mod_sel,
+            Pane::Plugins => &mut self.plugin_sel,
+        }
     }
 
     /// Offer the options wizard once for every FOMOD mod whose defaults were
@@ -836,11 +1000,20 @@ impl App {
         }
     }
 
+    /// The mod ids currently selected in the Mods table.
+    fn selected_mod_ids(&self) -> Vec<ModId> {
+        self.mod_sel
+            .items
+            .iter()
+            .filter_map(|i| self.mods.get(*i).map(|m| m.id))
+            .collect()
+    }
+
     fn on_set_selected(&mut self, on: bool) {
         let Some(profile) = self.active_profile.clone() else {
             return;
         };
-        let ids: Vec<ModId> = self.selection.iter().copied().collect();
+        let ids = self.selected_mod_ids();
         let count = ids.len();
         let done = self.with_engine(|e| {
             for id in ids {
@@ -857,7 +1030,7 @@ impl App {
     }
 
     fn on_delete_selected(&mut self) {
-        let ids: Vec<ModId> = self.selection.iter().copied().collect();
+        let ids = self.selected_mod_ids();
         let count = ids.len();
         let done = self.with_engine(|e| {
             for id in ids {
@@ -867,63 +1040,193 @@ impl App {
         });
         if done.is_some() {
             self.note(Tone::Ok, format!("{count} mods deleted"));
-            self.selection.clear();
+            self.mod_sel.clear();
             self.refresh();
         }
     }
 
     fn on_reinstall_selected(&mut self) -> Task<Message> {
-        let ids: Vec<ModId> = self.selection.iter().copied().collect();
+        let ids = self.selected_mod_ids();
         if ids.is_empty() {
             return Task::none();
         }
-        self.selection.clear();
+        self.mod_sel.clear();
         self.spawn_action(Action::ReinstallMany(ids))
     }
 
-    fn on_move_mod(&mut self, index: usize, delta: i8) {
-        let target = if delta < 0 {
-            index.checked_sub(1)
+    /// A row was clicked: plain = select only, Ctrl = toggle, Shift = range.
+    fn on_row_click(&mut self, pane: Pane, index: usize, ctrl: bool, shift: bool) {
+        self.focus_pane = pane;
+        let sel = self.active_selection();
+        if shift {
+            sel.range_to(index);
+        } else if ctrl {
+            sel.toggle(index);
         } else {
-            index.checked_add(1)
+            sel.only(index);
+        }
+    }
+
+    /// Keyboard control for the focused list. Arrows move the cursor;
+    /// Shift extends the selection; Ctrl (+Shift) moves the selected
+    /// plugin(s) in the load order.
+    fn on_key(&mut self, key: &iced::keyboard::Key, mods: iced::keyboard::Modifiers) {
+        use iced::keyboard::{Key, key::Named};
+        // The wizard modal owns the keyboard while open, and typing in a text
+        // field must not steal arrows for list navigation.
+        if self.wizard.is_some() {
+            return;
+        }
+        let delta: i8 = match key {
+            Key::Named(Named::ArrowUp) => -1,
+            Key::Named(Named::ArrowDown) => 1,
+            Key::Named(Named::Escape) => {
+                self.active_selection().clear();
+                return;
+            }
+            _ => return,
         };
-        let Some(target) = target.filter(|t| *t < self.order.len() && index < self.order.len())
-        else {
+        if mods.control() && self.focus_pane == Pane::Plugins {
+            // Ctrl moves the selected plugins; Ctrl+Shift moves a block.
+            self.on_move_selection(Pane::Plugins, delta);
+        } else if mods.shift() {
+            self.extend_cursor(delta);
+        } else {
+            self.move_cursor(delta);
+        }
+    }
+
+    fn list_len(&self, pane: Pane) -> usize {
+        match pane {
+            Pane::Mods => self.mods.len(),
+            Pane::Plugins => self.plugins.len(),
+        }
+    }
+
+    fn move_cursor(&mut self, delta: i8) {
+        let len = self.list_len(self.focus_pane);
+        if len == 0 {
+            return;
+        }
+        let sel = self.active_selection();
+        let next = step(sel.cursor.unwrap_or(0), delta, len);
+        sel.only(next);
+    }
+
+    fn extend_cursor(&mut self, delta: i8) {
+        let len = self.list_len(self.focus_pane);
+        if len == 0 {
+            return;
+        }
+        let sel = self.active_selection();
+        let next = step(sel.cursor.unwrap_or(0), delta, len);
+        sel.range_to(next);
+    }
+
+    fn on_toggle_plugin(&mut self, index: usize) {
+        let Some(plugin) = self.plugins.get_mut(index) else {
             return;
         };
-        self.order.swap(index, target);
-        self.commit_order();
+        plugin.enabled = !plugin.enabled;
+        self.commit_plugin_order();
+    }
+
+    fn on_auto_sort(&mut self) -> Task<Message> {
+        match self.active_profile.clone() {
+            Some(profile) => self.spawn_action(Action::AutoSortPlugins(profile.id)),
+            None => Task::none(),
+        }
+    }
+
+    /// Move the focused list's current selection by `delta`, keeping the
+    /// moved rows selected and the cursor on them (so the pointer stays put
+    /// relative to the row for arrow-button clicks).
+    fn on_move_selection(&mut self, pane: Pane, delta: i8) {
+        self.focus_pane = pane;
+        match pane {
+            Pane::Mods => {} // mod order is derived from the plugin order now
+            Pane::Plugins => self.move_plugins(delta),
+        }
+    }
+
+    fn move_plugins(&mut self, delta: i8) {
+        let len = self.plugins.len();
+        let mut indices: Vec<usize> = self.plugin_sel.items.iter().copied().collect();
+        if indices.is_empty()
+            && let Some(c) = self.plugin_sel.cursor
+        {
+            indices.push(c);
+        }
+        if indices.is_empty() || len == 0 {
+            return;
+        }
+        // Moving down processes bottom-first; up processes top-first.
+        if delta > 0 {
+            indices.sort_by(|a, b| b.cmp(a));
+        } else {
+            indices.sort_unstable();
+        }
+        // Bail if a block edge is already at the boundary.
+        let at_edge = indices.iter().any(|i| {
+            (delta < 0 && *i == 0) || (delta > 0 && *i >= len.saturating_sub(1))
+        });
+        if at_edge {
+            return;
+        }
+        let mut moved = std::collections::BTreeSet::new();
+        for i in indices {
+            let target = if delta < 0 {
+                i.saturating_sub(1)
+            } else {
+                i.saturating_add(1)
+            };
+            self.plugins.swap(i, target);
+            moved.insert(target);
+        }
+        let cursor = self.plugin_sel.cursor.map(|c| step(c, delta, len));
+        self.plugin_sel.items = moved;
+        self.plugin_sel.cursor = cursor;
+        self.commit_plugin_order();
     }
 
     fn on_drag_over(&mut self, index: usize) {
-        let Some(from) = self.drag else {
-            return;
-        };
-        if from == index || from >= self.order.len() || index >= self.order.len() {
-            return;
+        if let Some((from, _)) = self.drag
+            && index < self.plugins.len()
+        {
+            self.drag = Some((from, index));
         }
-        let moved = self.order.remove(from);
-        self.order.insert(index, moved);
-        self.drag = Some(index);
     }
 
     fn on_drag_end(&mut self) {
-        if self.drag.take().is_some() {
-            self.commit_order();
+        let Some((from, to)) = self.drag.take() else {
+            return;
+        };
+        if from != to && from < self.plugins.len() && to < self.plugins.len() {
+            let moved = self.plugins.remove(from);
+            self.plugins.insert(to, moved);
+            self.plugin_sel.only(to);
+            self.commit_plugin_order();
         }
     }
 
-    fn commit_order(&mut self) {
+    fn commit_plugin_order(&mut self) {
         let Some(profile) = self.active_profile.clone() else {
             return;
         };
-        let ids: Vec<ModId> = self.order.iter().map(|m| m.id).collect();
+        let order: Vec<(String, bool)> = self
+            .plugins
+            .iter()
+            .map(|p| (p.name.clone(), p.enabled))
+            .collect();
         if self
-            .with_engine(|e| e.set_load_order(profile.id, &ids))
+            .with_engine(|e| e.set_plugin_order(profile.id, &order))
             .is_some()
         {
+            // Re-pull so master-tier partitioning and health re-evaluate,
+            // but keep the user's cursor.
+            let cursor = self.plugin_sel.cursor;
             self.refresh();
-            self.refresh_conflicts();
+            self.plugin_sel.cursor = cursor.filter(|c| *c < self.plugins.len());
         }
     }
 
@@ -1208,6 +1511,10 @@ fn run_action(engine: &Mutex<Engine>, action: &Action) -> Result<String, String>
                 done = done.saturating_add(1);
             }
             Ok(format!("{done} mods reinstalled"))
+        }
+        Action::AutoSortPlugins(profile) => {
+            let plugins = engine.auto_sort_plugins(*profile).map_err(|e| e.to_string())?;
+            Ok(format!("Load order sorted · {} plugins", plugins.len()))
         }
         Action::ApplyWizard {
             mod_id,

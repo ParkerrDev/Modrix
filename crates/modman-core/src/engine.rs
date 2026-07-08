@@ -467,6 +467,178 @@ impl Engine {
     }
 }
 
+// --- plugins (.esp/.esm/.esl load order) ------------------------------------
+
+impl Engine {
+    /// The profile's plugin load order: every plugin provided by its enabled
+    /// mods, annotated with masters, tiers, and missing-master warnings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Database`] on query failure.
+    pub fn plugins(&self, profile: ProfileId) -> Result<Vec<crate::plugins::GamePlugin>> {
+        let game = self.game(self.game_of_profile(profile)?)?;
+        let discovered = self.discover_plugins(profile)?;
+        let managed: std::collections::HashSet<String> = discovered
+            .iter()
+            .map(|d| d.name.to_ascii_lowercase())
+            .collect();
+        let vanilla = crate::plugins::vanilla_plugins(&game.deploy_target_root(), &managed);
+        let saved = self.saved_plugin_order(profile)?;
+        Ok(crate::plugins::assemble(&discovered, &vanilla, &saved))
+    }
+
+    /// Plugins at the top level of each enabled mod's staged tree, in mod
+    /// order; when two mods ship the same plugin the later mod provides it.
+    fn discover_plugins(
+        &self,
+        profile: ProfileId,
+    ) -> Result<Vec<crate::plugins::DiscoveredPlugin>> {
+        let mut order: Vec<String> = Vec::new();
+        let mut by_name: std::collections::HashMap<String, crate::plugins::DiscoveredPlugin> =
+            std::collections::HashMap::new();
+        for m in self.enabled_mods(profile)? {
+            let Ok(entries) = std::fs::read_dir(&m.staged_path) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if !crate::esp::is_plugin_name(&name) || !entry.path().is_file() {
+                    continue;
+                }
+                let key = name.to_ascii_lowercase();
+                if !by_name.contains_key(&key) {
+                    order.push(key.clone());
+                }
+                by_name.insert(
+                    key,
+                    crate::plugins::DiscoveredPlugin {
+                        name,
+                        mod_id: m.id,
+                        mod_name: m.name.clone(),
+                        path: entry.path(),
+                    },
+                );
+            }
+        }
+        Ok(order.into_iter().filter_map(|k| by_name.remove(&k)).collect())
+    }
+
+    fn saved_plugin_order(&self, profile: ProfileId) -> Result<Vec<(String, bool)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT plugin, enabled FROM profile_plugins \
+             WHERE profile_id = ?1 ORDER BY position",
+        )?;
+        let rows = stmt.query_map([profile.get()], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? != 0))
+        })?;
+        collect(rows)
+    }
+
+    /// Persist the full plugin order + activation and rewrite `Plugins.txt`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Database`] on write failure.
+    pub fn set_plugin_order(&self, profile: ProfileId, order: &[(String, bool)]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM profile_plugins WHERE profile_id = ?1",
+            [profile.get()],
+        )?;
+        for (position, (plugin, enabled)) in order.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO profile_plugins (profile_id, plugin, position, enabled) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![
+                    profile.get(),
+                    plugin,
+                    i64::try_from(position).unwrap_or(i64::MAX),
+                    i64::from(*enabled)
+                ],
+            )?;
+        }
+        tx.commit()?;
+        if let Err(error) = self.sync_plugins_txt(profile) {
+            tracing::warn!(%error, "could not write Plugins.txt");
+        }
+        Ok(())
+    }
+
+    /// Auto-sort the profile's plugins (masters before dependents, master
+    /// tier first), persist, and return the new list.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Database`] on persistence failure.
+    pub fn auto_sort_plugins(&self, profile: ProfileId) -> Result<Vec<crate::plugins::GamePlugin>> {
+        let current = self.plugins(profile)?;
+        let sorted = crate::plugins::auto_sort(&current);
+        let enabled: std::collections::HashMap<String, bool> = current
+            .iter()
+            .map(|p| (p.name.clone(), p.enabled))
+            .collect();
+        let order: Vec<(String, bool)> = sorted
+            .into_iter()
+            .map(|name| {
+                let on = enabled.get(&name).copied().unwrap_or(true);
+                (name, on)
+            })
+            .collect();
+        self.set_plugin_order(profile, &order)?;
+        self.plugins(profile)
+    }
+
+    /// Analyse the profile for setup problems (missing masters, SKSE loader,
+    /// Engine Fixes preloader, file conflicts).
+    ///
+    /// # Errors
+    ///
+    /// Returns any planning error.
+    pub fn health(&self, profile: ProfileId) -> Result<Vec<crate::health::Issue>> {
+        let plugins = self.plugins(profile)?;
+        let game = self.game(self.game_of_profile(profile)?)?;
+        let mods = self.mods(game.id)?;
+        let (_, plan) = self.build_plan(profile)?;
+        Ok(crate::health::check(&plugins, &mods, &plan))
+    }
+
+    /// Write the game's `Plugins.txt` (and `loadorder.txt`) for this profile,
+    /// when the game's local-appdata directory can be resolved. Returns the
+    /// directory written to, or `None` when the game does not use one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Io`] if the files cannot be written.
+    pub fn sync_plugins_txt(&self, profile: ProfileId) -> Result<Option<std::path::PathBuf>> {
+        let game = self.game(self.game_of_profile(profile)?)?;
+        let Some(dir) = crate::plugins::plugins_txt_dir(&game.install_path, game.steam_appid)
+        else {
+            return Ok(None);
+        };
+        let list = self.plugins(profile)?;
+        write_atomic(
+            &dir.join("Plugins.txt"),
+            &crate::plugins::render_plugins_txt(&list),
+        )?;
+        let mut loadorder = String::from("# Managed by ModManager\n");
+        for plugin in &list {
+            loadorder.push_str(&plugin.name);
+            loadorder.push('\n');
+        }
+        write_atomic(&dir.join("loadorder.txt"), &loadorder)?;
+        Ok(Some(dir))
+    }
+}
+
+/// Write a small text file atomically (tmp + rename).
+fn write_atomic(path: &Path, contents: &str) -> Result<()> {
+    let tmp = path.with_extension("mm-tmp");
+    std::fs::write(&tmp, contents).map_err(|e| Error::io(&tmp, e))?;
+    std::fs::rename(&tmp, path).map_err(|e| Error::io(path, e))?;
+    Ok(())
+}
+
 // --- deploy ----------------------------------------------------------------
 
 impl Engine {
@@ -491,6 +663,10 @@ impl Engine {
         let (_, plan) = self.build_plan(profile)?;
         let report = apply::run(&self.conn, &self.paths, &plan, profile)?;
         self.set_active_profile(profile)?;
+        // Activate the deployed plugins; the game reads its order from here.
+        if let Err(error) = self.sync_plugins_txt(profile) {
+            tracing::warn!(%error, "could not write Plugins.txt");
+        }
         Ok(report)
     }
 
@@ -511,7 +687,14 @@ impl Engine {
             &empty,
             &current,
         );
-        apply::run(&self.conn, &self.paths, &plan, profile)
+        let report = apply::run(&self.conn, &self.paths, &plan, profile)?;
+        // Nothing is deployed any more; deactivate every managed plugin.
+        if let Some(dir) =
+            crate::plugins::plugins_txt_dir(&game.install_path, game.steam_appid)
+        {
+            let _ = write_atomic(&dir.join("Plugins.txt"), "# Managed by ModManager\n");
+        }
+        Ok(report)
     }
 
     /// Verify the game's current deployment against the manifest.
@@ -776,6 +959,53 @@ mod tests {
         assert!(!install.join("skse64_loader.exe").exists());
         assert!(!install.join("d3dx9_42.dll").exists());
         assert!(!install.join("Data/Scripts").exists());
+    }
+
+    #[test]
+    fn plugin_order_discovers_sorts_and_persists() {
+        let (tmp, engine) = engine();
+        let install = tmp.path().join("game");
+        std::fs::create_dir_all(install.join("Data")).unwrap();
+        // A vanilla master satisfies dependencies without being managed.
+        std::fs::write(install.join("Data/Skyrim.esm"), b"vanilla").unwrap();
+        let game = engine.add_game(&sample_def(), &install, "manual").unwrap();
+        let profile = engine.active_profile(game.id).unwrap();
+
+        // Two mods: a base plugin and a patch that requires it.
+        let mk = |name: &str, masters: &[&str]| {
+            let mut data = Vec::new();
+            for m in masters {
+                let z: Vec<u8> = m.bytes().chain(std::iter::once(0)).collect();
+                data.extend_from_slice(b"MAST");
+                data.extend_from_slice(&u16::try_from(z.len()).unwrap().to_le_bytes());
+                data.extend_from_slice(&z);
+            }
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(b"TES4");
+            bytes.extend_from_slice(&u32::try_from(data.len()).unwrap().to_le_bytes());
+            bytes.extend_from_slice(&[0u8; 16]);
+            bytes.extend_from_slice(&data);
+            let dir = tmp.path().join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(format!("{name}.esp")), bytes).unwrap();
+            dir
+        };
+        // Stage the patch first so discovery order is wrong on purpose.
+        let patch_src = mk("patch", &["base.esp", "Skyrim.esm", "Gone.esp"]);
+        let base_src = mk("base", &["Skyrim.esm"]);
+        let patch = engine.stage(game.id, "patch", &patch_src).unwrap();
+        let base = engine.stage(game.id, "base", &base_src).unwrap();
+        engine.set_enabled(profile.id, patch.id, true).unwrap();
+        engine.set_enabled(profile.id, base.id, true).unwrap();
+
+        let sorted = engine.auto_sort_plugins(profile.id).unwrap();
+        let names: Vec<_> = sorted.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["base.esp", "patch.esp"]);
+        // The missing master is flagged; the vanilla one is not.
+        assert_eq!(sorted[1].missing_masters, vec!["Gone.esp"]);
+        // The order persisted.
+        let again = engine.plugins(profile.id).unwrap();
+        assert_eq!(again[0].name, "base.esp");
     }
 
     #[test]

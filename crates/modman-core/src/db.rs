@@ -22,10 +22,16 @@ struct Migration {
 
 /// The ordered, append-only migration list. Never edit a shipped migration;
 /// append a new one. Versions must be strictly increasing and contiguous.
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    sql: include_str!("../migrations/0001_init.sql"),
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        sql: include_str!("../migrations/0001_init.sql"),
+    },
+    Migration {
+        version: 2,
+        sql: include_str!("../migrations/0002_plugins.sql"),
+    },
+];
 
 /// Open (creating if needed) the database at `path` and bring its schema up to
 /// date.
