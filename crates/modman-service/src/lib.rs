@@ -166,7 +166,7 @@ impl Service {
     pub fn handle(&self, message: &Message) -> Reply {
         match message.path.as_str() {
             "/download" => self.enqueue(&message.body),
-            "/downloads" => Reply::ok(list_json(&self.manager.list())),
+            "/downloads" => Reply::ok(self.list_json()),
             path if path.starts_with("/download/") => self.by_id(path),
             "/nxm" => Reply::bad_request(
                 "nxm:// is no longer a download mechanism - use the browser extension",
@@ -246,11 +246,45 @@ impl Service {
         }
         match rest.parse::<u64>().ok().map(DownloadId::from_u64) {
             Some(id) => match self.manager.status(id) {
-                Some(status) => Reply::ok(status_json(&status)),
+                Some(status) => Reply::ok(self.status_json(&status)),
                 None => Reply::bad_request("no such download"),
             },
             None => Reply::bad_request("bad download id"),
         }
+    }
+
+    /// One download as JSON, including how its install phase ended.
+    fn status_json(&self, status: &DownloadStatus) -> String {
+        let install = match self.install_outcome(status.id) {
+            None => "null".to_owned(),
+            Some(InstallOutcome::Installed(name)) => {
+                format!("{{\"state\":\"installed\",\"mod\":\"{}\"}}", json_escape(&name))
+            }
+            Some(InstallOutcome::NoGame) => "{\"state\":\"no_game\"}".to_owned(),
+            Some(InstallOutcome::Failed(error)) => {
+                format!("{{\"state\":\"failed\",\"error\":\"{}\"}}", json_escape(&error))
+            }
+        };
+        format!(
+            "{{\"id\":{},\"state\":\"{}\",\"done\":{},\"total\":{},\"connections\":{},\"file\":\"{}\",\"install\":{install}}}",
+            status.id.get(),
+            state_str(status),
+            status.done,
+            status.total.unwrap_or(0),
+            status.connections,
+            json_escape(&status.file.file_name().unwrap_or_default().to_string_lossy()),
+        )
+    }
+
+    fn list_json(&self) -> String {
+        let items = self
+            .manager
+            .list()
+            .iter()
+            .map(|s| self.status_json(s))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("[{items}]")
     }
 
     /// Subscribe to download events and stage each completed download into its
@@ -343,24 +377,20 @@ fn mod_name_from(file_name: &str) -> String {
     file_name.to_owned()
 }
 
-fn status_json(status: &DownloadStatus) -> String {
-    format!(
-        "{{\"id\":{},\"state\":\"{}\",\"done\":{},\"total\":{},\"connections\":{}}}",
-        status.id.get(),
-        state_str(status),
-        status.done,
-        status.total.unwrap_or(0),
-        status.connections,
-    )
-}
-
-fn list_json(statuses: &[DownloadStatus]) -> String {
-    let items = statuses
-        .iter()
-        .map(status_json)
-        .collect::<Vec<_>>()
-        .join(",");
-    format!("[{items}]")
+/// Minimal JSON string escaping (backslash, quote, control characters).
+fn json_escape(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            c if c.is_control() => {
+                let _ = std::fmt::Write::write_fmt(&mut out, format_args!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn state_str(status: &DownloadStatus) -> &'static str {
