@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 //! The FOMOD wizard: a modal that walks the installer's steps and groups.
 
-use iced::widget::{button, checkbox, column, container, opaque, row, scrollable, text};
+use iced::widget::{button, checkbox, column, container, mouse_area, opaque, row, scrollable, text};
 use iced::{Alignment, Length};
 use modman_plugin::fomod;
 
@@ -44,15 +44,91 @@ fn card_body(wizard: &Wizard) -> El<'_> {
             groups = groups.push(group_view(wizard, step_index, g, group, &flags));
         }
     }
-    column![
-        header(wizard, step_name, page, visible.len()),
+    let panes = row![
         // Fixed viewport: a Fill scrollable inside a shrink-sized modal
         // collapses to zero height in iced - never use Fill here.
-        scrollable(groups).height(440),
+        scrollable(groups).height(440).width(Length::Fill),
+        preview(wizard, step_index),
+    ]
+    .spacing(18);
+    column![
+        header(wizard, step_name, page, visible.len()),
+        panes,
         footer(page, visible.len()),
     ]
     .spacing(16)
     .into()
+}
+
+/// The right pane: image + description of the focused option (Vortex-style).
+fn preview(wizard: &Wizard, current_step: usize) -> El<'_> {
+    let plugin = focused_plugin(wizard, current_step);
+    let mut pane = column![].spacing(10).width(300);
+    let image_rel = plugin
+        .and_then(|p| p.image.as_deref())
+        .or(wizard.installer.module_image.as_deref());
+    if let Some(rel) = image_rel
+        && let Some(path) = fomod::source_path(&wizard.staged_path, rel)
+    {
+        pane = pane.push(iced::widget::image(path).width(Length::Fill));
+    }
+    match plugin {
+        Some(p) => {
+            pane = pane.push(text(&p.name).size(13).font(BOLD));
+            let description = p.description.trim();
+            if !description.is_empty() {
+                pane = pane.push(
+                    scrollable(text(compact(description)).size(12).color(theme::MUTED))
+                        .height(Length::Fill),
+                );
+            }
+        }
+        None => {
+            pane = pane.push(
+                text("Hover an option to preview it")
+                    .size(12)
+                    .color(theme::FAINT),
+            );
+        }
+    }
+    container(pane)
+        .padding(12)
+        .height(440)
+        .style(theme::inset)
+        .into()
+}
+
+/// The plugin the preview shows: the hovered/last-touched one, else the first
+/// selected on the current page.
+fn focused_plugin(wizard: &Wizard, current_step: usize) -> Option<&fomod::Plugin> {
+    let lookup = |(s, g, p): (usize, usize, usize)| {
+        wizard
+            .installer
+            .steps
+            .get(s)?
+            .groups
+            .get(g)?
+            .plugins
+            .get(p)
+    };
+    if let Some(focus) = wizard.focus
+        && let Some(plugin) = lookup(focus)
+    {
+        return Some(plugin);
+    }
+    let step = wizard.installer.steps.get(current_step)?;
+    for (g, group) in step.groups.iter().enumerate() {
+        if let Some(first) = wizard
+            .selections
+            .get(current_step)
+            .and_then(|sg| sg.get(g))
+            .and_then(|sel| sel.first())
+            && let Some(plugin) = group.plugins.get(*first)
+        {
+            return Some(plugin);
+        }
+    }
+    None
 }
 
 fn header<'a>(wizard: &'a Wizard, step_name: &'a str, page: usize, pages: usize) -> El<'a> {
@@ -190,15 +266,13 @@ fn plugin_row(plugin: &fomod::Plugin, slot: Slot) -> El<'_> {
                 .style(theme::chip(color)),
         );
     }
-    let mut item = column![head].spacing(3);
-    let description = plugin.description.trim();
-    if !description.is_empty() {
-        item = item.push(
-            container(text(compact(description)).size(11).color(theme::FAINT))
-                .padding([0, 26]),
-        );
-    }
-    item.into()
+    mouse_area(head)
+        .on_enter(Message::WizardHover {
+            step: slot.step,
+            group: slot.group,
+            plugin: slot.plugin,
+        })
+        .into()
 }
 
 const fn kind_chip(kind: fomod::PluginKind) -> Option<(&'static str, iced::Color)> {
@@ -214,9 +288,9 @@ const fn kind_chip(kind: fomod::PluginKind) -> Option<(&'static str, iced::Color
 /// Collapse installer descriptions (often whole paragraphs of whitespace)
 /// into a short readable line.
 fn compact(description: &str) -> String {
-    let mut out = String::with_capacity(description.len().min(240));
+    let mut out = String::with_capacity(description.len().min(1200));
     let mut last_space = true;
-    for ch in description.chars().take(240) {
+    for ch in description.chars().take(1200) {
         if ch.is_whitespace() {
             if !last_space {
                 out.push(' ');
@@ -227,7 +301,7 @@ fn compact(description: &str) -> String {
             last_space = false;
         }
     }
-    if description.chars().count() > 240 {
+    if description.chars().count() > 1200 {
         out.push('…');
     }
     out

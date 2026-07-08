@@ -41,6 +41,8 @@ pub struct Installer {
     pub steps: Vec<Step>,
     /// Flag-conditional file sets applied after the wizard.
     pub conditional: Vec<Pattern>,
+    /// `<moduleImage>` path, when present.
+    pub module_image: Option<String>,
 }
 
 /// One wizard page.
@@ -87,6 +89,8 @@ pub struct Plugin {
     pub name: String,
     /// Long description.
     pub description: String,
+    /// Preview image path inside the archive, when the installer ships one.
+    pub image: Option<String>,
     /// Files installed when selected.
     pub files: Vec<FileOp>,
     /// Flags set when selected.
@@ -225,6 +229,9 @@ pub fn parse(staged_root: &Path) -> Result<Option<Installer>> {
         required: child(root, "requiredInstallFiles").map(|n| parse_files(n)).unwrap_or_default(),
         steps: parse_steps(root),
         conditional: parse_conditional(root),
+        module_image: child(root, "moduleImage")
+            .map(|n| attr(n, "path").replace('\\', "/"))
+            .filter(|p| !p.is_empty()),
     };
     if let Some(info) = find_ci(&dir, "info.xml").and_then(|p| read_bounded(&p).ok()) {
         parse_info(&info, &mut installer);
@@ -244,7 +251,7 @@ fn parse_steps(root: roxmltree::Node<'_, '_>) -> Vec<Step> {
     let Some(steps) = child(root, "installSteps") else {
         return Vec::new();
     };
-    elements(steps, "installStep")
+    let mut out: Vec<Step> = elements(steps, "installStep")
         .map(|step| Step {
             name: attr(step, "name"),
             visible: child(step, "visible").map(parse_dep_group),
@@ -252,11 +259,39 @@ fn parse_steps(root: roxmltree::Node<'_, '_>) -> Vec<Step> {
                 .map(parse_groups)
                 .unwrap_or_default(),
         })
-        .collect()
+        .collect();
+    sort_by_order(&mut out, order_of(steps), |s| &s.name);
+    out
+}
+
+/// The `order` attribute of a list element; the schema default is Ascending.
+fn order_of(node: roxmltree::Node<'_, '_>) -> Order {
+    match node.attribute("order").unwrap_or("Ascending") {
+        "Explicit" => Order::Explicit,
+        "Descending" => Order::Descending,
+        _ => Order::Ascending,
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Order {
+    Explicit,
+    Ascending,
+    Descending,
+}
+
+/// Sort a parsed list by display name per its `order` attribute (Vortex
+/// parity: document order only when Explicit).
+fn sort_by_order<T>(items: &mut [T], order: Order, name: impl Fn(&T) -> &str) {
+    match order {
+        Order::Explicit => {}
+        Order::Ascending => items.sort_by(|a, b| name(a).cmp(name(b))),
+        Order::Descending => items.sort_by(|a, b| name(b).cmp(name(a))),
+    }
 }
 
 fn parse_groups(groups: roxmltree::Node<'_, '_>) -> Vec<Group> {
-    elements(groups, "group")
+    let mut out: Vec<Group> = elements(groups, "group")
         .map(|g| Group {
             name: attr(g, "name"),
             kind: match attr(g, "type").as_str() {
@@ -267,16 +302,26 @@ fn parse_groups(groups: roxmltree::Node<'_, '_>) -> Vec<Group> {
                 _ => GroupKind::Any,
             },
             plugins: child(g, "plugins")
-                .map(|p| elements(p, "plugin").map(parse_plugin).collect())
+                .map(|p| {
+                    let mut plugins: Vec<Plugin> =
+                        elements(p, "plugin").map(parse_plugin).collect();
+                    sort_by_order(&mut plugins, order_of(p), |pl| &pl.name);
+                    plugins
+                })
                 .unwrap_or_default(),
         })
-        .collect()
+        .collect();
+    sort_by_order(&mut out, order_of(groups), |g| &g.name);
+    out
 }
 
 fn parse_plugin(node: roxmltree::Node<'_, '_>) -> Plugin {
     Plugin {
         name: attr(node, "name"),
         description: child_text(node, "description").unwrap_or_default(),
+        image: child(node, "image")
+            .map(|n| attr(n, "path").replace('\\', "/"))
+            .filter(|p| !p.is_empty()),
         files: child(node, "files").map(|n| parse_files(n)).unwrap_or_default(),
         flags: child(node, "conditionFlags")
             .map(|n| {
@@ -435,22 +480,17 @@ pub fn plugin_kind<S: std::hash::BuildHasher>(
     }
 }
 
-/// The default selections a non-interactive install uses: `SelectAll` and
-/// `Required` are locked in, `Recommended` preselected, and `ExactlyOne`/
-/// `AtLeastOne` groups take their first usable option when nothing else is.
-/// If that conservative pass would install *nothing* (an all-`SelectAny`
-/// installer like High Poly Project), every usable option is selected
-/// instead - matching what dumping the whole archive used to install.
+/// The default selections, exactly as the installer configured them
+/// (Vortex parity): `Required` and `SelectAll` are locked in,
+/// `Recommended` is preselected, and radio-style groups (`ExactlyOne`,
+/// `AtLeastOne`) take their first usable option because they cannot be
+/// empty. Nothing else is selected.
 #[must_use]
 pub fn defaults(installer: &Installer) -> Selections {
-    let conservative = select_with(installer, false);
-    if installer.steps.is_empty() || !resolve(installer, &conservative).is_empty() {
-        return conservative;
-    }
-    select_with(installer, true)
+    select_defaults(installer)
 }
 
-fn select_with(installer: &Installer, generous: bool) -> Selections {
+fn select_defaults(installer: &Installer) -> Selections {
     let mut flags = HashMap::new();
     let mut selections: Selections = Vec::new();
     for step in &installer.steps {
@@ -458,7 +498,7 @@ fn select_with(installer: &Installer, generous: bool) -> Selections {
         let mut step_sel = Vec::new();
         for group in &step.groups {
             let sel = if visible {
-                default_group(group, &flags, generous)
+                default_group(group, &flags)
             } else {
                 BTreeSet::new()
             };
@@ -476,17 +516,15 @@ fn select_with(installer: &Installer, generous: bool) -> Selections {
     selections
 }
 
-fn default_group(group: &Group, flags: &HashMap<String, String>, generous: bool) -> BTreeSet<usize> {
+fn default_group(group: &Group, flags: &HashMap<String, String>) -> BTreeSet<usize> {
     let kind = |i: usize| {
         group
             .plugins
             .get(i)
             .map_or(PluginKind::NotUsable, |p| plugin_kind(&p.kind, flags))
     };
-    let take_all = group.kind == GroupKind::All
-        || (generous && matches!(group.kind, GroupKind::Any | GroupKind::AtLeastOne));
     let mut sel: BTreeSet<usize> = (0..group.plugins.len())
-        .filter(|i| match (take_all, kind(*i)) {
+        .filter(|i| match (group.kind == GroupKind::All, kind(*i)) {
             (true, k) => k != PluginKind::NotUsable,
             (false, PluginKind::Required | PluginKind::Recommended) => true,
             (false, _) => false,
@@ -645,6 +683,15 @@ fn clean_destination(destination: &str, source: &str, is_folder: bool) -> Result
         out = PathBuf::from(name);
     }
     Ok(out)
+}
+
+/// Resolve an archive-relative path (image, readme) against the staged tree:
+/// the tree root for a fresh stage, or `.fomod-src/` once sources are parked.
+/// Matching is case-insensitive, as installer configs routinely mis-case.
+#[must_use]
+pub fn source_path(staged_root: &Path, rel: &str) -> Option<PathBuf> {
+    let rel = rel.replace('\\', "/");
+    resolve_ci(staged_root, &rel).or_else(|| resolve_ci(&staged_root.join(SRC_DIR), &rel))
 }
 
 /// Resolve `rel` under `root`, matching each component case-insensitively.

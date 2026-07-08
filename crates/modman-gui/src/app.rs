@@ -139,12 +139,16 @@ pub struct Wizard {
     pub mod_id: ModId,
     /// Its display name.
     pub mod_name: String,
+    /// Its staged tree (image lookups resolve against it).
+    pub staged_path: PathBuf,
     /// The parsed installer.
     pub installer: fomod::Installer,
     /// Current selections.
     pub selections: fomod::Selections,
     /// Position within the *visible* steps.
     pub step: usize,
+    /// The option under the cursor / last touched - drives the preview pane.
+    pub focus: Option<(usize, usize, usize)>,
 }
 
 impl Wizard {
@@ -316,6 +320,15 @@ pub enum Message {
     ClearNotes,
     /// Open the FOMOD wizard for a mod.
     Configure(ModId),
+    /// Wizard: preview an option (hover).
+    WizardHover {
+        /// Step index (absolute).
+        step: usize,
+        /// Group index.
+        group: usize,
+        /// Plugin index.
+        plugin: usize,
+    },
     /// Wizard: toggle a plugin.
     WizardPick {
         /// Step index (absolute).
@@ -543,6 +556,15 @@ fn update_overlay(app: &mut App, message: &Message) -> Task<Message> {
             app.notes_open = false;
         }
         Message::Configure(id) => app.on_configure(id),
+        Message::WizardHover {
+            step,
+            group,
+            plugin,
+        } => {
+            if let Some(wizard) = &mut app.wizard {
+                wizard.focus = Some((step, group, plugin));
+            }
+        }
         Message::WizardPick {
             step,
             group,
@@ -1007,9 +1029,11 @@ impl App {
                 self.wizard = Some(Wizard {
                     mod_id: m.id,
                     mod_name: m.name,
+                    staged_path: m.staged_path,
                     installer,
                     selections,
                     step: 0,
+                    focus: None,
                 });
             }
             Ok(None) => self.note(Tone::Info, "No installer options in this mod".to_owned()),
@@ -1021,6 +1045,7 @@ impl App {
         let Some(wizard) = &mut self.wizard else {
             return;
         };
+        wizard.focus = Some((step, group, plugin));
         let Some(kind) = wizard
             .installer
             .steps
@@ -1050,8 +1075,18 @@ impl App {
                     sel.insert(plugin);
                 }
             }
-            fomod::GroupKind::Any | fomod::GroupKind::AtLeastOne => {
+            fomod::GroupKind::Any => {
                 if !sel.remove(&plugin) {
+                    sel.insert(plugin);
+                }
+            }
+            fomod::GroupKind::AtLeastOne => {
+                // The group cannot become empty (Vortex parity).
+                if sel.contains(&plugin) {
+                    if sel.len() > 1 {
+                        sel.remove(&plugin);
+                    }
+                } else {
                     sel.insert(plugin);
                 }
             }
