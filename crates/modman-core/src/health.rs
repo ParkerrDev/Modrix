@@ -39,14 +39,38 @@ pub fn check(plugins: &[GamePlugin], mods: &[Mod], plan: &DeployPlan) -> Vec<Iss
     issues
 }
 
+/// One issue per *missing file*, listing who needs it - sixteen Lux patches
+/// missing the same Resources pack is one problem, not sixteen.
 fn missing_masters(plugins: &[GamePlugin], issues: &mut Vec<Issue>) {
+    let mut by_master: std::collections::BTreeMap<String, Vec<&str>> =
+        std::collections::BTreeMap::new();
     for plugin in plugins {
         for master in &plugin.missing_masters {
-            issues.push(Issue {
-                severity: Severity::Error,
-                message: format!("{} requires {master}, which is not installed", plugin.name),
-            });
+            by_master
+                .entry(master.clone())
+                .or_default()
+                .push(plugin.name.as_str());
         }
+    }
+    for (master, dependents) in by_master {
+        let message = if let [only] = dependents.as_slice() {
+            format!("{only} requires {master}, which is not installed")
+        } else {
+            format!(
+                "{master} is not installed - required by {} plugins ({}, …)",
+                dependents.len(),
+                dependents
+                    .iter()
+                    .take(3)
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
+        };
+        issues.push(Issue {
+            severity: Severity::Error,
+            message,
+        });
     }
 }
 
