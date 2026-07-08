@@ -225,7 +225,30 @@ pub(crate) fn normalize_staged(dest: &Path, mod_root: &str) -> Result<()> {
         return Ok(());
     }
     if !mod_root.is_empty() {
+        // Park loader binaries first - the mod-root remap would otherwise
+        // sweep them into `.unmanaged/` as generic extras.
+        park_root_binaries(dest)?;
         remap_mod_root(dest, mod_root)?;
+    }
+    Ok(())
+}
+
+/// Move top-level executables/libraries into `.root/`: they belong next to
+/// the game binary (SKSE loaders, preloader DLLs), never inside the mod
+/// root - the deployer places `.root/` contents at the game install root.
+fn park_root_binaries(dest: &Path) -> Result<()> {
+    for entry in top_entries(dest)? {
+        let name = file_name_of(&entry).into_owned();
+        let root_worthy = entry
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("exe") || e.eq_ignore_ascii_case("dll"));
+        if entry.is_dir() || name.starts_with('.') || !root_worthy {
+            continue;
+        }
+        let park = dest.join(".root");
+        fs::create_dir_all(&park).map_err(|e| Error::io(&park, e))?;
+        let target = park.join(&name);
+        fs::rename(&entry, &target).map_err(|e| Error::io(&entry, e))?;
     }
     Ok(())
 }
@@ -328,10 +351,11 @@ fn remap_mod_root(dest: &Path, mod_root: &str) -> Result<()> {
     let park = dest.join(".unmanaged");
     fs::create_dir_all(&park).map_err(|e| Error::io(&park, e))?;
     for entry in &entries {
-        if *entry == root_dir || file_name_of(entry).starts_with('.') {
+        let name = file_name_of(entry).into_owned();
+        if *entry == root_dir || name.starts_with('.') {
             continue;
         }
-        let target = park.join(file_name_of(entry).as_ref());
+        let target = park.join(&name);
         fs::rename(entry, &target).map_err(|e| Error::io(entry, e))?;
     }
     let tmp = dest.join(".mm-remap");
@@ -387,6 +411,35 @@ pub(crate) fn resolve_files(staged_root: &Path) -> Result<Vec<ResolvedFile>> {
             }
         }
     }
+    // Game-root files (SKSE loaders, preloader DLLs) live under `.root/` and
+    // deploy above the mod root; the planner rewrites the marker.
+    let root_dir = staged_root.join(".root");
+    if root_dir.is_dir() {
+        let mut stack = vec![(root_dir.clone(), 0_usize)];
+        while let Some((dir, depth)) = stack.pop() {
+            if depth > MAX_DEPTH {
+                return Err(Error::BoundExceeded {
+                    what: "mod directory depth",
+                    limit: MAX_DEPTH,
+                });
+            }
+            let entries = fs::read_dir(&dir).map_err(|e| Error::io(&dir, e))?;
+            for entry in entries {
+                let entry = entry.map_err(|e| Error::io(&dir, e))?;
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push((path, depth.saturating_add(1)));
+                } else {
+                    let _ = bounded_inc(files.len(), "mod files", MAX_FILES)?;
+                    let rel = relative_target(&root_dir, &path)?;
+                    files.push(ResolvedFile {
+                        target_rel: format!("<root>/{rel}"),
+                        source: path,
+                    });
+                }
+            }
+        }
+    }
     // Sorted output keeps planning and reports deterministic regardless of the
     // order the filesystem hands back directory entries.
     files.sort_by(|a, b| a.target_rel.cmp(&b.target_rel));
@@ -403,10 +456,19 @@ fn relative_target(root: &Path, path: &Path) -> Result<String> {
     for component in rel.components() {
         match component {
             std::path::Component::Normal(part) => {
+                let part = part.to_string_lossy();
+                // `<`/`>` are invalid in Windows names and reserved here for
+                // the engine's own path markers (`<up>`) - never trusted from
+                // an archive.
+                if part.contains('<') || part.contains('>') {
+                    return Err(Error::PathEscape {
+                        path: path.to_path_buf(),
+                    });
+                }
                 if !out.is_empty() {
                     out.push('/');
                 }
-                out.push_str(&part.to_string_lossy());
+                out.push_str(&part);
             }
             // Anything other than a plain name (`..`, a root, a prefix) is an escape.
             _ => {
@@ -466,8 +528,15 @@ mod tests {
             .iter()
             .map(|f| f.target_rel.clone())
             .collect();
-        assert_eq!(rels, vec!["Scripts/Actor.pex".to_owned()]);
-        assert!(dest.join(".unmanaged/skse64_loader.exe").is_file());
+        assert_eq!(
+            rels,
+            vec![
+                "<root>/skse64_1_6_1170.dll".to_owned(),
+                "<root>/skse64_loader.exe".to_owned(),
+                "Scripts/Actor.pex".to_owned(),
+            ]
+        );
+        assert!(dest.join(".root/skse64_loader.exe").is_file());
         assert!(dest.join(".unmanaged/src/skse64/main.cpp").is_file());
     }
 

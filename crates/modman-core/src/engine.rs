@@ -268,7 +268,14 @@ impl Engine {
             return Err(error);
         }
         let source = if nexus_mod_id.is_some() { "nexus" } else { "local" };
-        let archive = (!path.is_dir()).then(|| path.to_string_lossy().into_owned());
+        // Absolute provenance: a relative archive path would silently break
+        // reinstall the moment the working directory changes.
+        let archive = (!path.is_dir()).then(|| {
+            std::path::absolute(path)
+                .unwrap_or_else(|_| path.to_path_buf())
+                .to_string_lossy()
+                .into_owned()
+        });
         self.conn.execute(
             "INSERT INTO mods (game_id, name, version, source, staged_path, archive_path, nexus_mod_id) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -523,7 +530,8 @@ impl Engine {
 impl Engine {
     fn build_plan(&self, profile: ProfileId) -> Result<(Game, DeployPlan)> {
         let game = self.game(self.game_of_profile(profile)?)?;
-        let ordered = self.enabled_mods_resolved(profile)?;
+        let mut ordered = self.enabled_mods_resolved(profile)?;
+        Self::rewrite_root_targets(&mut ordered, &game.mod_root);
         let current = self.current_rows(game.id)?;
         let plan = plan(
             game.id,
@@ -579,6 +587,21 @@ impl Engine {
             ordered.push((mod_id, store::resolve_files(Path::new(&staged))?));
         }
         Ok(ordered)
+    }
+
+    /// Rewrite `<root>/…` staging markers into `<up>`-relative targets so
+    /// game-root files (SKSE loaders, preloaders) deploy next to the game
+    /// binary, however deep the mod root is.
+    fn rewrite_root_targets(files: &mut [(ModId, Vec<ResolvedFile>)], mod_root: &str) {
+        let ups = mod_root.split('/').filter(|c| !c.is_empty()).count();
+        let prefix: String = std::iter::repeat_n("<up>/", ups).collect();
+        for (_, resolved) in files {
+            for file in resolved {
+                if let Some(rest) = file.target_rel.strip_prefix("<root>/") {
+                    file.target_rel = format!("{prefix}{rest}");
+                }
+            }
+        }
     }
 }
 
@@ -722,6 +745,37 @@ mod tests {
         let names: Vec<_> = enabled.iter().map(|m| m.name.as_str()).collect();
         assert_eq!(names, vec!["second", "first"]);
         assert_eq!(enabled.first().unwrap().install_state, "staged");
+    }
+
+    #[test]
+    fn root_binaries_deploy_next_to_the_game_executable() {
+        let (tmp, engine) = engine();
+        let install = tmp.path().join("game");
+        std::fs::create_dir_all(install.join("Data")).unwrap();
+        let game = engine.add_game(&sample_def(), &install, "manual").unwrap();
+        let profile = engine.active_profile(game.id).unwrap();
+
+        // An SKSE-style archive: loader binaries + Data content.
+        let src = tmp.path().join("skse");
+        std::fs::create_dir_all(src.join("Data/Scripts")).unwrap();
+        std::fs::write(src.join("skse64_loader.exe"), b"exe").unwrap();
+        std::fs::write(src.join("d3dx9_42.dll"), b"dll").unwrap();
+        std::fs::write(src.join("Data/Scripts/a.pex"), b"pex").unwrap();
+        let m = engine.stage(game.id, "skse", &src).unwrap();
+        engine.set_enabled(profile.id, m.id, true).unwrap();
+
+        engine.deploy(profile.id).unwrap();
+        // Loaders live next to the game binary, scripts inside Data.
+        assert!(install.join("skse64_loader.exe").is_file());
+        assert!(install.join("d3dx9_42.dll").is_file());
+        assert!(install.join("Data/Scripts/a.pex").is_file());
+        assert!(!install.join("Data/skse64_loader.exe").exists());
+        assert!(engine.verify(profile.id).unwrap().is_clean());
+
+        engine.undeploy(profile.id).unwrap();
+        assert!(!install.join("skse64_loader.exe").exists());
+        assert!(!install.join("d3dx9_42.dll").exists());
+        assert!(!install.join("Data/Scripts").exists());
     }
 
     #[test]

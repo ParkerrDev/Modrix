@@ -1203,7 +1203,8 @@ fn run_action(engine: &Mutex<Engine>, action: &Action) -> Result<String, String>
         Action::ReinstallMany(ids) => {
             let mut done: usize = 0;
             for id in ids {
-                engine.reinstall_mod(*id).map_err(|e| e.to_string())?;
+                let fresh = engine.reinstall_mod(*id).map_err(|e| e.to_string())?;
+                modman_service::fomod_pass(&engine, &fresh).map_err(|e| format!("{e:#}"))?;
                 done = done.saturating_add(1);
             }
             Ok(format!("{done} mods reinstalled"))

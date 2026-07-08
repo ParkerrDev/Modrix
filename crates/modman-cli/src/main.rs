@@ -117,6 +117,16 @@ enum ModCmd {
         /// Mod id or name.
         module: String,
     },
+    /// Delete a mod from the library (its staged files included).
+    Remove {
+        /// Mod id or name.
+        module: String,
+    },
+    /// Re-stage a mod from its recorded source archive.
+    Reinstall {
+        /// Mod id or name.
+        module: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -231,6 +241,22 @@ fn mod_cmd(cmd: &ModCmd, cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Res
         }
         ModCmd::Enable { module } => set_enabled(cli, engine, module, true, out),
         ModCmd::Disable { module } => set_enabled(cli, engine, module, false, out),
+        ModCmd::Remove { module } => {
+            let game = resolve_game(cli, engine)?;
+            let m = resolve_mod(engine, &game, module)?;
+            engine.delete_mod(m.id).context("deleting the mod")?;
+            writeln!(out, "removed {}", m.name)?;
+            Ok(())
+        }
+        ModCmd::Reinstall { module } => {
+            let game = resolve_game(cli, engine)?;
+            let m = resolve_mod(engine, &game, module)?;
+            let fresh = engine.reinstall_mod(m.id).context("reinstalling the mod")?;
+            let configurable = modman_service::fomod_pass(engine, &fresh)?;
+            let extra = if configurable { " [fomod defaults]" } else { "" };
+            writeln!(out, "reinstalled {}{extra}", fresh.name)?;
+            Ok(())
+        }
     }
 }
 

@@ -242,10 +242,21 @@ const MAX_ANCESTOR_DEPTH: usize = 256;
 pub(crate) fn rel_to_abs(root: &Path, rel: &str) -> PathBuf {
     let mut path = root.to_path_buf();
     for component in rel.split('/').filter(|c| !c.is_empty()) {
-        path.push(component);
+        // Engine-synthesized marker for game-root files (a deploy root above
+        // the mod root, e.g. SKSE loaders next to the game executable).
+        // Archive-supplied names can never contain it: `relative_target`
+        // rejects `<`/`>` at the staging trust boundary.
+        if component == UP_MARKER {
+            path.pop();
+        } else {
+            path.push(component);
+        }
     }
     path
 }
+
+/// The reserved path component that walks one level above the deploy root.
+pub(crate) const UP_MARKER: &str = "<up>";
 
 /// Remove now-empty ancestor directories of `child`, walking upward but never
 /// past (or including) `stop_root`. Best-effort: a non-empty directory ends the
@@ -415,6 +426,11 @@ mod tests {
             PathBuf::from("/game/Data/meshes/a.nif")
         );
         assert_eq!(rel_to_abs(root, ""), PathBuf::from("/game/Data"));
+        // The engine-synthesized root marker walks above the deploy root.
+        assert_eq!(
+            rel_to_abs(root, "<up>/skse64_loader.exe"),
+            PathBuf::from("/game/skse64_loader.exe")
+        );
     }
 
     #[test]
