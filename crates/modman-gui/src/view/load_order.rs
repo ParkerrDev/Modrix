@@ -30,7 +30,11 @@ pub(super) fn body(app: &App) -> El<'_> {
         let drag_target = app.drag.map(|(_, to)| to) == Some(i);
         rows = rows.push(plugin_row(plugin, i, app.plugins.len(), selected, drag_target));
     }
-    let table = container(scrollable(rows).height(Length::Fill))
+    let list = scrollable(rows)
+        .id(iced::widget::scrollable::Id::new("plugins-list"))
+        .on_scroll(|v| Message::Scrolled(Pane::Plugins, v.absolute_offset().y, v.bounds().height))
+        .height(Length::Fill);
+    let table = container(list)
         .padding(12)
         .width(Length::Fill)
         .height(Length::Fill)

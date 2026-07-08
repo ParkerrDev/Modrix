@@ -13,8 +13,8 @@ use iced::{Alignment, Length};
 use modman_core::{Mod, ModId};
 
 use super::{BOLD, El, empty_state};
-use crate::app::{App, Message, Pane};
-use crate::theme;
+use crate::app::{App, Message, Pane, SortKey};
+use crate::{icons, theme};
 
 /// The mods body.
 pub(super) fn body(app: &App) -> El<'_> {
@@ -106,8 +106,13 @@ fn table<'a>(app: &'a App, enabled: &HashSet<ModId>) -> El<'a> {
         ));
     }
     let listing = column![
-        header_row(),
-        scrollable(rows).height(Length::Fill),
+        header_row(app),
+        scrollable(rows)
+            .id(iced::widget::scrollable::Id::new("mods-list"))
+            .on_scroll(|v| {
+                Message::Scrolled(Pane::Mods, v.absolute_offset().y, v.bounds().height)
+            })
+            .height(Length::Fill),
         text(format!("{} mods · {} enabled", app.mods.len(), app.order.len()))
             .size(12)
             .color(theme::FAINT),
@@ -121,19 +126,41 @@ fn table<'a>(app: &'a App, enabled: &HashSet<ModId>) -> El<'a> {
         .into()
 }
 
-fn header_row() -> El<'static> {
-    let cell = |label: &'static str| text(label).size(10).color(theme::FAINT);
+/// Clickable column headers: click sorts, click again flips direction.
+fn header_row(app: &App) -> El<'_> {
     container(
         row![
-            cell("ON").width(48),
-            cell("MOD").width(Length::Fill),
-            cell("VERSION").width(100),
-            cell("SOURCE").width(150),
+            sort_cell(app, "ON", SortKey::Enabled, 48),
+            sort_cell(app, "MOD", SortKey::Name, 0),
+            sort_cell(app, "VERSION", SortKey::Version, 100),
+            sort_cell(app, "SOURCE", SortKey::Source, 150),
         ]
         .spacing(10),
     )
     .padding([4, 12])
     .into()
+}
+
+fn sort_cell<'a>(app: &App, label: &'a str, key: SortKey, width: u16) -> El<'a> {
+    let (active_key, ascending) = app.mod_sort;
+    let mut cell = row![text(label).size(10).color(if active_key == key {
+        theme::ACCENT
+    } else {
+        theme::FAINT
+    })]
+    .spacing(4)
+    .align_y(Alignment::Center);
+    if active_key == key {
+        cell = cell.push(icons::arrow::<Message>(ascending));
+    }
+    let clickable = mouse_area(cell)
+        .interaction(iced::mouse::Interaction::Pointer)
+        .on_press(Message::SortBy(key));
+    if width == 0 {
+        container(clickable).width(Length::Fill).into()
+    } else {
+        container(clickable).width(width).into()
+    }
 }
 
 fn mod_row(m: &Mod, index: usize, enabled: bool, selected: bool) -> El<'_> {

@@ -253,6 +253,8 @@ fn mod_cmd(cmd: &ModCmd, cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Res
             let m = resolve_mod(engine, &game, module)?;
             let fresh = engine.reinstall_mod(m.id).context("reinstalling the mod")?;
             let configurable = modman_service::fomod_pass(engine, &fresh)?;
+            let profile = engine.active_profile(game.id)?;
+            engine.set_enabled(profile.id, fresh.id, true)?;
             let extra = if configurable { " [fomod defaults]" } else { "" };
             writeln!(out, "reinstalled {}{extra}", fresh.name)?;
             Ok(())

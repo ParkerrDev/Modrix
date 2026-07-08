@@ -22,6 +22,21 @@ use modman_service::{Binding, InstallOutcome, Service};
 
 use crate::theme;
 
+/// A sortable column of the Mods table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortKey {
+    /// Install order (mod id) - the default.
+    Installed,
+    /// Alphabetical by name.
+    Name,
+    /// Enabled first.
+    Enabled,
+    /// By version string.
+    Version,
+    /// By source (nexus/local).
+    Source,
+}
+
 /// Which list has keyboard focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pane {
@@ -285,6 +300,12 @@ pub struct App {
     pub focus_pane: Pane,
     /// Live modifier-key state (drives Shift/Ctrl-click selection).
     pub modifiers: iced::keyboard::Modifiers,
+    /// Mods table sort: (column, ascending).
+    pub mod_sort: (SortKey, bool),
+    /// Mods list viewport: (scroll offset, visible height).
+    pub mods_view: Option<(f32, f32)>,
+    /// Plugins list viewport: (scroll offset, visible height).
+    pub plugins_view: Option<(f32, f32)>,
     /// Load-order drag: (source index, current hover index).
     pub drag: Option<(usize, usize)>,
     /// Conflict summary for the active profile.
@@ -357,6 +378,10 @@ pub enum Message {
     Key(iced::keyboard::Key, iced::keyboard::Modifiers),
     /// The modifier-key state changed.
     Modifiers(iced::keyboard::Modifiers),
+    /// Sort the Mods table by a column (clicking again flips direction).
+    SortBy(SortKey),
+    /// A list was scrolled: (pane, offset y, viewport height).
+    Scrolled(Pane, f32, f32),
     /// Enable every currently disabled mod.
     EnableAll,
     /// Enable/disable all selected mods.
@@ -497,6 +522,9 @@ pub fn boot() -> (App, Task<Message>) {
         plugin_sel: Selection::default(),
         focus_pane: Pane::Mods,
         modifiers: iced::keyboard::Modifiers::default(),
+        mod_sort: (SortKey::Installed, true),
+        mods_view: None,
+        plugins_view: None,
         drag: None,
         conflicts: Vec::new(),
         health: Vec::new(),
@@ -542,6 +570,19 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     } else {
         events
     }
+}
+
+/// The stable scrollable id for a pane's list.
+fn scroll_id(pane: Pane) -> iced::widget::scrollable::Id {
+    match pane {
+        Pane::Mods => iced::widget::scrollable::Id::new("mods-list"),
+        Pane::Plugins => iced::widget::scrollable::Id::new("plugins-list"),
+    }
+}
+
+/// Case-insensitive name ordering.
+fn compare_names(a: &str, b: &str) -> std::cmp::Ordering {
+    a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase())
 }
 
 /// Step an index by `delta` (clamped to `0..len`).
@@ -636,16 +677,20 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::ClearSelection => app.active_selection().clear(),
         Message::Key(key, mods) => {
             app.modifiers = mods;
-            app.on_key(&key, mods);
+            return app.on_key(&key, mods);
         }
         Message::Modifiers(mods) => app.modifiers = mods,
+
         Message::EnableAll => app.on_enable_all(),
         Message::SetSelectedEnabled(on) => app.on_set_selected(on),
         Message::DeleteSelected => app.on_delete_selected(),
         Message::ReinstallSelected => return app.on_reinstall_selected(),
         Message::TogglePlugin(index) => app.on_toggle_plugin(index),
         Message::AutoSort => return app.on_auto_sort(),
-        Message::MoveSelection { pane, delta } => app.on_move_selection(pane, delta),
+        Message::MoveSelection { pane, delta } => {
+            app.on_move_selection(pane, delta);
+            return app.ensure_visible(pane);
+        }
         Message::DragStart(pane, index) => {
             app.focus_pane = pane;
             app.drag = Some((index, index));
@@ -670,9 +715,15 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
     Task::none()
 }
 
-/// Notification-center and wizard messages, split out of [`update`].
+/// Notification-center, wizard, sort, and scroll messages, split out of
+/// [`update`].
 fn update_overlay(app: &mut App, message: &Message) -> Task<Message> {
     match *message {
+        Message::SortBy(key) => app.on_sort_by(key),
+        Message::Scrolled(pane, offset, height) => match pane {
+            Pane::Mods => app.mods_view = Some((offset, height)),
+            Pane::Plugins => app.plugins_view = Some((offset, height)),
+        },
         Message::ToggleNotes => {
             app.notes_open = !app.notes_open;
             app.unread = 0;
@@ -836,6 +887,7 @@ impl App {
             None => Vec::new(),
         };
         drop(engine);
+        self.apply_mod_sort();
         self.mod_sel.retain_below(self.mods.len());
         self.plugin_sel.retain_below(self.plugins.len());
         self.queue_unreviewed_fomods();
@@ -1067,26 +1119,44 @@ impl App {
         }
     }
 
-    /// Keyboard control for the focused list. Arrows move the cursor;
-    /// Shift extends the selection; Ctrl (+Shift) moves the selected
-    /// plugin(s) in the load order.
-    fn on_key(&mut self, key: &iced::keyboard::Key, mods: iced::keyboard::Modifiers) {
+    /// Keyboard control for the visible list. Arrows move the cursor,
+    /// Shift extends, Ctrl(+Shift) moves the selected plugin(s), Ctrl+A
+    /// selects everything, Escape clears. Scrolls to keep the cursor
+    /// visible.
+    fn on_key(
+        &mut self,
+        key: &iced::keyboard::Key,
+        mods: iced::keyboard::Modifiers,
+    ) -> Task<Message> {
         use iced::keyboard::{Key, key::Named};
-        // The wizard modal owns the keyboard while open, and typing in a text
-        // field must not steal arrows for list navigation.
-        if self.wizard.is_some() {
-            return;
+        // The wizard owns the keyboard; other screens have text inputs.
+        let pane = match (self.wizard.is_some(), self.screen) {
+            (false, Screen::Mods) => Pane::Mods,
+            (false, Screen::LoadOrder) => Pane::Plugins,
+            _ => return Task::none(),
+        };
+        self.focus_pane = pane;
+        if mods.control()
+            && let Key::Character(c) = key
+            && c.as_str().eq_ignore_ascii_case("a")
+        {
+            let len = self.list_len(pane);
+            let sel = self.active_selection();
+            sel.items = (0..len).collect();
+            sel.anchor = Some(0);
+            sel.cursor = len.checked_sub(1);
+            return Task::none();
         }
         let delta: i8 = match key {
             Key::Named(Named::ArrowUp) => -1,
             Key::Named(Named::ArrowDown) => 1,
             Key::Named(Named::Escape) => {
                 self.active_selection().clear();
-                return;
+                return Task::none();
             }
-            _ => return,
+            _ => return Task::none(),
         };
-        if mods.control() && self.focus_pane == Pane::Plugins {
+        if mods.control() && pane == Pane::Plugins {
             // Ctrl moves the selected plugins; Ctrl+Shift moves a block.
             self.on_move_selection(Pane::Plugins, delta);
         } else if mods.shift() {
@@ -1094,6 +1164,73 @@ impl App {
         } else {
             self.move_cursor(delta);
         }
+        self.ensure_visible(pane)
+    }
+
+    /// Scroll the pane so its cursor row stays inside the viewport.
+    fn ensure_visible(&self, pane: Pane) -> Task<Message> {
+        use iced::widget::scrollable;
+        let (row_height, view, cursor) = match pane {
+            Pane::Mods => (40.0_f32, self.mods_view, self.mod_sel.cursor),
+            Pane::Plugins => (50.0_f32, self.plugins_view, self.plugin_sel.cursor),
+        };
+        let Some(cursor) = cursor else {
+            return Task::none();
+        };
+        #[expect(clippy::cast_precision_loss, reason = "list indices are small")]
+        let top = cursor as f32 * row_height;
+        let target = match view {
+            None => Some(top.max(0.0)),
+            Some((offset, _)) if top < offset => Some(top),
+            Some((offset, height)) if top + row_height > offset + height => {
+                Some((top + row_height - height).max(0.0))
+            }
+            Some(_) => None,
+        };
+        match target {
+            Some(y) => scrollable::scroll_to(
+                scroll_id(pane),
+                scrollable::AbsoluteOffset { x: 0.0, y },
+            ),
+            None => Task::none(),
+        }
+    }
+
+    fn on_sort_by(&mut self, key: SortKey) {
+        let (current, ascending) = self.mod_sort;
+        self.mod_sort = if current == key {
+            (key, !ascending)
+        } else {
+            (key, true)
+        };
+        self.mod_sel.clear();
+        self.apply_mod_sort();
+    }
+
+    /// Sort `self.mods` by the chosen column (stable; name tiebreak).
+    fn apply_mod_sort(&mut self) {
+        let enabled: std::collections::HashSet<ModId> =
+            self.order.iter().map(|m| m.id).collect();
+        let (key, ascending) = self.mod_sort;
+        self.mods.sort_by(|a, b| {
+            let ord = match key {
+                SortKey::Installed => a.id.cmp(&b.id),
+                SortKey::Name => compare_names(&a.name, &b.name),
+                SortKey::Enabled => enabled
+                    .contains(&b.id)
+                    .cmp(&enabled.contains(&a.id))
+                    .then_with(|| compare_names(&a.name, &b.name)),
+                SortKey::Version => a
+                    .version
+                    .cmp(&b.version)
+                    .then_with(|| compare_names(&a.name, &b.name)),
+                SortKey::Source => a
+                    .source
+                    .cmp(&b.source)
+                    .then_with(|| compare_names(&a.name, &b.name)),
+            };
+            if ascending { ord } else { ord.reverse() }
+        });
     }
 
     fn list_len(&self, pane: Pane) -> usize {
@@ -1508,6 +1645,9 @@ fn run_action(engine: &Mutex<Engine>, action: &Action) -> Result<String, String>
             for id in ids {
                 let fresh = engine.reinstall_mod(*id).map_err(|e| e.to_string())?;
                 modman_service::fomod_pass(&engine, &fresh).map_err(|e| format!("{e:#}"))?;
+                if let Ok(profile) = engine.active_profile(fresh.game_id) {
+                    let _ = engine.set_enabled(profile.id, fresh.id, true);
+                }
                 done = done.saturating_add(1);
             }
             Ok(format!("{done} mods reinstalled"))

@@ -414,6 +414,10 @@ fn nexus_domain_from_url(url: &str) -> Option<String> {
 pub fn install_file(engine: &Engine, game: GameId, file: &Path) -> Result<InstallOutcome> {
     let staged = engine.stage_auto(game, file).context("staging")?;
     let configurable = fomod_pass(engine, &staged)?;
+    // New installs start enabled (deploy applies them; disable to opt out).
+    if let Ok(profile) = engine.active_profile(game) {
+        let _ = engine.set_enabled(profile.id, staged.id, true);
+    }
     let name = engine.get_mod(staged.id).map_or(staged.name, |m| m.name);
     Ok(InstallOutcome::Installed { name, configurable })
 }
