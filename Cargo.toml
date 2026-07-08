@@ -16,6 +16,7 @@ modman-core = { path = "crates/modman-core" }
 modman-plugin = { path = "crates/modman-plugin" }
 modman-download = { path = "crates/modman-download" }
 modman-ipc = { path = "crates/modman-ipc" }
+modman-service = { path = "crates/modman-service" }
 # --- external (pinned; further deps added per phase as they are used) ---
 anyhow = "1"
 thiserror = "2"
@@ -42,6 +43,7 @@ rustls = { version = "0.23", default-features = false, features = ["std", "tls12
 rustls-rustcrypto = "=0.0.2-alpha"      # pure-Rust CryptoProvider (RustCrypto primitives)
 rustls-native-certs = "0.8"             # OS trust store (avoids CDLA webpki-roots)
 getrandom = "0.3"
+iced = { version = "0.13", default-features = false, features = ["tiny-skia", "tokio", "auto-detect-theme"] }
 serde = { version = "1", features = ["derive"] }
 wiremock = "0.6"
 serde_json = "1"

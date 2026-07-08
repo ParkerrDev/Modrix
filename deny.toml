@@ -29,6 +29,21 @@ ignore = [
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0104",
+    # --- GUI windowing/text stack (iced/winit), no untrusted-input path -------
+    # `instant`: unmaintained; pulled by `wasm-timer` (iced_futures). Only its
+    # time-now shim is used, on the wasm target we do not even ship. No upgrade
+    # path until iced drops wasm-timer.
+    "RUSTSEC-2024-0384",
+    # `ttf-parser` 0.20/0.25: unmaintained (author archived it); pulled by
+    # ab_glyph/fontdb to parse *locally installed system fonts*, not
+    # attacker-supplied files. Re-audit when iced's text stack migrates.
+    "RUSTSEC-2026-0192",
+    # `quick-xml` (attribute-scan and namespace DoS): pulled by
+    # `wayland-scanner`, a BUILD-TIME code generator that parses the trusted,
+    # repository-pinned Wayland protocol XML shipped in the crate - it never
+    # parses untrusted XML and does not exist in the shipped binary.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
 ]
 
 [licenses]
@@ -58,6 +73,44 @@ confidence-threshold = 0.9
 # The allow list is a curated superset of acceptable licenses, so entries that
 # no current dependency uses are expected - don't fail CI on them.
 unused-allowed-license = "allow"
+
+# --- GUI linking exception (Apache-2.0 for the windowing/rendering stack only) --
+# Apache-2.0 is NOT allowed in general (it is GPLv2-incompatible). But every
+# native Rust GUI is built on `winit` (Apache-2.0), and Iced needs it plus a few
+# Apache-2.0 text/clipboard crates. ModManager grants a documented additional
+# permission (see docs/LICENSE-EXCEPTIONS.md) to link these specific GUI libraries, so
+# they are excepted BY NAME here - the engine stays 100% Apache-free; only the
+# `modman-gui` windowing layer relies on this.
+[[licenses.exceptions]]
+name = "winit"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "dpi"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "ab_glyph"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "ab_glyph_rasterizer"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "owned_ttf_parser"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "unicode-linebreak"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "clipboard_macos"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "clipboard_wayland"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "approx"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "gethostname"
+allow = ["Apache-2.0"]
 
 [bans]
 multiple-versions = "allow"

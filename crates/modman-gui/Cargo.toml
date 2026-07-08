@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 [package]
 name = "modman-gui"
-description = "ModManager graphical frontend (Iced, MIT). The only crate that links a GUI toolkit."
+description = "ModManager graphical frontend (Iced)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,8 +12,15 @@ authors.workspace = true
 name = "modman-gui"
 path = "src/main.rs"
 
-# Dependencies (modman-core, iced, anyhow) are added in Phase 5.
 [dependencies]
+modman-core.workspace = true
+modman-download.workspace = true
+modman-ipc.workspace = true
+modman-service.workspace = true
+iced.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true
