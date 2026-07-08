@@ -139,7 +139,7 @@ fn mod_row(m: &Mod, index: usize, on: bool, selected: bool) -> El<'_> {
     ]
     .spacing(6)
     .align_y(Alignment::Center);
-    if m.install_state == "fomod" {
+    if m.install_state.starts_with("fomod") {
         tail = tail.push(
             button(text("Options").size(11))
                 .padding([3, 10])

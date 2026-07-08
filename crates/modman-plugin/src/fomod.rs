@@ -179,10 +179,16 @@ pub type Selections = Vec<Vec<BTreeSet<usize>>>;
 
 // --- detection & parsing -------------------------------------------------------
 
-/// Find the `fomod/` directory (any case) holding a `ModuleConfig.xml`.
+/// Find the `fomod/` directory (any case) holding a `ModuleConfig.xml` -
+/// at the tree root for a fresh stage, or inside `.fomod-src/` once an
+/// install pass has parked the original layout.
 #[must_use]
 pub fn fomod_dir(staged_root: &Path) -> Option<PathBuf> {
-    let entries = fs::read_dir(staged_root).ok()?;
+    find_fomod_in(staged_root).or_else(|| find_fomod_in(&staged_root.join(SRC_DIR)))
+}
+
+fn find_fomod_in(dir: &Path) -> Option<PathBuf> {
+    let entries = fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir()
@@ -858,6 +864,11 @@ mod tests {
         assert_eq!(fs::read(tmp.path().join("meshes/a.nif")).unwrap(), b"lite");
         assert!(!tmp.path().join("full.esp").exists()); // flag no longer set
         assert!(tmp.path().join("base.esp").is_file()); // required stays
+
+        // The installer must still be discoverable after apply parked the
+        // sources - that is what powers re-opening the options wizard.
+        let reparsed = parse(tmp.path()).unwrap();
+        assert!(reparsed.is_some());
     }
 
     #[test]

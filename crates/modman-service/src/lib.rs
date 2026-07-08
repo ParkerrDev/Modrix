@@ -77,7 +77,9 @@ pub fn fomod_pass(engine: &Engine, staged: &modman_core::Mod) -> Result<bool> {
         });
     let version = installer.info_version.filter(|v| !v.trim().is_empty());
     engine.set_mod_meta(staged.id, name.as_deref(), version.as_deref())?;
-    engine.set_install_state(staged.id, "fomod")?;
+    // `fomod-auto`: defaults applied, not yet reviewed - frontends use this
+    // to offer the options wizard once. The wizard sets it to `fomod`.
+    engine.set_install_state(staged.id, "fomod-auto")?;
     Ok(true)
 }
 

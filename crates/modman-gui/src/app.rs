@@ -220,6 +220,10 @@ pub struct App {
     pub notes_open: bool,
     /// The FOMOD wizard, when open.
     pub wizard: Option<Wizard>,
+    /// FOMOD mods awaiting their first options review (opened one at a time).
+    pub wizard_queue: Vec<ModId>,
+    /// Mods already offered a wizard this session (no re-nagging).
+    pub prompted: HashSet<ModId>,
     /// A slow engine action is in flight.
     pub busy: bool,
     /// Selectable game definitions.
@@ -387,6 +391,8 @@ pub fn boot() -> (App, Task<Message>) {
         unread: 0,
         notes_open: false,
         wizard: None,
+        wizard_queue: Vec::new(),
+        prompted: HashSet::new(),
         busy: false,
         defs: Vec::new(),
         form: Forms::default(),
@@ -545,7 +551,7 @@ fn update_overlay(app: &mut App, message: &Message) -> Task<Message> {
         Message::WizardNext => app.on_wizard_step(1),
         Message::WizardBack => app.on_wizard_step(-1),
         Message::WizardFinish => return app.on_wizard_finish(),
-        Message::WizardCancel => app.wizard = None,
+        Message::WizardCancel => app.on_wizard_cancel(),
         _ => {}
     }
     Task::none()
@@ -673,6 +679,41 @@ impl App {
             None => Vec::new(),
         };
         self.selection.retain(|id| self.mods.iter().any(|m| m.id == *id));
+        self.queue_unreviewed_fomods();
+    }
+
+    /// Offer the options wizard once for every FOMOD mod whose defaults were
+    /// applied automatically (`fomod-auto`) - the popup the installer earned.
+    fn queue_unreviewed_fomods(&mut self) {
+        let pending: Vec<ModId> = self
+            .mods
+            .iter()
+            .filter(|m| m.install_state == "fomod-auto" && !self.prompted.contains(&m.id))
+            .map(|m| m.id)
+            .collect();
+        for id in pending {
+            self.prompted.insert(id);
+            self.wizard_queue.push(id);
+        }
+        self.open_next_wizard();
+    }
+
+    /// Pop the next queued mod into the wizard, if none is open.
+    fn open_next_wizard(&mut self) {
+        while self.wizard.is_none() && !self.wizard_queue.is_empty() {
+            let id = self.wizard_queue.remove(0);
+            self.on_configure(id);
+        }
+    }
+
+    /// Closing the wizard without applying accepts the defaults: mark the mod
+    /// reviewed so it is not offered again, then continue the queue.
+    fn on_wizard_cancel(&mut self) {
+        if let Some(wizard) = self.wizard.take() {
+            let id = wizard.mod_id;
+            let _ = self.with_engine(|e| e.set_install_state(id, "fomod"));
+        }
+        self.open_next_wizard();
     }
 
     /// Recompute the conflict summary (plan the active profile).
@@ -1143,7 +1184,7 @@ fn run_action(engine: &Mutex<Engine>, action: &Action) -> Result<String, String>
             engine
                 .set_install_state(*mod_id, "fomod")
                 .map_err(|e| e.to_string())?;
-            Ok(format!("Options applied · {placed} files"))
+            Ok(format!("Options applied · {placed} files · deploy to update"))
         }
     }
 }
