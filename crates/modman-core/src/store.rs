@@ -103,7 +103,225 @@ pub(crate) fn extract_zip(archive: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Extract an archive `zip` cannot read (`.7z`, `.rar`, `.tar.*`) by
+/// delegating to a system extractor. The tools run as **separate processes**
+/// (nothing is linked), so the GPLv2 license gate is unaffected. Tools are
+/// tried in order; extraction is validated (bounds, no symlinks) afterwards.
+///
+/// # Errors
+///
+/// Returns [`Error::Archive`] if no extractor is installed or every installed
+/// one fails, [`Error::PathEscape`] if the archive smuggled a symlink, or
+/// [`Error::BoundExceeded`] past the file limits.
+pub(crate) fn extract_with_system(archive: &Path, dest: &Path) -> Result<()> {
+    let mut last_failure: Option<String> = None;
+    for bin in ["7zz", "7z", "7za", "bsdtar"] {
+        // Re-create `dest` so a half-failed attempt never leaks into the next.
+        let _ = fs::remove_dir_all(dest);
+        fs::create_dir_all(dest).map_err(|e| Error::io(dest, e))?;
+        match run_extractor(bin, archive, dest) {
+            Ok(ExtractorRun::Success) => return validate_extracted(dest),
+            Ok(ExtractorRun::NotInstalled) => {}
+            Ok(ExtractorRun::Failed(message)) => last_failure = Some(message),
+            Err(error) => return Err(error),
+        }
+    }
+    Err(Error::Archive {
+        path: archive.to_path_buf(),
+        message: last_failure.unwrap_or_else(|| {
+            "no archive extractor found - install 7-Zip (`7z`) or libarchive (`bsdtar`)"
+                .to_owned()
+        }),
+    })
+}
+
+/// What happened when one extractor binary was tried.
+enum ExtractorRun {
+    Success,
+    NotInstalled,
+    Failed(String),
+}
+
+fn run_extractor(bin: &str, archive: &Path, dest: &Path) -> Result<ExtractorRun> {
+    use std::process::{Command, Stdio};
+    let mut command = Command::new(bin);
+    if bin == "bsdtar" {
+        command.arg("-xf").arg(archive).arg("-C").arg(dest);
+    } else {
+        // 7-Zip's `-o<dir>` takes the directory glued to the flag.
+        let mut out_flag = std::ffi::OsString::from("-o");
+        out_flag.push(dest);
+        command.arg("x").arg("-y").arg("-bd").arg(out_flag).arg(archive);
+    }
+    let output = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output();
+    match output {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ExtractorRun::NotInstalled),
+        Err(e) => Err(Error::io(archive, e)),
+        Ok(out) if out.status.success() => Ok(ExtractorRun::Success),
+        Ok(out) => Ok(ExtractorRun::Failed(format!(
+            "`{bin}` could not extract it: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))),
+    }
+}
+
+/// Validate an externally-extracted tree: bounded size/depth, no symlinks (a
+/// malicious archive must not plant links that later deploy outside the game).
+fn validate_extracted(root: &Path) -> Result<()> {
+    let mut seen: usize = 0;
+    let mut stack = vec![(root.to_path_buf(), 0_usize)];
+    while let Some((dir, depth)) = stack.pop() {
+        if depth > MAX_DEPTH {
+            return Err(Error::BoundExceeded {
+                what: "archive directory depth",
+                limit: MAX_DEPTH,
+            });
+        }
+        let entries = fs::read_dir(&dir).map_err(|e| Error::io(&dir, e))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| Error::io(&dir, e))?;
+            let path = entry.path();
+            let meta = fs::symlink_metadata(&path).map_err(|e| Error::io(&path, e))?;
+            if meta.file_type().is_symlink() {
+                return Err(Error::PathEscape { path });
+            }
+            if meta.is_dir() {
+                stack.push((path, depth.saturating_add(1)));
+            } else {
+                seen = bounded_inc(seen, "archive files", MAX_FILES)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Normalize a freshly staged tree so it deploys the way the author intended:
+///
+/// 1. Hoist a single wrapping directory (`skse64_2_02_06/…` → `…`), up to
+///    three levels.
+/// 2. If the tree then carries its own copy of the game's mod root (e.g. a
+///    `Data/` directory), that directory's contents *become* the staged root
+///    and everything else is parked under `.unmanaged/` - kept on disk for
+///    the user (SKSE's loader binaries, `src/`), never deployed.
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] on any rename failure.
+pub(crate) fn normalize_staged(dest: &Path, mod_root: &str) -> Result<()> {
+    // Bounded: a wrapper-in-wrapper-in-wrapper is the deepest seen in the wild.
+    for _ in 0_u8..3 {
+        if !hoist_single_root(dest, mod_root)? {
+            break;
+        }
+    }
+    if !mod_root.is_empty() {
+        remap_mod_root(dest, mod_root)?;
+    }
+    Ok(())
+}
+
+/// Directory names that ARE mod content, never a wrapper to hoist. A lone
+/// `meshes/` is a mod that ships meshes; a lone `SkyUI_5_2/` is packaging.
+/// (Conservative, Bethesda-centric for now; game plugins can extend later.)
+const CONTENT_DIRS: [&str; 14] = [
+    "meshes",
+    "textures",
+    "scripts",
+    "interface",
+    "sound",
+    "music",
+    "strings",
+    "seq",
+    "grass",
+    "shadersfx",
+    "lodsettings",
+    "skse",
+    "fomod",
+    "source",
+];
+
+fn is_content_dir(name: &str, mod_root: &str) -> bool {
+    name.eq_ignore_ascii_case(mod_root)
+        || CONTENT_DIRS.iter().any(|c| name.eq_ignore_ascii_case(c))
+}
+
+/// The visible top-level entries of `dir`.
+fn top_entries(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    let entries = fs::read_dir(dir).map_err(|e| Error::io(dir, e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| Error::io(dir, e))?;
+        out.push(entry.path());
+    }
+    Ok(out)
+}
+
+/// If `dest` holds exactly one *wrapper* directory and nothing else, replace
+/// `dest`'s contents with that directory's contents. Returns whether it
+/// hoisted. Content directories (the mod root, `meshes/`, …) never hoist.
+fn hoist_single_root(dest: &Path, mod_root: &str) -> Result<bool> {
+    let entries = top_entries(dest)?;
+    let [only] = entries.as_slice() else {
+        return Ok(false);
+    };
+    let name = file_name_of(only).into_owned();
+    if !only.is_dir() || name.starts_with('.') || is_content_dir(&name, mod_root) {
+        return Ok(false);
+    }
+    // Rename aside first so a child sharing the wrapper's name cannot collide.
+    let tmp = dest.join(".mm-hoist");
+    fs::rename(only, &tmp).map_err(|e| Error::io(only, e))?;
+    for child in top_entries(&tmp)? {
+        let target = dest.join(file_name_of(&child).as_ref());
+        fs::rename(&child, &target).map_err(|e| Error::io(&child, e))?;
+    }
+    fs::remove_dir(&tmp).map_err(|e| Error::io(&tmp, e))?;
+    Ok(true)
+}
+
+/// If the tree carries a `<mod_root>` directory (case-insensitive), make its
+/// contents the staged root and park the rest under `.unmanaged/`.
+fn remap_mod_root(dest: &Path, mod_root: &str) -> Result<()> {
+    let entries = top_entries(dest)?;
+    let Some(root_dir) = entries
+        .iter()
+        .find(|p| p.is_dir() && file_name_of(p).eq_ignore_ascii_case(mod_root))
+        .cloned()
+    else {
+        return Ok(());
+    };
+    let park = dest.join(".unmanaged");
+    fs::create_dir_all(&park).map_err(|e| Error::io(&park, e))?;
+    for entry in &entries {
+        if *entry == root_dir || file_name_of(entry).starts_with('.') {
+            continue;
+        }
+        let target = park.join(file_name_of(entry).as_ref());
+        fs::rename(entry, &target).map_err(|e| Error::io(entry, e))?;
+    }
+    let tmp = dest.join(".mm-remap");
+    fs::rename(&root_dir, &tmp).map_err(|e| Error::io(&root_dir, e))?;
+    for child in top_entries(&tmp)? {
+        let target = dest.join(file_name_of(&child).as_ref());
+        fs::rename(&child, &target).map_err(|e| Error::io(&child, e))?;
+    }
+    fs::remove_dir(&tmp).map_err(|e| Error::io(&tmp, e))?;
+    Ok(())
+}
+
+/// A path's final component as a lossy string (empty when absent).
+fn file_name_of(path: &Path) -> std::borrow::Cow<'_, str> {
+    path.file_name()
+        .map_or(std::borrow::Cow::Borrowed(""), |n| n.to_string_lossy())
+}
+
 /// Enumerate a staged mod's files as planner input, in a stable sorted order.
+/// Entries whose name starts with `.` are skipped - `.unmanaged/` parking,
+/// `.git/`, `.DS_Store` and friends never deploy.
 ///
 /// # Errors
 ///
@@ -123,6 +341,9 @@ pub(crate) fn resolve_files(staged_root: &Path) -> Result<Vec<ResolvedFile>> {
         for entry in entries {
             let entry = entry.map_err(|e| Error::io(&dir, e))?;
             let path = entry.path();
+            if file_name_of(&path).starts_with('.') {
+                continue;
+            }
             if path.is_dir() {
                 stack.push((path, depth.saturating_add(1)));
             } else {
@@ -195,6 +416,119 @@ mod tests {
         let rels: Vec<_> = files.iter().map(|f| f.target_rel.clone()).collect();
         assert_eq!(rels, vec!["a.esp".to_owned(), "meshes/x.nif".to_owned()]);
         assert_eq!(fs::read(&files[0].source).unwrap(), b"a");
+    }
+
+    #[test]
+    fn normalize_hoists_wrapper_and_remaps_data_like_skse() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("staged");
+        // The exact SKSE layout: one version dir wrapping loaders + Data + src.
+        write(&dest.join("skse64_2_02_06/skse64_loader.exe"), b"exe");
+        write(&dest.join("skse64_2_02_06/skse64_1_6_1170.dll"), b"dll");
+        write(&dest.join("skse64_2_02_06/Data/Scripts/Actor.pex"), b"pex");
+        write(&dest.join("skse64_2_02_06/src/skse64/main.cpp"), b"cpp");
+        normalize_staged(&dest, "Data").unwrap();
+
+        // Scripts became the mod root; loaders/src parked, never deployed.
+        let rels: Vec<_> = resolve_files(&dest)
+            .unwrap()
+            .iter()
+            .map(|f| f.target_rel.clone())
+            .collect();
+        assert_eq!(rels, vec!["Scripts/Actor.pex".to_owned()]);
+        assert!(dest.join(".unmanaged/skse64_loader.exe").is_file());
+        assert!(dest.join(".unmanaged/src/skse64/main.cpp").is_file());
+    }
+
+    #[test]
+    fn normalize_leaves_plain_mods_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("staged");
+        write(&dest.join("SkyUI.esp"), b"esp");
+        write(&dest.join("textures/ui.dds"), b"dds");
+        normalize_staged(&dest, "Data").unwrap();
+        let rels: Vec<_> = resolve_files(&dest)
+            .unwrap()
+            .iter()
+            .map(|f| f.target_rel.clone())
+            .collect();
+        assert_eq!(rels, vec!["SkyUI.esp".to_owned(), "textures/ui.dds".to_owned()]);
+    }
+
+    #[test]
+    fn normalize_hoists_a_single_wrapper_without_mod_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("staged");
+        write(&dest.join("MyMod-1.0/meshes/m.nif"), b"m");
+        write(&dest.join("MyMod-1.0/MyMod.esp"), b"e");
+        normalize_staged(&dest, "Data").unwrap();
+        assert!(dest.join("MyMod.esp").is_file());
+        assert!(dest.join("meshes/m.nif").is_file());
+        assert!(!dest.join("MyMod-1.0").exists());
+    }
+
+    #[test]
+    fn normalize_never_dissolves_a_lone_content_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("staged");
+        // A mod that IS just meshes must stay under meshes/.
+        write(&dest.join("meshes/armor/a.nif"), b"m");
+        normalize_staged(&dest, "Data").unwrap();
+        let rels: Vec<_> = resolve_files(&dest)
+            .unwrap()
+            .iter()
+            .map(|f| f.target_rel.clone())
+            .collect();
+        assert_eq!(rels, vec!["meshes/armor/a.nif".to_owned()]);
+    }
+
+    #[test]
+    fn resolve_files_skips_hidden_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("m");
+        write(&src.join("a.esp"), b"a");
+        write(&src.join(".unmanaged/loader.exe"), b"x");
+        write(&src.join(".DS_Store"), b"junk");
+        let rels: Vec<_> = resolve_files(&src)
+            .unwrap()
+            .iter()
+            .map(|f| f.target_rel.clone())
+            .collect();
+        assert_eq!(rels, vec!["a.esp".to_owned()]);
+    }
+
+    #[test]
+    fn system_extraction_reports_missing_archive_cleanly() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = extract_with_system(&tmp.path().join("nope.7z"), &tmp.path().join("out"))
+            .unwrap_err();
+        assert!(matches!(err, Error::Archive { .. }));
+    }
+
+    #[test]
+    fn system_extraction_roundtrips_a_tar_when_a_tool_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("payload");
+        write(&src.join("inner/Data/Scripts/s.pex"), b"pex");
+        // Build the archive with whichever tool exists; skip the test if none.
+        let archive = tmp.path().join("mod.tar");
+        let built = std::process::Command::new("bsdtar")
+            .arg("-cf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&src)
+            .arg(".")
+            .status()
+            .is_ok_and(|s| s.success());
+        if !built {
+            // No bsdtar on this machine - nothing to exercise.
+            return;
+        }
+        let dest = tmp.path().join("staged");
+        extract_with_system(&archive, &dest).unwrap();
+        assert!(dest.join("inner/Data/Scripts/s.pex").is_file());
+        normalize_staged(&dest, "Data").unwrap();
+        assert!(dest.join("Scripts/s.pex").is_file());
     }
 
     #[test]

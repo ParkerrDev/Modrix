@@ -22,6 +22,11 @@ convey the resulting work:
 | `clipboard_wayland`   | Wayland clipboard backend                   |
 | `approx`              | Float comparisons (glyph layout dependency) |
 | `gethostname`         | Hostname lookup (X11 windowing dependency)  |
+| `codespan-reporting`  | Shader-compiler diagnostics (naga/wgpu)     |
+| `spirv`               | SPIR-V type definitions (naga/wgpu)         |
+| `gl_generator`        | Build-time OpenGL binding codegen (wgpu)    |
+| `khronos_api`         | Khronos XML registry data (build-time)      |
+| `glutin_wgl_sys`      | Windows WGL bindings (wgpu GL fallback)     |
 
 You must comply with the Apache License 2.0 in all respects for those
 libraries themselves. If you modify ModManager, you may extend this
@@ -31,14 +36,15 @@ not wish to, delete this exception statement from your version.
 ## Scope: what it deliberately does *not* cover
 
 - This exception exists **only** because every viable native Rust
-  windowing stack is built on `winit`, which is Apache-2.0 licensed and
-  has no GPLv2-compatible substitute.
+  windowing/GPU stack is built on `winit` and `wgpu`, which are
+  Apache-2.0 licensed (or depend on Apache-2.0-only crates) and have no
+  GPLv2-compatible substitute.
 - It applies **only** to the `modman-gui` binary. The engine
   (`modman-core`), the download manager (`modman-download`), the IPC
   layer (`modman-ipc`), the protocol handler, the CLI, and the TUI link
   **zero** Apache-2.0 code - this is enforced mechanically by
   [`deny.toml`](../deny.toml), which forbids Apache-2.0 globally and excepts
-  precisely the ten crates named above, by name.
+  precisely the fifteen crates named above, by name.
 - It is **not** a general grant to add Apache-2.0 dependencies. Any new
   Apache-2.0 crate fails `cargo deny check` unless it is a
   windowing/rendering requirement of the GUI and is added both here and

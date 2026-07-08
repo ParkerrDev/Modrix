@@ -15,8 +15,8 @@ use modman_core::{
     DeployReport, Engine, Game, GameDef, GameId, Mod, ModId, Paths, Profile, ProfileId,
     VerifyReport,
 };
-use modman_download::{DownloadId, DownloadStatus};
-use modman_service::{Binding, Service};
+use modman_download::{DownloadId, DownloadState, DownloadStatus};
+use modman_service::{Binding, InstallOutcome, Service};
 
 use crate::theme;
 
@@ -159,6 +159,8 @@ pub struct App {
     pub order: Vec<Mod>,
     /// Download snapshots, newest first.
     pub downloads: Vec<DownloadStatus>,
+    /// Install phase of each completed download.
+    pub outcomes: std::collections::HashMap<DownloadId, InstallOutcome>,
     /// Result banner.
     pub status: Option<StatusLine>,
     /// A deploy/purge/verify/stage is in flight.
@@ -274,6 +276,7 @@ pub fn boot() -> (App, Task<Message>) {
         mods: Vec::new(),
         order: Vec::new(),
         downloads: Vec::new(),
+        outcomes: std::collections::HashMap::new(),
         status: None,
         busy: false,
         defs: Vec::new(),
@@ -410,6 +413,11 @@ impl App {
         if let Some(service) = &self.service {
             let mut downloads = service.manager().list();
             downloads.sort_by_key(|d| std::cmp::Reverse(d.id));
+            self.outcomes = downloads
+                .iter()
+                .filter(|d| d.state == DownloadState::Complete)
+                .filter_map(|d| service.install_outcome(d.id).map(|o| (d.id, o)))
+                .collect();
             self.downloads = downloads;
         }
         self.refresh_engine();

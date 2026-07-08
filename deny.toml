@@ -111,6 +111,22 @@ allow = ["Apache-2.0"]
 [[licenses.exceptions]]
 name = "gethostname"
 allow = ["Apache-2.0"]
+# The GPU renderer (wgpu/naga) additions - same GUI-only linking exception.
+[[licenses.exceptions]]
+name = "codespan-reporting"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "spirv"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "gl_generator"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "khronos_api"
+allow = ["Apache-2.0"]
+[[licenses.exceptions]]
+name = "glutin_wgl_sys"
+allow = ["Apache-2.0"]
 
 [bans]
 multiple-versions = "allow"

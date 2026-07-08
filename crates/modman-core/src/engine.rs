@@ -220,24 +220,23 @@ impl Engine {
 // --- mods ------------------------------------------------------------------
 
 impl Engine {
-    /// Stage a mod into the store from an extracted directory or a `.zip`
-    /// archive, recording it against `game`.
+    /// Stage a mod into the store from an extracted directory, a `.zip`
+    /// (built-in), or a `.7z`/`.rar`/`.tar.*` archive (via a system
+    /// extractor), recording it against `game`. The staged tree is
+    /// normalized: single wrapping directories are hoisted and an embedded
+    /// mod-root directory (e.g. SKSE's `Data/`) becomes the content root.
     ///
     /// # Errors
     ///
     /// Returns [`Error::Io`]/[`Error::Archive`]/[`Error::BoundExceeded`] on a
     /// staging failure, or [`Error::Database`] on insert failure.
     pub fn stage(&self, game: GameId, name: &str, path: &Path) -> Result<Mod> {
+        let mod_root = self.game(game)?.mod_root;
         let staged = self.paths.staging_root().join(game.to_string()).join(name);
-        if path.is_dir() {
-            store::stage_extracted(path, &staged)?;
-        } else if is_zip(path) {
-            store::extract_zip(path, &staged)?;
-        } else {
-            return Err(Error::Archive {
-                path: path.to_path_buf(),
-                message: "unsupported source; expected a directory or a .zip".to_owned(),
-            });
+        if let Err(error) = extract_into(path, &staged, &mod_root) {
+            // Never leave a half-staged tree behind a failed stage.
+            let _ = std::fs::remove_dir_all(&staged);
+            return Err(error);
         }
         self.conn.execute(
             "INSERT INTO mods (game_id, name, source, staged_path) VALUES (?1, ?2, 'local', ?3)",
@@ -454,6 +453,36 @@ impl Engine {
 fn is_zip(path: &Path) -> bool {
     path.extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
+}
+
+/// Archive kinds handed to a system extractor (`7z`/`bsdtar`).
+fn is_system_archive(path: &Path) -> bool {
+    const EXTS: [&str; 8] = [
+        ".7z", ".rar", ".tar", ".tar.gz", ".tgz", ".tar.xz", ".tar.bz2", ".tar.zst",
+    ];
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    EXTS.iter().any(|ext| name.ends_with(ext))
+}
+
+/// Extract or copy `path` into `staged`, then normalize the tree.
+fn extract_into(path: &Path, staged: &Path, mod_root: &str) -> Result<()> {
+    if path.is_dir() {
+        store::stage_extracted(path, staged)?;
+    } else if is_zip(path) {
+        store::extract_zip(path, staged)?;
+    } else if is_system_archive(path) {
+        store::extract_with_system(path, staged)?;
+    } else {
+        return Err(Error::Archive {
+            path: path.to_path_buf(),
+            message: "unsupported source; expected a directory or a .zip/.7z/.rar/.tar archive"
+                .to_owned(),
+        });
+    }
+    store::normalize_staged(staged, mod_root)
 }
 
 // --- row mapping -----------------------------------------------------------

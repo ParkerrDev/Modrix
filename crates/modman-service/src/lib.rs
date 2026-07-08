@@ -31,6 +31,19 @@ struct Route {
     mod_name: String,
 }
 
+/// How a completed download's *install* phase ended (the download state
+/// itself is [`DownloadStatus::state`]).
+#[derive(Debug, Clone)]
+pub enum InstallOutcome {
+    /// Staged into the library under this mod name.
+    Installed(String),
+    /// Downloaded fine, but no registered game matched the source page -
+    /// the file stays in the download directory.
+    NoGame,
+    /// Staging failed (unsupported archive, extraction error, …).
+    Failed(String),
+}
+
 /// The outcome of [`Service::bind`].
 pub enum Binding {
     /// We are the single instance: the loopback listener is being served in a
@@ -55,6 +68,7 @@ pub struct Service {
     manager: DownloadManager,
     download_dir: PathBuf,
     routes: Arc<Mutex<HashMap<DownloadId, Route>>>,
+    outcomes: Arc<Mutex<HashMap<DownloadId, InstallOutcome>>>,
     seq: Arc<AtomicU64>,
 }
 
@@ -82,10 +96,23 @@ impl Service {
             engine: Arc::new(Mutex::new(engine)),
             manager: DownloadManager::new(max_concurrent)
                 .context("building the download manager")?,
+            seq: Arc::new(AtomicU64::new(next_free_subdir(&download_dir))),
             download_dir,
             routes: Arc::new(Mutex::new(HashMap::new())),
-            seq: Arc::new(AtomicU64::new(1)),
+            outcomes: Arc::new(Mutex::new(HashMap::new())),
         })
+    }
+
+    /// How the install phase of a completed download ended, if it ran yet.
+    #[must_use]
+    pub fn install_outcome(&self, id: DownloadId) -> Option<InstallOutcome> {
+        lock(&self.outcomes).ok()?.get(&id).cloned()
+    }
+
+    fn record(&self, id: DownloadId, outcome: InstallOutcome) {
+        if let Ok(mut outcomes) = lock(&self.outcomes) {
+            outcomes.insert(id, outcome);
+        }
     }
 
     /// The shared engine handle.
@@ -259,20 +286,42 @@ impl Service {
                 file = %file.display(),
                 "downloaded, but no game matched - left in the download dir"
             );
+            self.record(id, InstallOutcome::NoGame);
             return;
         };
         let staged = {
             let Ok(engine) = self.engine.lock() else {
                 tracing::warn!("engine lock poisoned; cannot stage");
+                self.record(id, InstallOutcome::Failed("engine lock poisoned".to_owned()));
                 return;
             };
             engine.stage(game, &route.mod_name, file)
         };
         match staged {
-            Ok(m) => tracing::info!(mod = %m.name, "installed via extension hand-off"),
-            Err(error) => tracing::warn!(%error, "failed to stage downloaded mod"),
+            Ok(m) => {
+                tracing::info!(mod = %m.name, "installed via extension hand-off");
+                self.record(id, InstallOutcome::Installed(m.name));
+            }
+            Err(error) => {
+                tracing::warn!(%error, "failed to stage downloaded mod");
+                self.record(id, InstallOutcome::Failed(error.to_string()));
+            }
         }
     }
+}
+
+/// First download-subdirectory number not used by any previous session, so a
+/// fresh session can never clobber an earlier session's downloaded file.
+fn next_free_subdir(download_dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(download_dir) else {
+        return 1;
+    };
+    let highest = entries
+        .flatten()
+        .filter_map(|e| e.file_name().to_string_lossy().parse::<u64>().ok())
+        .max()
+        .unwrap_or(0);
+    highest.saturating_add(1)
 }
 
 /// Extract a Nexus game domain from a page URL like
@@ -368,6 +417,16 @@ mod tests {
             body: "nxm://x/mods/1/files/2".to_owned(),
         });
         assert_eq!(reply.status, 400);
+    }
+
+    #[test]
+    fn download_subdirs_continue_past_previous_sessions() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        assert_eq!(next_free_subdir(dir.path()), 1);
+        std::fs::create_dir(dir.path().join("1")).expect("mkdir");
+        std::fs::create_dir(dir.path().join("7")).expect("mkdir");
+        std::fs::create_dir(dir.path().join("not-a-number")).expect("mkdir");
+        assert_eq!(next_free_subdir(dir.path()), 8);
     }
 
     #[test]
