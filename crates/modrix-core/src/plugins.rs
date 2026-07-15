@@ -17,7 +17,7 @@ use crate::id::ModId;
 const MAX_PLUGINS: usize = 8192;
 
 /// One plugin in the profile's load order.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct GamePlugin {
     /// The plugin filename (`SkyUI_SE.esp`).
     pub name: String,

@@ -34,7 +34,7 @@ const MAX_DEPTH: u32 = 32;
 const MAX_COUNT: usize = 100_000;
 
 /// One mod present in the game directory but outside Modrix's management.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ExternalMod {
     /// Display name (the folder or file name).
     pub name: String,

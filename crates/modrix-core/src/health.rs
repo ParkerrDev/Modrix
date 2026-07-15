@@ -21,7 +21,7 @@ use crate::plugins::GamePlugin;
 use crate::rules::ModConflict;
 
 /// How serious a health issue is (drives the notification colour).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum Severity {
     /// Will break the game or a mod outright.
     Error,
@@ -32,7 +32,7 @@ pub enum Severity {
 }
 
 /// One detected problem.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Issue {
     /// Severity.
     pub severity: Severity,

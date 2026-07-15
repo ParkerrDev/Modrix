@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::id::GameId;
 
 /// The state of one deployed file relative to the manifest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum FileStatus {
     /// Present and content matches - healthy.
     Ok,
@@ -23,7 +23,7 @@ pub enum FileStatus {
 }
 
 /// A single non-healthy file found by [`verify`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct VerifyIssue {
     /// Target path relative to the deploy root.
     pub target: String,

@@ -48,7 +48,7 @@ impl LinkType {
 }
 
 /// A resolved game install the engine manages mods for.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Game {
     /// Primary key.
     pub id: GameId,
@@ -84,7 +84,7 @@ impl Game {
 }
 
 /// A named, switchable set of enabled mods + load order for one game.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Profile {
     /// Primary key.
     pub id: ProfileId,
@@ -97,7 +97,7 @@ pub struct Profile {
 }
 
 /// A staged mod: an extracted archive in the central store plus provenance.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Mod {
     /// Primary key.
     pub id: ModId,

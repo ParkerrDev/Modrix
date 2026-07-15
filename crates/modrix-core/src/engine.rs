@@ -255,7 +255,7 @@ impl Engine {
 }
 
 /// What a game supports, derived from its definition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct GameCapabilities {
     /// The game has a load-order strategy (a Load Order screen makes sense).
     pub load_order: bool,

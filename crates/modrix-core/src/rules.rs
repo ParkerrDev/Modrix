@@ -20,7 +20,7 @@ use crate::id::ModId;
 const MAX_EDGES: usize = 100_000;
 
 /// One rule: `winner` loads after (and therefore overrides) `loser`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct ModRule {
     /// The mod whose contested files are overridden.
     pub loser: ModId,
@@ -29,7 +29,7 @@ pub struct ModRule {
 }
 
 /// One contested file of a conflicting pair.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ConflictFile {
     /// The target path (relative to the deploy root).
     pub target: String,
@@ -40,7 +40,7 @@ pub struct ConflictFile {
 }
 
 /// Two mods contesting one or more files, plus the rule state between them.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ModConflict {
     /// One side of the pair (the smaller id - canonical order).
     pub first: ModId,

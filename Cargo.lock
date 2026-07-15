@@ -2877,6 +2877,8 @@ dependencies = [
  "modrix-plugin",
  "modrix-registry",
  "modrix-service",
+ "serde",
+ "serde_json",
  "tokio",
  "toml",
  "tracing",

@@ -7,6 +7,7 @@
 //! parses arguments, calls engine methods, and formats the result.
 
 mod output;
+mod parity;
 mod registry;
 mod serve;
 
@@ -29,6 +30,10 @@ struct Cli {
     /// one game is registered.
     #[arg(long, global = true, value_name = "GAME")]
     game: Option<String>,
+
+    /// Machine output: one `{"ok":true,"data":…}` JSON envelope per command.
+    #[arg(long, global = true)]
+    json: bool,
 
     #[command(subcommand)]
     command: Command,
@@ -86,15 +91,35 @@ enum Command {
         #[command(subcommand)]
         cmd: registry::PluginCmd,
     },
+    /// The plugin (.esp/.esm/.esl) load order.
+    Plugins {
+        #[command(subcommand)]
+        cmd: parity::PluginsCmd,
+    },
+    /// Setup health: missing masters, loader checks, conflicts, foreign files.
+    Health,
+    /// Mods in the game directory that Modrix does not manage (read-only).
+    External,
+    /// Downloads on the live Modrix instance (GUI or `modrix serve`).
+    Downloads {
+        #[command(subcommand)]
+        cmd: parity::DownloadsCmd,
+    },
+    /// FOMOD installer options: inspect and apply choices.
+    Fomod {
+        #[command(subcommand)]
+        cmd: parity::FomodCmd,
+    },
 }
 
 #[derive(Subcommand)]
 enum GameCmd {
     /// Register a game from a `game.toml` definition.
     Add {
-        /// Path to the `game.toml` definition.
+        /// Path to the `game.toml` definition. Omit to use the def catalog
+        /// entry whose id matches `--game`.
         #[arg(long, value_name = "FILE")]
-        def: PathBuf,
+        def: Option<PathBuf>,
         /// The game's install directory.
         #[arg(long, value_name = "DIR")]
         install: PathBuf,
@@ -104,6 +129,14 @@ enum GameCmd {
     },
     /// List registered games.
     List,
+    /// Probe every known definition for installs found on disk.
+    Detect,
+    /// Show the active (last worked on) game.
+    Active,
+    /// Make `--game` the active game.
+    SetActive,
+    /// Show what the selected game supports (drives frontend features).
+    Capabilities,
 }
 
 #[derive(Subcommand)]
@@ -137,6 +170,23 @@ enum ModCmd {
     Reinstall {
         /// Mod id or name.
         module: String,
+    },
+    /// Pairwise mod conflicts with their rule state.
+    Conflicts,
+    /// Conflict rules ("winner overrides loser").
+    Rule {
+        #[command(subcommand)]
+        cmd: parity::RuleCmd,
+    },
+    /// Per-file overrides (pin a contested path to one provider).
+    Override {
+        #[command(subcommand)]
+        cmd: parity::OverrideCmd,
+    },
+    /// Content-hash an archive and report if it is already installed.
+    Hash {
+        /// The archive file.
+        archive: PathBuf,
     },
 }
 
@@ -176,13 +226,24 @@ fn main() -> Result<()> {
 
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
-    dispatch(&cli, &engine, &mut out)
+    let result = dispatch(&cli, &engine, &mut out);
+    if cli.json
+        && let Err(error) = result
+    {
+        // Machine mode: errors are an envelope on stderr + a nonzero exit,
+        // never a human backtrace an agent has to scrape.
+        let payload = serde_json::to_string(&format!("{error:#}")).unwrap_or_default();
+        let mut err = std::io::stderr().lock();
+        let _ = writeln!(err, "{{\"ok\":false,\"error\":{payload}}}");
+        std::process::exit(1);
+    }
+    result
 }
 
 fn dispatch(cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
     match &cli.command {
         Command::Paths => output::paths(engine.paths(), out),
-        Command::Game { cmd } => game_cmd(cmd, engine, out),
+        Command::Game { cmd } => game_cmd(cmd, cli, engine, out),
         Command::Mod { cmd } => mod_cmd(cmd, cli, engine, out),
         Command::Profile { cmd } => profile_cmd(cmd, cli, engine, out),
         Command::Loadorder { mods } => loadorder(cli, engine, mods, out),
@@ -191,67 +252,103 @@ fn dispatch(cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
         Command::Verify => verify(cli, engine, out),
         Command::Registry { cmd } => registry::registry_cmd(cmd, engine, out),
         Command::Plugin { cmd } => registry::plugin_cmd(cmd, out),
+        Command::Plugins { cmd } => parity::plugins_cmd(cmd, cli, engine, out),
+        Command::Health => parity::health(cli, engine, out),
+        Command::External => parity::external(cli, engine, out),
+        Command::Downloads { cmd } => parity::downloads_cmd(cmd, cli, engine, out),
+        Command::Fomod { cmd } => parity::fomod_cmd(cmd, cli, engine, out),
         // Handled in `main` before dispatch (needs to own the engine).
         Command::Serve { .. } => Ok(()),
     }
 }
 
-fn game_cmd(cmd: &GameCmd, engine: &Engine, out: &mut dyn Write) -> Result<()> {
+fn game_cmd(cmd: &GameCmd, cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
     match cmd {
         GameCmd::Add {
             def,
             install,
             store,
         } => {
-            let def = GameDef::from_file(def).context("loading the game definition")?;
+            let def = if let Some(path) = def {
+                GameDef::from_file(path).context("loading the game definition")?
+            } else {
+                let id = cli
+                    .game
+                    .as_deref()
+                    .context("pass --def FILE, or --game <id> to use a catalog definition")?;
+                modrix_core::defcat::find_def(engine.paths(), id)
+                    .with_context(|| format!("no definition `{id}` in the catalog"))?
+                    .def
+            };
             let game = engine
                 .add_game(&def, install, store)
                 .context("registering the game")?;
-            writeln!(out, "added game {} ({})", game.name, game.plugin_id)?;
-            Ok(())
+            output::ack(
+                out,
+                cli.json,
+                &format!("added game {} ({})", game.name, game.plugin_id),
+            )
         }
         GameCmd::List => {
-            for game in engine.games()? {
-                writeln!(out, "{}\t{}\t{}", game.id, game.plugin_id, game.name)?;
-            }
-            Ok(())
+            let games = engine.games()?;
+            output::emit(out, cli.json, &games, |out, games| {
+                for game in games {
+                    writeln!(out, "{}\t{}\t{}", game.id, game.plugin_id, game.name)?;
+                }
+                Ok(())
+            })
         }
+        GameCmd::Detect => parity::game_extra("detect", cli, engine, out),
+        GameCmd::Active => parity::game_extra("active", cli, engine, out),
+        GameCmd::SetActive => parity::game_extra("set-active", cli, engine, out),
+        GameCmd::Capabilities => parity::game_extra("capabilities", cli, engine, out),
     }
+}
+
+fn mod_add(
+    source: &std::path::Path,
+    name: Option<&str>,
+    cli: &Cli,
+    engine: &Engine,
+    out: &mut dyn Write,
+) -> Result<()> {
+    let game = resolve_game(cli, engine)?;
+    // An explicit name skips detection; otherwise the shared install
+    // path handles naming, versioning, and the FOMOD default pass.
+    if let Some(name) = name {
+        let m = engine
+            .stage(game.id, name, source)
+            .context("staging the mod")?;
+        writeln!(out, "staged mod {} ({})", m.name, m.id)?;
+        return Ok(());
+    }
+    match modrix_service::install_file(engine, game.id, source)? {
+        modrix_service::InstallOutcome::Installed { name, configurable } => {
+            writeln!(out, "installed {name}{}", fomod_suffix(configurable))?;
+        }
+        other => writeln!(out, "install did not finish: {other:?}")?,
+    }
+    Ok(())
 }
 
 fn mod_cmd(cmd: &ModCmd, cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
     match cmd {
-        ModCmd::Add { source, name } => {
-            let game = resolve_game(cli, engine)?;
-            // An explicit name skips detection; otherwise the shared install
-            // path handles naming, versioning, and the FOMOD default pass.
-            if let Some(name) = name.as_deref() {
-                let m = engine
-                    .stage(game.id, name, source)
-                    .context("staging the mod")?;
-                writeln!(out, "staged mod {} ({})", m.name, m.id)?;
-                return Ok(());
-            }
-            match modrix_service::install_file(engine, game.id, source)? {
-                modrix_service::InstallOutcome::Installed { name, configurable } => {
-                    writeln!(out, "installed {name}{}", fomod_suffix(configurable))?;
-                }
-                other => writeln!(out, "install did not finish: {other:?}")?,
-            }
-            Ok(())
-        }
+        ModCmd::Add { source, name } => mod_add(source, name.as_deref(), cli, engine, out),
         ModCmd::List => {
             let game = resolve_game(cli, engine)?;
             let enabled = engine.enabled_mods(engine.active_profile(game.id)?.id)?;
-            for m in engine.mods(game.id)? {
-                let mark = if enabled.iter().any(|e| e.id == m.id) {
-                    "*"
-                } else {
-                    " "
-                };
-                writeln!(out, "{mark} {}\t{}", m.id, m.name)?;
-            }
-            Ok(())
+            let mods = engine.mods(game.id)?;
+            output::emit(out, cli.json, &mods, |out, mods| {
+                for m in mods {
+                    let mark = if enabled.iter().any(|e| e.id == m.id) {
+                        "*"
+                    } else {
+                        " "
+                    };
+                    writeln!(out, "{mark} {}\t{}", m.id, m.name)?;
+                }
+                Ok(())
+            })
         }
         ModCmd::Enable { module } => set_enabled(cli, engine, module, true, out),
         ModCmd::Disable { module } => set_enabled(cli, engine, module, false, out),
@@ -277,6 +374,10 @@ fn mod_cmd(cmd: &ModCmd, cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Res
             )?;
             Ok(())
         }
+        ModCmd::Conflicts => parity::conflicts(cli, engine, out),
+        ModCmd::Rule { cmd } => parity::rule_cmd(cmd, cli, engine, out),
+        ModCmd::Override { cmd } => parity::override_cmd(cmd, cli, engine, out),
+        ModCmd::Hash { archive } => parity::mod_hash(archive, cli, engine, out),
     }
 }
 
@@ -337,18 +438,24 @@ fn loadorder(cli: &Cli, engine: &Engine, mods: &[String], out: &mut dyn Write) -
     let game = resolve_game(cli, engine)?;
     let profile = engine.active_profile(game.id)?;
     if mods.is_empty() {
-        for (index, m) in engine.enabled_mods(profile.id)?.iter().enumerate() {
-            writeln!(out, "{index}\t{}", m.name)?;
-        }
-        return Ok(());
+        let enabled = engine.enabled_mods(profile.id)?;
+        return output::emit(out, cli.json, &enabled, |out, enabled| {
+            for (index, m) in enabled.iter().enumerate() {
+                writeln!(out, "{index}\t{}", m.name)?;
+            }
+            Ok(())
+        });
     }
     let mut ids = Vec::with_capacity(mods.len());
     for module in mods {
         ids.push(resolve_mod(engine, &game, module)?.id);
     }
     engine.set_load_order(profile.id, &ids)?;
-    writeln!(out, "load order set ({} mods)", ids.len())?;
-    Ok(())
+    output::ack(
+        out,
+        cli.json,
+        &format!("load order set ({} mods)", ids.len()),
+    )
 }
 
 fn deploy(cli: &Cli, engine: &Engine, dry_run: bool, out: &mut dyn Write) -> Result<()> {
@@ -356,10 +463,18 @@ fn deploy(cli: &Cli, engine: &Engine, dry_run: bool, out: &mut dyn Write) -> Res
     let profile = engine.active_profile(game.id)?;
     if dry_run {
         let plan = engine.plan(profile.id)?;
-        output::plan(&plan, out)
+        let data = serde_json::json!({
+            "to_add": plan.to_add(), "to_remove": plan.to_remove(),
+            "unchanged": plan.unchanged(), "conflicts": plan.conflicts().len(),
+        });
+        output::emit(out, cli.json, &data, |out, _| output::plan(&plan, out))
     } else {
         let report = engine.deploy(profile.id).context("deploying")?;
-        output::report(&report, out)
+        let data = serde_json::json!({
+            "added": report.added(), "removed": report.removed(),
+            "unchanged": report.unchanged(), "skipped_modified": report.skipped_modified(),
+        });
+        output::emit(out, cli.json, &data, |out, _| output::report(&report, out))
     }
 }
 
@@ -367,15 +482,23 @@ fn undeploy(cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
     let game = resolve_game(cli, engine)?;
     let profile = engine.active_profile(game.id)?;
     let report = engine.undeploy(profile.id).context("undeploying")?;
-    writeln!(out, "removed {} files", report.removed())?;
-    Ok(())
+    output::ack(
+        out,
+        cli.json,
+        &format!("removed {} files", report.removed()),
+    )
 }
 
 fn verify(cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
     let game = resolve_game(cli, engine)?;
     let profile = engine.active_profile(game.id)?;
     let report = engine.verify(profile.id)?;
-    output::verify(&report, out)
+    let data = serde_json::json!({
+        "clean": report.is_clean(),
+        "checked": report.checked(),
+        "issues": report.issues(),
+    });
+    output::emit(out, cli.json, &data, |out, _| output::verify(&report, out))
 }
 
 // --- resolution helpers ----------------------------------------------------
