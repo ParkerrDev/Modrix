@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 modrix-core.workspace = true
 modrix-ipc.workspace = true
+modrix-plugin.workspace = true
 modrix-service.workspace = true
 anyhow.workspace = true
 clap.workspace = true

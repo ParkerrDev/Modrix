@@ -20,6 +20,11 @@ ignore = [
     # happens on our side - so the vulnerable path is not exercised. No fix
     # exists upstream.
     "RUSTSEC-2023-0071",
+    # `rustybuzz`: text shaping inside iced's cosmic-text - declared
+    # unmaintained (superseded by harfrust), not a vulnerability. It shapes
+    # our own UI strings, not untrusted input. Goes away when iced moves;
+    # re-check on the next iced upgrade.
+    "RUSTSEC-2026-0206",
     # `rustls-webpki` 0.102.8 (CRL matching, URI/wildcard name constraints, CRL
     # parse panic): our certificate chain verification runs through
     # rustls-webpki 0.103.13 (patched, via rustls 0.23). We only pull 0.102.8

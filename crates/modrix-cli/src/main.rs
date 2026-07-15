@@ -153,7 +153,9 @@ fn main() -> Result<()> {
         Some(dir) => Paths::rooted_at(dir),
         None => Paths::resolve().context("resolving platform directories")?,
     };
-    let engine = Engine::open(&paths).context("opening the Modrix engine")?;
+    let mut engine = Engine::open(&paths).context("opening the Modrix engine")?;
+    // Tier-2 plugins (game.lua) hook in before any command runs.
+    modrix_plugin::register_lua_logic(&mut engine);
 
     // `serve` runs its own async runtime and owns the engine; everything else is
     // a quick synchronous action.

@@ -699,8 +699,10 @@ fn step(index: usize, delta: i8, len: usize) -> usize {
 /// executor (the listener and stager are spawned onto it).
 fn start_service(progress: &std::sync::Arc<modrix_core::Progress>) -> Result<Booted, String> {
     let paths = Paths::resolve().map_err(|e| e.to_string())?;
-    let engine = Engine::open_with_progress(&paths, std::sync::Arc::clone(progress))
+    let mut engine = Engine::open_with_progress(&paths, std::sync::Arc::clone(progress))
         .map_err(|e| e.to_string())?;
+    // Tier-2 plugins (game.lua) hook in before the engine is shared.
+    modrix_plugin::register_lua_logic(&mut engine);
     let lockfile = paths.instance_lock();
     let defs = discover_defs(&paths);
     let detected = detect_installs(&defs);

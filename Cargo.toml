@@ -46,6 +46,8 @@ getrandom = "0.3"
 iced = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "auto-detect-theme", "canvas", "image"] }
 # FOMOD installer config parsing (read-only XML DOM; MIT arm of MIT/Apache dual).
 roxmltree = "0.20"
+# Sandboxed Lua host for Tier-2 game plugins (MIT; vendors Lua 5.4, also MIT).
+mlua = { version = "0.10", default-features = false, features = ["lua54", "vendored"] }
 # Native file-open dialogs via the XDG portal (MIT; no GTK linkage).
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 serde = { version = "1", features = ["derive"] }

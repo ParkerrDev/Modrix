@@ -24,6 +24,8 @@ pub struct Engine {
     paths: Paths,
     conn: Connection,
     progress: std::sync::Arc<crate::Progress>,
+    /// Tier-2 game logic by plugin id, registered by frontends at boot.
+    logic: std::collections::HashMap<String, std::sync::Arc<dyn crate::logic::GameLogic>>,
 }
 
 impl Engine {
@@ -61,7 +63,25 @@ impl Engine {
             paths: paths.clone(),
             conn,
             progress,
+            logic: std::collections::HashMap::new(),
         })
+    }
+
+    /// Register Tier-2 logic for a plugin id. Called by frontends at boot
+    /// (before the engine is shared); the engine consults it before its
+    /// data-driven defaults wherever the trait has a hook.
+    pub fn register_logic(
+        &mut self,
+        plugin_id: &str,
+        logic: std::sync::Arc<dyn crate::logic::GameLogic>,
+    ) {
+        self.logic.insert(plugin_id.to_owned(), logic);
+    }
+
+    /// The registered Tier-2 logic for a game, if any.
+    fn logic_of(&self, game: GameId) -> Option<std::sync::Arc<dyn crate::logic::GameLogic>> {
+        let plugin_id = self.game(game).ok()?.plugin_id;
+        self.logic.get(&plugin_id).cloned()
     }
 
     /// The live progress sink long operations report into.
@@ -409,8 +429,9 @@ impl Engine {
             .map(|d| d.content_dirs)
             .unwrap_or_default();
         let staged = self.paths.staging_root().join(game.to_string()).join(name);
+        let logic = self.logic_of(game);
         self.progress.begin(&format!("Installing · {name}"), 0);
-        let extracted = extract_into(path, &staged, &mod_root, &content_dirs);
+        let extracted = extract_into(path, &staged, &mod_root, &content_dirs, logic.as_deref());
         self.progress.finish();
         if let Err(error) = extracted {
             // Never leave a half-staged tree behind a failed stage.
@@ -1266,8 +1287,16 @@ fn is_system_archive(path: &Path) -> bool {
     EXTS.iter().any(|ext| name.ends_with(ext))
 }
 
-/// Extract or copy `path` into `staged`, then normalize the tree.
-fn extract_into(path: &Path, staged: &Path, mod_root: &str, content_dirs: &[String]) -> Result<()> {
+/// Extract or copy `path` into `staged`, then shape the tree: a registered
+/// Tier-2 plugin may return a stage plan (validated and applied by core);
+/// otherwise the data-driven normalization runs.
+fn extract_into(
+    path: &Path,
+    staged: &Path,
+    mod_root: &str,
+    content_dirs: &[String],
+    logic: Option<&dyn crate::logic::GameLogic>,
+) -> Result<()> {
     if path.is_dir() {
         store::stage_extracted(path, staged)?;
     } else if is_zip(path) {
@@ -1281,8 +1310,11 @@ fn extract_into(path: &Path, staged: &Path, mod_root: &str, content_dirs: &[Stri
                 .to_owned(),
         });
     }
-    store::normalize_staged(staged, mod_root, content_dirs)?;
-    // Stamp AFTER structural normalization so the final tree is covered
+    match logic.map(|l| l.install(staged)).transpose()? {
+        Some(Some(plan)) => crate::logic::apply_plan(staged, &plan)?,
+        _ => store::normalize_staged(staged, mod_root, content_dirs)?,
+    }
+    // Stamp AFTER structural shaping so the final tree is covered
     // (renames preserve mtimes, so order is for clarity, not correctness).
     store::refresh_mtimes(staged)
 }

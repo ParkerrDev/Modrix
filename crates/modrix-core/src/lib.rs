@@ -28,6 +28,7 @@ mod gamedef;
 pub mod health;
 mod id;
 pub mod loadorder;
+pub mod logic;
 mod model;
 pub mod naming;
 mod paths;

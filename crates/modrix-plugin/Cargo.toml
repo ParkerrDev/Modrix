@@ -13,6 +13,7 @@ modrix-core.workspace = true
 roxmltree.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
+mlua.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

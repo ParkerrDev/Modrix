@@ -85,6 +85,16 @@ pub enum Error {
     /// or a conflict-rule cycle must be fixed first.
     #[error("deploy blocked: {0}")]
     DeployBlocked(String),
+
+    /// A Tier-2 plugin (Lua) failed: a script error, an exhausted execution
+    /// budget, or an invalid value returned across the boundary.
+    #[error("plugin `{plugin}`: {message}")]
+    Plugin {
+        /// The plugin id at fault.
+        plugin: String,
+        /// What went wrong.
+        message: String,
+    },
 }
 
 impl Error {
