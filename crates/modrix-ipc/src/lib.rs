@@ -8,9 +8,14 @@
 //! primary instead of starting a duplicate. If nothing is running, the caller
 //! becomes primary and can service browser clicks headlessly.
 //!
-//! Security: loopback-only, and every request must carry the per-session token
-//! written to the (user-private) lockfile. The browser can only reach the engine
-//! if it presents that token.
+//! Security: loopback-only, and a request is authorized one of two ways:
+//! it carries the per-session token written to the (user-private) lockfile
+//! (secondaries and `modrix-protocol` read it there), or its `Origin` header
+//! is a browser-extension origin (`chrome-extension://…`, `moz-extension://…`).
+//! Browsers stamp `Origin` themselves and web pages cannot forge another
+//! scheme, so the extension works with zero configuration while a drive-by
+//! website (an `http(s)://` origin, or none) is still refused without the
+//! token.
 
 mod error;
 mod wire;
@@ -211,18 +216,41 @@ where
     F: std::future::Future<Output = Reply>,
 {
     let request = wire::read_request(&mut stream).await?;
+    let origin = request.origin.clone();
     if request.method.eq_ignore_ascii_case("OPTIONS") {
-        return wire::write_response(&mut stream, 204, "").await;
+        return wire::write_response(&mut stream, 204, "", origin.as_deref()).await;
     }
-    if request.token.as_deref() != Some(token) {
-        return wire::write_response(&mut stream, 401, "unauthorized").await;
+    if !authorized(&request, token) {
+        return wire::write_response(&mut stream, 401, "unauthorized", origin.as_deref()).await;
     }
     let reply = handler(Message {
         path: request.path,
         body: request.body,
     })
     .await;
-    wire::write_response(&mut stream, reply.status, &reply.body).await
+    wire::write_response(&mut stream, reply.status, &reply.body, origin.as_deref()).await
+}
+
+/// Whether a request may reach the handler: the session token always works;
+/// a browser-extension `Origin` works without one (see the module docs).
+fn authorized(request: &wire::ParsedRequest, token: &str) -> bool {
+    if request.token.as_deref() == Some(token) {
+        return true;
+    }
+    request.origin.as_deref().is_some_and(is_extension_origin)
+}
+
+/// Whether `origin` is a browser-extension origin. Requires a non-empty
+/// extension id after the scheme so a bare scheme cannot slip through.
+fn is_extension_origin(origin: &str) -> bool {
+    const SCHEMES: [&str; 3] = [
+        "chrome-extension://",
+        "moz-extension://",
+        "safari-web-extension://",
+    ];
+    SCHEMES
+        .iter()
+        .any(|scheme| origin.len() > scheme.len() && origin.starts_with(scheme))
 }
 
 /// A handle to the running primary instance, used to forward a request to it.
@@ -344,6 +372,84 @@ mod tests {
         };
         let reply = impostor.send("/nxm", "x").await.unwrap();
         assert_eq!(reply.status, 401);
+    }
+
+    /// Send a raw HTTP request and return `(status, response_head)`.
+    async fn send_raw(port: u16, request: &str) -> (u16, String) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut buf = Vec::new();
+        stream.read_to_end(&mut buf).await.unwrap();
+        let text = String::from_utf8_lossy(&buf).into_owned();
+        let status = text
+            .split(' ')
+            .nth(1)
+            .and_then(|code| code.parse().ok())
+            .unwrap();
+        (status, text)
+    }
+
+    fn spawn_echo_primary(lock: &Path) -> u16 {
+        let Role::Primary(primary) = acquire(lock, 0).unwrap() else {
+            panic!("primary");
+        };
+        let port = primary.port();
+        tokio::spawn(primary.serve(|_m: Message| async { Reply::ok("served") }));
+        port
+    }
+
+    #[tokio::test]
+    async fn extension_origin_is_authorized_without_a_token() {
+        let (_dir, lock) = lockfile();
+        let port = spawn_echo_primary(&lock);
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let origin = "moz-extension://0f9a1b2c-3d4e";
+        let (status, head) = send_raw(
+            port,
+            &format!(
+                "POST /downloads HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: {origin}\r\n\
+                 Content-Length: 0\r\nConnection: close\r\n\r\n"
+            ),
+        )
+        .await;
+        assert_eq!(status, 200, "extension origins are zero-config");
+        // CORS must echo the specific origin, not the wildcard.
+        assert!(
+            head.contains(&format!("Access-Control-Allow-Origin: {origin}")),
+            "got: {head}"
+        );
+    }
+
+    #[tokio::test]
+    async fn web_page_origin_without_a_token_is_rejected() {
+        let (_dir, lock) = lockfile();
+        let port = spawn_echo_primary(&lock);
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        for origin in ["https://evil.example", "http://127.0.0.1:8080", "null"] {
+            let (status, _head) = send_raw(
+                port,
+                &format!(
+                    "POST /downloads HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: {origin}\r\n\
+                     Content-Length: 0\r\nConnection: close\r\n\r\n"
+                ),
+            )
+            .await;
+            assert_eq!(status, 401, "web origin {origin} must still need the token");
+        }
+    }
+
+    #[test]
+    fn extension_origin_check_requires_a_real_id() {
+        assert!(is_extension_origin("chrome-extension://abcdef"));
+        assert!(is_extension_origin("safari-web-extension://ABC-123"));
+        assert!(!is_extension_origin("chrome-extension://"));
+        assert!(!is_extension_origin("https://chrome-extension.example"));
+        assert!(!is_extension_origin(""));
     }
 
     #[tokio::test]

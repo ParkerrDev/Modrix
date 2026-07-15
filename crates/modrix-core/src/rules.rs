@@ -95,7 +95,12 @@ pub fn effective_order(mods: &[ModId], rules: &[ModRule]) -> (Vec<ModId>, Vec<Mo
         .collect();
     let mut out = Vec::with_capacity(mods.len());
     let mut emitted = vec![false; mods.len()];
-    while let Some(pos) = ready.iter().enumerate().min_by_key(|(_, i)| **i).map(|(p, _)| p) {
+    while let Some(pos) = ready
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, i)| **i)
+        .map(|(p, _)| p)
+    {
         let node = ready.swap_remove(pos);
         if let Some(e) = emitted.get_mut(node) {
             *e = true;
@@ -146,11 +151,14 @@ pub fn summarize<S: std::hash::BuildHasher>(
             } else {
                 (conflict.winner, *loser)
             };
-            pairs.entry((first, second)).or_default().push(ConflictFile {
-                target: conflict.target.clone(),
-                winner: conflict.winner,
-                overridden: overrides.contains_key(&conflict.target.to_ascii_lowercase()),
-            });
+            pairs
+                .entry((first, second))
+                .or_default()
+                .push(ConflictFile {
+                    target: conflict.target.clone(),
+                    winner: conflict.winner,
+                    overridden: overrides.contains_key(&conflict.target.to_ascii_lowercase()),
+                });
         }
     }
     let mut out: Vec<ModConflict> = pairs
@@ -211,8 +219,14 @@ mod tests {
     fn a_cycle_is_reported_and_order_preserved() {
         let mods = vec![m(1), m(2), m(3)];
         let rules = vec![
-            ModRule { loser: m(1), winner: m(2) },
-            ModRule { loser: m(2), winner: m(1) },
+            ModRule {
+                loser: m(1),
+                winner: m(2),
+            },
+            ModRule {
+                loser: m(2),
+                winner: m(1),
+            },
         ];
         let (order, cycle) = effective_order(&mods, &rules);
         assert_eq!(order.len(), 3);

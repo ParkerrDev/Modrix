@@ -67,11 +67,11 @@ async function intercept(item) {
 }
 
 async function handoff(url, extra = {}) {
-  const { port, token } = await api.storage.local.get(["port", "token"]);
-  if (!port || !token) {
-    notify("Open the Modrix Bridge options and set the port + token from `modrix serve`.");
-    return;
-  }
+  // Zero-config: the listener trusts our extension Origin on loopback, so no
+  // token is required. Stored values are advanced overrides only.
+  const stored = await api.storage.local.get(["port", "token"]);
+  const port = stored.port || 41015;
+  const token = (stored.token || "").trim();
   const cookies = await api.cookies.getAll({ url }).catch(() => []);
   const pageUrl = extra.pageUrl || url;
   const job = {
@@ -86,15 +86,17 @@ async function handoff(url, extra = {}) {
     pageUrl,
     gameHint: gameHint(pageUrl),
   };
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["x-modrix-token"] = token;
   try {
     const res = await fetch(`http://127.0.0.1:${port}/download`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-modrix-token": token },
+      headers,
       body: JSON.stringify(job),
     });
     notify(res.ok ? "Sent to Modrix." : `Modrix rejected it: ${await safeText(res)}`);
   } catch (_e) {
-    notify("Modrix isn't running - start it with `modrix serve`.");
+    notify("Modrix isn't running - open the app or run `modrix serve`.");
   }
 }
 

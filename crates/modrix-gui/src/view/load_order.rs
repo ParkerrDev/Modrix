@@ -27,7 +27,13 @@ pub(super) fn body(app: &App) -> El<'_> {
     for (i, plugin) in app.plugins.iter().enumerate() {
         let selected = app.plugin_sel.items.contains(&i) || app.plugin_sel.cursor == Some(i);
         let drag_target = app.drag.map(|(_, to)| to) == Some(i);
-        rows = rows.push(plugin_row(plugin, i, app.plugins.len(), selected, drag_target));
+        rows = rows.push(plugin_row(
+            plugin,
+            i,
+            app.plugins.len(),
+            selected,
+            drag_target,
+        ));
     }
     let list = scrollable(rows)
         .id(iced::widget::scrollable::Id::new("plugins-list"))
@@ -86,14 +92,20 @@ fn plugin_row(plugin: &GamePlugin, index: usize, len: usize, selected: bool, dro
         .on_press(Message::DragStart(Pane::Plugins, index));
     let position = index.saturating_add(1);
     let arrows = row![
-        arrow_button(true, (index > 0).then_some(Message::MoveSelection {
-            pane: Pane::Plugins,
-            delta: -1,
-        })),
-        arrow_button(false, (index < len.saturating_sub(1)).then_some(Message::MoveSelection {
-            pane: Pane::Plugins,
-            delta: 1,
-        })),
+        arrow_button(
+            true,
+            (index > 0).then_some(Message::MoveSelection {
+                pane: Pane::Plugins,
+                delta: -1,
+            })
+        ),
+        arrow_button(
+            false,
+            (index < len.saturating_sub(1)).then_some(Message::MoveSelection {
+                pane: Pane::Plugins,
+                delta: 1,
+            })
+        ),
     ]
     .spacing(4);
     let activate = toggler(plugin.enabled)
@@ -103,9 +115,14 @@ fn plugin_row(plugin: &GamePlugin, index: usize, len: usize, selected: bool, dro
     let inner = row![
         handle,
         activate,
-        container(text(format!("{position:>3}")).size(11).font(BOLD).color(theme::ACCENT))
-            .padding([3, 8])
-            .style(theme::chip(theme::ACCENT)),
+        container(
+            text(format!("{position:>3}"))
+                .size(11)
+                .font(BOLD)
+                .color(theme::ACCENT)
+        )
+        .padding([3, 8])
+        .style(theme::chip(theme::ACCENT)),
         name_column(plugin),
         container(tier_chip(plugin)).width(44),
         arrows,
@@ -121,7 +138,10 @@ fn plugin_row(plugin: &GamePlugin, index: usize, len: usize, selected: bool, dro
     } else {
         |t| theme::table_row(false)(t)
     };
-    let styled = container(inner).width(Length::Fill).padding([6, 12]).style(style);
+    let styled = container(inner)
+        .width(Length::Fill)
+        .padding([6, 12])
+        .style(style);
     mouse_area(styled)
         .on_press(Message::RowClick {
             pane: Pane::Plugins,
@@ -134,7 +154,11 @@ fn plugin_row(plugin: &GamePlugin, index: usize, len: usize, selected: bool, dro
 /// The plugin's name, mod origin, and any missing-master warning.
 fn name_column(plugin: &GamePlugin) -> El<'_> {
     let name_color = if plugin.missing_masters.is_empty() {
-        if plugin.enabled { theme::TEXT } else { theme::MUTED }
+        if plugin.enabled {
+            theme::TEXT
+        } else {
+            theme::MUTED
+        }
     } else {
         theme::DANGER
     };

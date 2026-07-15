@@ -34,9 +34,9 @@ fn service_card(app: &App) -> El<'_> {
         .spacing(10)
         .into(),
         (None, true) => text("Another instance holds the port. Close it and restart the GUI.")
-        .size(13)
-        .color(theme::INFO)
-        .into(),
+            .size(13)
+            .color(theme::INFO)
+            .into(),
         (None, false) => text("The hand-off listener failed to start.")
             .size(13)
             .color(theme::DANGER)
@@ -102,10 +102,7 @@ fn profiles_card(app: &App) -> El<'_> {
     ]
     .spacing(10)
     .align_y(Alignment::Center);
-    labeled_card(
-        "PROFILES",
-        column![listing, form].spacing(12).into(),
-    )
+    labeled_card("PROFILES", column![listing, form].spacing(12).into())
 }
 
 fn about_card() -> El<'static> {

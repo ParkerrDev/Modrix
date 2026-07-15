@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 //! The Dashboard: at-a-glance cards, or onboarding when nothing is set up.
 
-use iced::widget::{button, column, container, row, text};
 use iced::Length;
+use iced::widget::{button, column, container, row, text};
 use modrix_download::DownloadState;
 
 use super::{BOLD, El, empty_state, labeled_card};
@@ -116,7 +116,10 @@ fn onboarding(app: &App) -> El<'_> {
         .map_or_else(|| "-".to_owned(), |l| l.port.to_string());
     let steps = column![
         step("1", "Register your game"),
-        step("2", "Load the browser extension and paste the token from Settings"),
+        step(
+            "2",
+            "Load the browser extension and paste the token from Settings"
+        ),
         step("3", "Click Download on nexusmods.com"),
     ]
     .spacing(12);

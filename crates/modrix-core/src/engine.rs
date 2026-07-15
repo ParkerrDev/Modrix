@@ -319,7 +319,11 @@ impl Engine {
             let _ = std::fs::remove_dir_all(&staged);
             return Err(error);
         }
-        let source = if nexus_mod_id.is_some() { "nexus" } else { "local" };
+        let source = if nexus_mod_id.is_some() {
+            "nexus"
+        } else {
+            "local"
+        };
         // Absolute provenance: a relative archive path would silently break
         // reinstall the moment the working directory changes.
         let archive = (!path.is_dir()).then(|| {
@@ -328,9 +332,15 @@ impl Engine {
                 .to_string_lossy()
                 .into_owned()
         });
+        // A hash failure is not worth failing the install over; the mod just
+        // loses duplicate detection (same as a directory install).
+        let archive_sha256 = (!path.is_dir())
+            .then(|| crate::deploy::fsops::hash_file(path).ok())
+            .flatten();
         self.conn.execute(
-            "INSERT INTO mods (game_id, name, version, source, staged_path, archive_path, nexus_mod_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO mods (game_id, name, version, source, staged_path, archive_path, \
+             nexus_mod_id, created_at, archive_sha256) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch(), ?8)",
             rusqlite::params![
                 game.get(),
                 name,
@@ -339,6 +349,7 @@ impl Engine {
                 staged.to_string_lossy(),
                 archive,
                 nexus_mod_id,
+                archive_sha256,
             ],
         )?;
         self.get_mod(ModId::from_raw(self.conn.last_insert_rowid()))
@@ -346,11 +357,7 @@ impl Engine {
 
     /// `name`, or `name (2)`, `name (3)`, … - whichever is free for `game`.
     fn unique_name(&self, game: GameId, name: &str) -> Result<String> {
-        let taken: Vec<String> = self
-            .mods(game)?
-            .into_iter()
-            .map(|m| m.name)
-            .collect();
+        let taken: Vec<String> = self.mods(game)?.into_iter().map(|m| m.name).collect();
         if !taken.iter().any(|t| t == name) {
             return Ok(name.to_owned());
         }
@@ -373,8 +380,10 @@ impl Engine {
     /// Returns [`Error::Database`] on update failure.
     pub fn set_mod_meta(&self, id: ModId, name: Option<&str>, version: Option<&str>) -> Result<()> {
         if let Some(name) = name {
-            self.conn
-                .execute("UPDATE mods SET name = ?2 WHERE id = ?1", rusqlite::params![id.get(), name])?;
+            self.conn.execute(
+                "UPDATE mods SET name = ?2 WHERE id = ?1",
+                rusqlite::params![id.get(), name],
+            )?;
         }
         if let Some(version) = version {
             self.conn.execute(
@@ -432,12 +441,11 @@ impl Engine {
             return Ok(());
         };
         let root = game.deploy_target_root();
-        let mut stmt = self.conn.prepare(
-            "SELECT target_path, backup_path FROM deployed_files WHERE mod_id = ?1",
-        )?;
-        let rows: Vec<(String, Option<String>)> = collect(stmt.query_map([m.id.get()], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?)?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT target_path, backup_path FROM deployed_files WHERE mod_id = ?1")?;
+        let rows: Vec<(String, Option<String>)> =
+            collect(stmt.query_map([m.id.get()], |row| Ok((row.get(0)?, row.get(1)?)))?)?;
         for (target, backup) in &rows {
             let abs = crate::deploy::fsops::rel_to_abs(&root, target);
             let _ = std::fs::remove_file(&abs);
@@ -446,10 +454,8 @@ impl Engine {
                 let _ = std::fs::copy(backup, &abs);
             }
         }
-        self.conn.execute(
-            "DELETE FROM deployed_files WHERE mod_id = ?1",
-            [m.id.get()],
-        )?;
+        self.conn
+            .execute("DELETE FROM deployed_files WHERE mod_id = ?1", [m.id.get()])?;
         Ok(())
     }
 
@@ -504,6 +510,20 @@ impl Engine {
             &owned,
             g.steam_appid,
         ))
+    }
+
+    /// Mods of `game` staged from an archive with this SHA-256 - the "you
+    /// already installed this exact file" lookup. Frontends decide the policy
+    /// (offer replace/reinstall or cancel); the engine only reports matches.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Database`] on query failure.
+    pub fn find_by_archive_hash(&self, game: GameId, sha256: &str) -> Result<Vec<Mod>> {
+        let sql = format!("{MOD_COLUMNS} WHERE game_id = ?1 AND archive_sha256 = ?2 ORDER BY id");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params![game.get(), sha256], mod_from_row)?;
+        collect(rows)
     }
 
     /// Look up one mod by id.
@@ -568,7 +588,8 @@ impl Engine {
     pub fn enabled_mods(&self, profile: ProfileId) -> Result<Vec<Mod>> {
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.game_id, m.name, m.version, m.source, m.staged_path, \
-                    m.install_state, m.archive_path, m.nexus_mod_id \
+                    m.install_state, m.archive_path, m.nexus_mod_id, m.created_at, \
+                    m.archive_sha256 \
              FROM profile_mods pm JOIN mods m ON m.id = pm.mod_id \
              WHERE pm.profile_id = ?1 AND pm.enabled = 1 \
              ORDER BY pm.load_order, m.id",
@@ -666,9 +687,9 @@ impl Engine {
 
     /// The profile's per-file overrides as `lowercased target → provider`.
     fn override_map(&self, profile: ProfileId) -> Result<Overrides> {
-        let mut stmt = self.conn.prepare(
-            "SELECT target_rel, mod_id FROM file_overrides WHERE profile_id = ?1",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT target_rel, mod_id FROM file_overrides WHERE profile_id = ?1")?;
         let rows = stmt.query_map([profile.get()], |row| {
             Ok((
                 row.get::<_, String>(0)?.to_ascii_lowercase(),
@@ -688,13 +709,21 @@ impl Engine {
         let (_, plan) = self.build_plan(profile)?;
         let rules = self.mod_rules(profile)?;
         let overrides = self.override_map(profile)?;
-        Ok(crate::rules::summarize(plan.conflicts(), &rules, &overrides))
+        Ok(crate::rules::summarize(
+            plan.conflicts(),
+            &rules,
+            &overrides,
+        ))
     }
 
     /// The enabled mods' effective deploy order under the profile's rules,
     /// plus any mods caught in a rule cycle.
     fn rule_order(&self, profile: ProfileId) -> Result<(Vec<ModId>, Vec<ModId>)> {
-        let ids: Vec<ModId> = self.enabled_mods(profile)?.into_iter().map(|m| m.id).collect();
+        let ids: Vec<ModId> = self
+            .enabled_mods(profile)?
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
         let rules = self.mod_rules(profile)?;
         Ok(crate::rules::effective_order(&ids, &rules))
     }
@@ -768,7 +797,10 @@ impl Engine {
                 );
             }
         }
-        Ok(order.into_iter().filter_map(|k| by_name.remove(&k)).collect())
+        Ok(order
+            .into_iter()
+            .filter_map(|k| by_name.remove(&k))
+            .collect())
     }
 
     fn saved_plugin_order(&self, profile: ProfileId) -> Result<Vec<(String, bool)>> {
@@ -987,9 +1019,7 @@ impl Engine {
         };
         let report = apply::run(&self.conn, &self.paths, &plan, profile, &reporter)?;
         // Nothing is deployed any more; deactivate every managed plugin.
-        if let Some(dir) =
-            crate::plugins::plugins_txt_dir(&game.install_path, game.steam_appid)
-        {
+        if let Some(dir) = crate::plugins::plugins_txt_dir(&game.install_path, game.steam_appid) {
             let _ = write_atomic(&dir.join("Plugins.txt"), "# Managed by Modrix\n");
         }
         Ok(report)
@@ -1160,7 +1190,8 @@ const GAME_COLUMNS: &str = "SELECT id, plugin_id, name, install_path, mod_root, 
                             steam_appid, nexus_domain, staging_root FROM games";
 const PROFILE_COLUMNS: &str = "SELECT id, game_id, name, is_active FROM profiles";
 const MOD_COLUMNS: &str = "SELECT id, game_id, name, version, source, staged_path, \
-                           install_state, archive_path, nexus_mod_id FROM mods";
+                           install_state, archive_path, nexus_mod_id, created_at, \
+                           archive_sha256 FROM mods";
 
 fn game_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Game> {
     Ok(Game {
@@ -1196,6 +1227,8 @@ fn mod_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Mod> {
         install_state: row.get(6)?,
         archive_path: row.get::<_, Option<String>>(7)?.map(Into::into),
         nexus_mod_id: row.get(8)?,
+        created_at: row.get(9)?,
+        archive_sha256: row.get(10)?,
     })
 }
 
@@ -1252,7 +1285,9 @@ mod tests {
         let second = engine.stage(game.id, "second", &src).unwrap();
         engine.set_enabled(profile.id, first.id, true).unwrap();
         engine.set_enabled(profile.id, second.id, true).unwrap();
-        engine.set_load_order(profile.id, &[second.id, first.id]).unwrap();
+        engine
+            .set_load_order(profile.id, &[second.id, first.id])
+            .unwrap();
 
         // Regression: this query must stay in sync with the mods columns.
         let enabled = engine.enabled_mods(profile.id).unwrap();
@@ -1310,6 +1345,42 @@ mod tests {
         let names: Vec<_> = ext.iter().map(|m| m.name.as_str()).collect();
         assert!(names.contains(&"HandInstalled.esp"), "got {names:?}");
         assert!(names.contains(&"CoolMod"), "got {names:?}");
+    }
+
+    #[test]
+    fn staging_records_hash_and_timestamp_for_duplicate_detection() {
+        let (tmp, engine) = engine();
+        let install = tmp.path().join("game");
+        std::fs::create_dir_all(install.join("Data")).unwrap();
+        let game = engine.add_game(&sample_def(), &install, "manual").unwrap();
+
+        // Stage a tiny archive; the content hash and timestamp must land.
+        let archive = tmp.path().join("TinyMod-1-0.zip");
+        let file = std::fs::File::create(&archive).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        zip.start_file("tiny.esp", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        std::io::Write::write_all(&mut zip, b"esp bytes").unwrap();
+        zip.finish().unwrap();
+        let staged = engine.stage_auto(game.id, &archive).unwrap();
+
+        let hash = staged.archive_sha256.clone().expect("archives are hashed");
+        assert_eq!(hash, crate::sha256_file(&archive).unwrap());
+        assert!(staged.created_at.is_some(), "created_at must be stamped");
+
+        // The duplicate lookup finds exactly that mod...
+        let dupes = engine.find_by_archive_hash(game.id, &hash).unwrap();
+        assert_eq!(
+            dupes.iter().map(|m| m.id).collect::<Vec<_>>(),
+            vec![staged.id]
+        );
+
+        // ...and a directory stage records no hash (nothing to compare).
+        let dir_src = tmp.path().join("dirmod");
+        std::fs::create_dir_all(&dir_src).unwrap();
+        std::fs::write(dir_src.join("a.esp"), b"a").unwrap();
+        let dir_mod = engine.stage(game.id, "dirmod", &dir_src).unwrap();
+        assert!(dir_mod.archive_sha256.is_none());
     }
 
     #[test]
@@ -1409,7 +1480,10 @@ mod tests {
 
         // Deleting the mod (what reinstall does) must not orphan its files.
         engine.delete_mod(m.id).unwrap();
-        assert!(!install.join("Data/a.esp").exists(), "deployed file orphaned");
+        assert!(
+            !install.join("Data/a.esp").exists(),
+            "deployed file orphaned"
+        );
         // The displaced original is restored.
         assert_eq!(
             std::fs::read(install.join("Data/original.txt")).unwrap(),
@@ -1458,8 +1532,12 @@ mod tests {
             std::fs::write(dir.join("shared.txt"), body).unwrap();
             dir
         };
-        let first = engine.stage(game.id, "first", &mk("first", b"FIRST")).unwrap();
-        let second = engine.stage(game.id, "second", &mk("second", b"SECOND")).unwrap();
+        let first = engine
+            .stage(game.id, "first", &mk("first", b"FIRST"))
+            .unwrap();
+        let second = engine
+            .stage(game.id, "second", &mk("second", b"SECOND"))
+            .unwrap();
         engine.set_enabled(profile.id, first.id, true).unwrap();
         engine.set_enabled(profile.id, second.id, true).unwrap();
 
@@ -1473,7 +1551,9 @@ mod tests {
         ));
 
         // Rule: first wins although it installed earlier.
-        engine.set_mod_rule(profile.id, second.id, first.id).unwrap();
+        engine
+            .set_mod_rule(profile.id, second.id, first.id)
+            .unwrap();
         assert!(engine.mod_conflicts(profile.id).unwrap()[0].resolved());
         engine.deploy(profile.id).unwrap();
         assert_eq!(
@@ -1493,8 +1573,12 @@ mod tests {
 
         // Opposing rules form a cycle → blocked again (override cleared so
         // the pair is otherwise unresolved either way).
-        engine.set_mod_rule(profile.id, first.id, second.id).unwrap();
-        engine.set_mod_rule(profile.id, second.id, first.id).unwrap();
+        engine
+            .set_mod_rule(profile.id, first.id, second.id)
+            .unwrap();
+        engine
+            .set_mod_rule(profile.id, second.id, first.id)
+            .unwrap();
         // set_mod_rule replaces the reverse edge, so no cycle survives here -
         // build one via a third mod: 1→2 (2 wins) and 2→1 would be needed.
         // Instead assert the replace semantics held.

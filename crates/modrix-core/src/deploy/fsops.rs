@@ -114,9 +114,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 #[cfg(not(unix))]
 fn same_file(a: &Path, b: &Path) -> bool {
     match (a.metadata(), b.metadata()) {
-        (Ok(ma), Ok(mb)) => {
-            ma.len() == mb.len() && ma.modified().ok() == mb.modified().ok()
-        }
+        (Ok(ma), Ok(mb)) => ma.len() == mb.len() && ma.modified().ok() == mb.modified().ok(),
         _ => false,
     }
 }

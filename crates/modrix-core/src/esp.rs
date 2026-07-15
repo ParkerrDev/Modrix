@@ -37,13 +37,11 @@ pub struct PluginHeader {
 /// Whether a filename looks like a game plugin.
 #[must_use]
 pub fn is_plugin_name(name: &str) -> bool {
-    std::path::Path::new(name)
-        .extension()
-        .is_some_and(|e| {
-            e.eq_ignore_ascii_case("esp")
-                || e.eq_ignore_ascii_case("esm")
-                || e.eq_ignore_ascii_case("esl")
-        })
+    std::path::Path::new(name).extension().is_some_and(|e| {
+        e.eq_ignore_ascii_case("esp")
+            || e.eq_ignore_ascii_case("esm")
+            || e.eq_ignore_ascii_case("esl")
+    })
 }
 
 /// Parse a plugin file's header. Returns `None` for files that are not valid

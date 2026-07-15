@@ -67,7 +67,12 @@ pub fn check(snapshot: &Snapshot<'_>) -> Vec<Issue> {
     unresolved_conflicts(snapshot.conflicts, snapshot.plan, &mut issues);
     skse_loader(snapshot.mods, &mut issues);
     engine_fixes_pair(snapshot.mods, &mut issues);
-    foreign_files(snapshot.data_dir, snapshot.owned, snapshot.steam_appid, &mut issues);
+    foreign_files(
+        snapshot.data_dir,
+        snapshot.owned,
+        snapshot.steam_appid,
+        &mut issues,
+    );
     issues.sort_by_key(|i| match i.severity {
         Severity::Error => 0_u8,
         Severity::Warning => 1,
@@ -184,9 +189,7 @@ fn skse_loader(mods: &[Mod], issues: &mut Vec<Issue>) {
 /// (`d3dx9_42.dll`). One without the other fails at launch.
 fn engine_fixes_pair(mods: &[Mod], issues: &mut Vec<Issue>) {
     let has_plugin = mods.iter().any(|m| {
-        m.staged_path
-            .join("SKSE/Plugins/EngineFixes.dll")
-            .exists()
+        m.staged_path.join("SKSE/Plugins/EngineFixes.dll").exists()
             || m.name.to_ascii_lowercase().contains("engine fixes")
     });
     let has_preloader = mods

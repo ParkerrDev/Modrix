@@ -11,10 +11,12 @@ mod mods;
 mod settings;
 mod wizard;
 
-use iced::widget::{Space, button, column, container, pick_list, row, scrollable, stack, text};
+use iced::widget::{
+    Space, button, column, container, mouse_area, opaque, pick_list, row, scrollable, text,
+};
 use iced::{Alignment, Font, Length};
 
-use crate::app::{App, GameChoice, Message, Note, Screen, Tone};
+use crate::app::{App, DupPrompt, GameChoice, Message, Note, Screen, Tone};
 use crate::{icons, theme};
 
 /// The message-typed element every view helper returns.
@@ -47,21 +49,31 @@ pub fn view(app: &App) -> El<'_> {
         return starting(app);
     }
     let base: El<'_> = row![sidebar(app), content(app)].into();
-    match &app.wizard {
-        Some(wizard) => stack![base, wizard::overlay(app, wizard)].into(),
-        None => base,
+    // Overlays stack over the base UI: the notification popup (non-blocking,
+    // top-right), then modal layers (duplicate prompt, FOMOD wizard).
+    let mut layers: Vec<El<'_>> = vec![base];
+    if app.notes_open {
+        layers.push(notes_overlay(app));
     }
+    if let Some(prompt) = app.dup_queue.first() {
+        layers.push(dup_overlay(prompt));
+    }
+    if let Some(wizard) = &app.wizard {
+        layers.push(wizard::overlay(app, wizard));
+    }
+    if layers.len() == 1 {
+        return layers.remove(0);
+    }
+    iced::widget::Stack::with_children(layers).into()
 }
 
 /// The boot screen: wordmark plus a live progress bar and status line while
 /// the engine starts (crash recovery can take a while on big libraries).
 fn starting(app: &App) -> El<'_> {
-    let mut body = column![
-        row![
-            text("MOD").size(24).font(BOLD).color(theme::ACCENT),
-            text("RIX").size(24).font(BOLD).color(theme::TEXT),
-        ],
-    ]
+    let mut body = column![row![
+        text("MOD").size(24).font(BOLD).color(theme::ACCENT),
+        text("RIX").size(24).font(BOLD).color(theme::TEXT),
+    ],]
     .spacing(14)
     .align_x(Alignment::Center);
     body = body.push(progress_line(app, 360.0, "Starting…"));
@@ -73,6 +85,10 @@ fn starting(app: &App) -> El<'_> {
 
 /// A progress bar + percentage + status line for the live operation, or a
 /// quiet fallback message when nothing is running.
+///
+/// Every element has a fixed width: the status message changes length each
+/// tick, and if it drove the layout the centered bar would shift ("bounce")
+/// with every update.
 fn progress_line<'a>(app: &'a App, width: f32, idle: &'a str) -> El<'a> {
     let Some(op) = &app.op else {
         return text(idle).size(13).color(theme::MUTED).into();
@@ -81,20 +97,32 @@ fn progress_line<'a>(app: &'a App, width: f32, idle: &'a str) -> El<'a> {
         Some(f) => (f, format!("{:.0}%", f64::from(f) * 100.0)),
         None => (0.0, "…".to_owned()),
     };
+    // Bar + spacing + a fixed percentage cell = the column's constant width.
+    let pct_width = 42.0_f32;
+    let total = width + 10.0 + pct_width;
     column![
         row![
             iced::widget::progress_bar(0.0..=1.0, value)
                 .height(6)
                 .width(width)
                 .style(theme::progress),
-            text(pct).size(12).color(theme::ACCENT),
+            text(pct).size(12).color(theme::ACCENT).width(pct_width),
         ]
         .spacing(10)
         .align_y(Alignment::Center),
-        text(op.message.clone()).size(12).color(theme::MUTED),
+        // Clipped to one line so a long path cannot grow the layout either.
+        container(
+            text(op.message.clone())
+                .size(12)
+                .color(theme::MUTED)
+                .width(total)
+                .align_x(Alignment::Center)
+        )
+        .height(18)
+        .clip(true),
     ]
     .spacing(6)
-    .align_x(Alignment::Center)
+    .width(total)
     .into()
 }
 
@@ -171,8 +199,17 @@ fn nav_items(app: &App) -> El<'_> {
 fn nav_item<'a>(app: &App, screen: Screen, label: &'a str) -> El<'a> {
     let active = app.screen == screen;
     let inner = row![
-        icons::dot(6.0, if active { theme::ACCENT } else { theme::HAIRLINE }),
-        text(label).size(14).font(if active { BOLD } else { Font::DEFAULT }),
+        icons::dot(
+            6.0,
+            if active {
+                theme::ACCENT
+            } else {
+                theme::HAIRLINE
+            }
+        ),
+        text(label)
+            .size(14)
+            .font(if active { BOLD } else { Font::DEFAULT }),
     ]
     .spacing(10)
     .align_y(Alignment::Center);
@@ -214,13 +251,10 @@ fn content(app: &App) -> El<'_> {
     };
     // Fill, not the default Shrink: a Fill-height list inside a Shrink
     // column collapses in iced, hiding everything below the fold.
-    let mut shell = column![header(app)]
+    let shell = column![header(app)]
         .spacing(16)
         .padding(28)
         .height(Length::Fill);
-    if app.notes_open {
-        shell = shell.push(notes_panel(app));
-    }
     container(shell.push(body))
         .width(Length::Fill)
         .height(Length::Fill)
@@ -259,8 +293,10 @@ fn bell(app: &App) -> El<'_> {
     let mut inner = row![icons::bell(theme::MUTED, dot_color)]
         .spacing(6)
         .align_y(Alignment::Center);
-    if app.unread > 0 {
-        inner = inner.push(text(app.unread).size(12).color(dot_color));
+    // Unread events plus live issues: the number tracks what the panel shows.
+    let pending = app.unread.saturating_add(app.health.len());
+    if pending > 0 {
+        inner = inner.push(text(pending).size(12).color(dot_color));
     }
     button(inner)
         .padding([6, 12])
@@ -286,13 +322,15 @@ fn notification_severity(app: &App) -> Severity {
         return Severity::Warning;
     }
     if app.unread > 0 {
-        let worst = app.notes.iter().take(app.unread).map(|n| n.tone).fold(
-            Tone::Info,
-            |acc, t| match (acc, t) {
+        let worst = app
+            .notes
+            .iter()
+            .take(app.unread)
+            .map(|n| n.tone)
+            .fold(Tone::Info, |acc, t| match (acc, t) {
                 (Tone::Error, _) | (_, Tone::Error) => Tone::Error,
                 _ => acc,
-            },
-        );
+            });
         return match worst {
             Tone::Error => Severity::Error,
             _ => Severity::Info,
@@ -301,27 +339,113 @@ fn notification_severity(app: &App) -> Severity {
     Severity::Clear
 }
 
+/// The notification popup, anchored under the bell in the top-right corner.
+/// A click anywhere outside the panel dismisses it; the panel itself swallows
+/// clicks so interacting with it does not close it. Not `opaque`: the rest of
+/// the UI stays visible and interactive-looking beneath.
+fn notes_overlay(app: &App) -> El<'_> {
+    let panel =
+        mouse_area(container(notes_panel(app)).width(380).max_height(480)).on_press(Message::NoOp);
+    let positioned = container(panel)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Right)
+        .align_y(iced::alignment::Vertical::Top)
+        .padding([64, 24]);
+    mouse_area(positioned).on_press(Message::ToggleNotes).into()
+}
+
+/// Panel contents: live issues first (rendered straight from `app.health`,
+/// so a resolved issue vanishes on the next health pass), then recent events.
 fn notes_panel(app: &App) -> El<'_> {
     let mut list = column![].spacing(6);
-    if app.notes.is_empty() {
-        list = list.push(text("Nothing new").size(12).color(theme::FAINT));
+    if app.health.is_empty() && app.notes.is_empty() {
+        list = list.push(text("All clear").size(12).color(theme::FAINT));
+    }
+    for issue in &app.health {
+        list = list.push(issue_row(issue));
+    }
+    if !app.health.is_empty() && !app.notes.is_empty() {
+        list = list.push(text("RECENT").size(9).color(theme::FAINT));
     }
     for note in app.notes.iter().take(50) {
         list = list.push(note_row(note));
     }
-    let head = row![
-        text("Notifications").size(13).font(BOLD).width(Length::Fill),
-        button(text("Clear all").size(11))
-            .padding([3, 10])
-            .style(theme::ghost)
-            .on_press(Message::ClearNotes),
+    let mut head = row![
+        text("Notifications")
+            .size(13)
+            .font(BOLD)
+            .width(Length::Fill)
     ]
     .align_y(Alignment::Center);
+    if !app.notes.is_empty() {
+        head = head.push(
+            button(text("Clear all").size(11))
+                .padding([3, 10])
+                .style(theme::ghost)
+                .on_press(Message::ClearNotes),
+        );
+    }
     container(column![head, scrollable(list).height(Length::Shrink)].spacing(10))
         .padding(14)
         .width(Length::Fill)
         .style(theme::panel)
         .into()
+}
+
+/// A live health issue: colored by severity, no timestamp (it is current
+/// state, not history).
+fn issue_row(issue: &modrix_core::Issue) -> El<'_> {
+    let color = match issue.severity {
+        modrix_core::Severity::Error => theme::DANGER,
+        modrix_core::Severity::Warning => theme::ACCENT,
+        modrix_core::Severity::Info => theme::INFO,
+    };
+    row![
+        icons::dot(6.0, color),
+        text(&issue.message).size(12).color(theme::TEXT),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+/// The duplicate-install modal: the dropped archive's content is already
+/// installed. Same modal mechanics as the FOMOD wizard (opaque + backdrop).
+fn dup_overlay(prompt: &DupPrompt) -> El<'_> {
+    let file = prompt.path.file_name().map_or_else(
+        || prompt.path.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    );
+    let body = column![
+        text("Already installed").size(16).font(BOLD),
+        text(format!(
+            "{file} is the same archive as \"{}\", which is already installed.",
+            prompt.existing_name
+        ))
+        .size(13)
+        .color(theme::MUTED),
+        row![
+            Space::with_width(Length::Fill),
+            button(text("Cancel").size(13))
+                .padding([8, 16])
+                .style(theme::ghost)
+                .on_press(Message::DupCancel),
+            button(text("Reinstall").size(13))
+                .padding([8, 16])
+                .style(theme::primary)
+                .on_press(Message::DupConfirm),
+        ]
+        .spacing(10),
+    ]
+    .spacing(16);
+    let card = container(body).padding(24).width(440).style(theme::card);
+    opaque(
+        container(card)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(theme::backdrop),
+    )
 }
 
 fn note_row(note: &Note) -> El<'_> {

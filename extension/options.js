@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Options page: persist the Modrix port + session token and test the link.
+// Options page: test the link to Modrix. Zero-config by default - the
+// listener trusts our extension Origin; port and token are advanced overrides.
 
 const api = globalThis.browser ?? globalThis.chrome;
 const $ = (id) => document.getElementById(id);
+const DEFAULT_PORT = 41015;
 
 async function load() {
   const { port, token } = await api.storage.local.get(["port", "token"]);
@@ -11,26 +13,26 @@ async function load() {
 }
 
 async function save() {
-  const port = parseInt($("port").value, 10);
+  const port = parseInt($("port").value, 10) || DEFAULT_PORT;
   const token = $("token").value.trim();
-  if (!port || !token) {
-    setStatus("Enter both a port and a token.");
-    return;
-  }
   await api.storage.local.set({ port, token });
   setStatus("Saved.");
 }
 
 async function test() {
-  const port = parseInt($("port").value, 10);
+  const port = parseInt($("port").value, 10) || DEFAULT_PORT;
   const token = $("token").value.trim();
+  // POST, not GET: browsers always attach our extension Origin to a POST,
+  // which is what authenticates us without a token.
+  const headers = token ? { "x-modrix-token": token } : {};
   try {
     const res = await fetch(`http://127.0.0.1:${port}/downloads`, {
-      headers: { "x-modrix-token": token },
+      method: "POST",
+      headers,
     });
     setStatus(res.ok ? "Connected to Modrix." : `Modrix replied ${res.status}.`);
   } catch (_e) {
-    setStatus("Could not reach Modrix - is `modrix serve` running?");
+    setStatus("Could not reach Modrix - is it running?");
   }
 }
 

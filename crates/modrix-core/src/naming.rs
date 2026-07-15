@@ -46,7 +46,9 @@ fn strip_ext(file_name: &str) -> &str {
     let lower = file_name.to_ascii_lowercase();
     for ext in EXTS {
         if lower.ends_with(ext) {
-            return file_name.get(..file_name.len().saturating_sub(ext.len())).unwrap_or(file_name);
+            return file_name
+                .get(..file_name.len().saturating_sub(ext.len()))
+                .unwrap_or(file_name);
         }
     }
     file_name
@@ -118,7 +120,9 @@ fn is_version_token(token: &str) -> bool {
     }
     let digits = lower.strip_prefix('v').unwrap_or(&lower);
     let letters = digits.trim_start_matches(|c: char| c.is_ascii_digit());
-    digits.len() > letters.len() && letters.len() <= 2 && letters.bytes().all(|b| b.is_ascii_lowercase())
+    digits.len() > letters.len()
+        && letters.len() <= 2
+        && letters.bytes().all(|b| b.is_ascii_lowercase())
 }
 
 fn is_semver(token: &str) -> bool {
@@ -168,7 +172,12 @@ mod tests {
 
     #[test]
     fn parses_nexus_dashed_filenames() {
-        check("SkyUI-12604-6-11-1778020881.zip", "SkyUI", Some("6.11"), Some(12604));
+        check(
+            "SkyUI-12604-6-11-1778020881.zip",
+            "SkyUI",
+            Some("6.11"),
+            Some(12604),
+        );
         check(
             "Unofficial Skyrim Special Edition Patch-266-4-3-8a-1774132896.7z",
             "Unofficial Skyrim Special Edition Patch",
@@ -181,15 +190,40 @@ mod tests {
             Some("2.2.6"),
             Some(30379),
         );
-        check("DllLoader-3619-1-0-0-4.zip", "DllLoader", Some("1.0.0.4"), Some(3619));
-        check("Joy of Perspective-9358-2-0-2c.7z", "Joy of Perspective", Some("2.0.2c"), Some(9358));
-        check("High Poly Project-12029-v5-3-1634909383.zip", "High Poly Project", Some("5.3"), Some(12029));
-        check("Immersive Patrols (Main)-718-3-0b-1710611172.zip", "Immersive Patrols (Main)", Some("3.0b"), Some(718));
+        check(
+            "DllLoader-3619-1-0-0-4.zip",
+            "DllLoader",
+            Some("1.0.0.4"),
+            Some(3619),
+        );
+        check(
+            "Joy of Perspective-9358-2-0-2c.7z",
+            "Joy of Perspective",
+            Some("2.0.2c"),
+            Some(9358),
+        );
+        check(
+            "High Poly Project-12029-v5-3-1634909383.zip",
+            "High Poly Project",
+            Some("5.3"),
+            Some(12029),
+        );
+        check(
+            "Immersive Patrols (Main)-718-3-0b-1710611172.zip",
+            "Immersive Patrols (Main)",
+            Some("3.0b"),
+            Some(718),
+        );
     }
 
     #[test]
     fn keeps_dashes_and_dots_that_belong_to_the_name() {
-        check("SMIM SE 2-08-659-2-08.7z", "SMIM SE 2-08", Some("2.08"), Some(659));
+        check(
+            "SMIM SE 2-08-659-2-08.7z",
+            "SMIM SE 2-08",
+            Some("2.08"),
+            Some(659),
+        );
         check(
             "SMIM Quality Addon 1.5-44388-1-5-1700735143.7z",
             "SMIM Quality Addon 1.5",
@@ -212,9 +246,24 @@ mod tests {
 
     #[test]
     fn parses_space_separated_tool_filenames() {
-        check("Community Shaders 86492 1.7.3 6Xybdafll.7z", "Community Shaders", Some("1.7.3"), Some(86492));
-        check("Assorted Mesh Fixes 32117 0.139.3 s6Og0dhln.7z", "Assorted Mesh Fixes", Some("0.139.3"), Some(32117));
-        check("PGPatcher 120946 1.1.4 QRde31YZG.zip", "PGPatcher", Some("1.1.4"), Some(120_946));
+        check(
+            "Community Shaders 86492 1.7.3 6Xybdafll.7z",
+            "Community Shaders",
+            Some("1.7.3"),
+            Some(86492),
+        );
+        check(
+            "Assorted Mesh Fixes 32117 0.139.3 s6Og0dhln.7z",
+            "Assorted Mesh Fixes",
+            Some("0.139.3"),
+            Some(32117),
+        );
+        check(
+            "PGPatcher 120946 1.1.4 QRde31YZG.zip",
+            "PGPatcher",
+            Some("1.1.4"),
+            Some(120_946),
+        );
     }
 
     #[test]

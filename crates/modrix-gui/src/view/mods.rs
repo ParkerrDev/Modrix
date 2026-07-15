@@ -241,6 +241,7 @@ fn header_row(app: &App) -> El<'_> {
         row![
             sort_cell(app, "ON", SortKey::Enabled, 48),
             sort_cell(app, "MOD", SortKey::Name, 0),
+            sort_cell(app, "ADDED", SortKey::Installed, 90),
             sort_cell(app, "VERSION", SortKey::Version, 100),
             sort_cell(app, "SOURCE", SortKey::Source, 150),
         ]
@@ -248,6 +249,25 @@ fn header_row(app: &App) -> El<'_> {
     )
     .padding([4, 12])
     .into()
+}
+
+/// A compact "how long ago" for the ADDED column. Rows that predate the
+/// provenance migration have no timestamp and show a dash.
+fn added_label(created_at: Option<i64>) -> String {
+    let Some(at) = created_at else {
+        return "-".to_owned();
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+    let elapsed = now.saturating_sub(at).max(0);
+    match elapsed {
+        s if s < 60 => "just now".to_owned(),
+        s if s < 3_600 => format!("{}m ago", s / 60),
+        s if s < 86_400 => format!("{}h ago", s / 3_600),
+        s if s < 2_592_000 => format!("{}d ago", s / 86_400),
+        s => format!("{}mo ago", s / 2_592_000),
+    }
 }
 
 fn sort_cell<'a>(app: &App, label: &'a str, key: SortKey, width: u16) -> El<'a> {
@@ -298,6 +318,10 @@ fn mod_row(m: &Mod, index: usize, enabled: bool, selected: bool) -> El<'_> {
             .size(13)
             .color(if enabled { theme::TEXT } else { theme::MUTED })
             .width(Length::Fill),
+        text(added_label(m.created_at))
+            .size(12)
+            .color(theme::FAINT)
+            .width(90),
         text(m.version.as_deref().unwrap_or("-"))
             .size(12)
             .color(theme::MUTED)

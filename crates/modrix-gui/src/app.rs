@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use iced::{Subscription, Task, Theme};
-use modrix_core::{Engine, Game, GameDef, GameId, Mod, ModId, Paths, Profile, ProfileId};
 use modrix_core::plugins::GamePlugin;
+use modrix_core::{Engine, Game, GameDef, GameId, Mod, ModId, Paths, Profile, ProfileId};
 use modrix_download::{DownloadId, DownloadState, DownloadStatus};
 use modrix_plugin::fomod;
 use modrix_service::{Binding, InstallOutcome, Service};
@@ -23,7 +23,8 @@ use crate::theme;
 /// A sortable column of the Mods table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortKey {
-    /// Install order (mod id) - the default.
+    /// Install time (timestamp, falling back to mod id) - the default.
+    /// Descending shows the most recently installed first.
     Installed,
     /// Alphabetical by name.
     Name,
@@ -114,6 +115,10 @@ const MAX_DEF_SCAN: usize = 256;
 /// Notifications kept before the oldest are dropped.
 const MAX_NOTES: usize = 200;
 
+/// How long an event notification stays before it expires on its own. Live
+/// conditions (health issues) are not subject to this - they clear when fixed.
+const NOTE_TTL: Duration = Duration::from_mins(5);
+
 /// Which main view is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -200,13 +205,32 @@ pub enum Tone {
     Info,
 }
 
-/// One entry in the notification center.
+/// One entry in the notification center. Notes are *events* (an install
+/// finished, an action failed) - they expire after [`NOTE_TTL`] or on "Clear
+/// all". Live *conditions* (health issues, conflicts) are never stored as
+/// notes; the panel renders them straight from [`App::health`] so they
+/// disappear the moment they are resolved.
 #[derive(Debug, Clone)]
 pub struct Note {
     /// Severity.
     pub tone: Tone,
     /// The message.
     pub text: String,
+    /// When the event happened (drives expiry).
+    pub at: std::time::Instant,
+}
+
+/// A duplicate-install prompt: the user dropped an archive whose content hash
+/// matches a mod that is already installed. Modal - resolved by
+/// [`Message::DupConfirm`] (reinstall the existing mod) or [`Message::DupCancel`].
+#[derive(Debug, Clone)]
+pub struct DupPrompt {
+    /// The archive the user tried to install.
+    pub path: PathBuf,
+    /// The already-installed mod with the same content.
+    pub existing: ModId,
+    /// Its display name.
+    pub existing_name: String,
 }
 
 /// The loopback pairing the browser extension needs.
@@ -342,6 +366,8 @@ pub struct App {
     pub unread: usize,
     /// Whether the notification panel is open.
     pub notes_open: bool,
+    /// Pending duplicate-install prompts (the first is the open modal).
+    pub dup_queue: Vec<DupPrompt>,
     /// The FOMOD wizard, when open.
     pub wizard: Option<Wizard>,
     /// FOMOD mods awaiting their first options review (opened one at a time).
@@ -476,6 +502,22 @@ pub enum Message {
     FilesPicked(Vec<PathBuf>),
     /// A file was dropped onto the window.
     FileDropped(PathBuf),
+    /// A candidate archive was hashed off-thread; decide install vs duplicate
+    /// prompt.
+    InstallChecked {
+        /// The archive to install.
+        path: PathBuf,
+        /// Its content hash (`None` if hashing failed or it is a directory).
+        hash: Option<String>,
+    },
+    /// Duplicate prompt: reinstall the existing mod from this archive.
+    DupConfirm,
+    /// Duplicate prompt: keep the existing mod, do nothing.
+    DupCancel,
+    /// Staged plugin counts computed on a worker task.
+    PluginCounts(HashMap<ModId, usize>),
+    /// Swallow a click (keeps overlay panels from dismissing themselves).
+    NoOp,
     /// Cancel a download.
     CancelDownload(DownloadId),
     /// Copy text to the clipboard.
@@ -594,6 +636,7 @@ pub fn boot() -> (App, Task<Message>) {
         notes: Vec::new(),
         unread: 0,
         notes_open: false,
+        dup_queue: Vec::new(),
         wizard: None,
         wizard_queue: Vec::new(),
         prompted: HashSet::new(),
@@ -748,11 +791,12 @@ fn choice_from_toml(text: &str) -> Option<DefChoice> {
 /// The update loop: route each message to its handler.
 pub fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
-        Message::Booted(result) => app.on_booted(result),
-        Message::Navigate(screen) => app.on_navigate(screen),
+        Message::Booted(result) => return app.on_booted(result),
+        Message::Navigate(screen) => return app.on_navigate(screen),
         Message::Tick => {
             app.op = app.progress.snapshot();
             app.refresh();
+            app.expire_notes();
         }
         Message::GamePicked(choice) => {
             app.select_game(choice.id);
@@ -763,7 +807,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::ProfilePicked(name) => app.on_profile_picked(&name),
         Message::ProfileNameChanged(name) => app.form.profile_name = name,
         Message::CreateProfile => app.on_create_profile(),
-        Message::ToggleMod(id, on) => app.on_toggle_mod(id, on),
+        Message::ToggleMod(id, on) => return app.on_toggle_mod(id, on),
         Message::RowClick { pane, index } => {
             let (ctrl, shift) = (app.modifiers.control(), app.modifiers.shift());
             app.on_row_click(pane, index, ctrl, shift);
@@ -775,8 +819,8 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::Modifiers(mods) => app.modifiers = mods,
 
-        Message::EnableAll => app.on_enable_all(),
-        Message::SetSelectedEnabled(on) => app.on_set_selected(on),
+        Message::EnableAll => return app.on_enable_all(),
+        Message::SetSelectedEnabled(on) => return app.on_set_selected(on),
         Message::DeleteSelected => app.on_delete_selected(),
         Message::ReinstallSelected => return app.on_reinstall_selected(),
         Message::TogglePlugin(index) => app.on_toggle_plugin(index),
@@ -794,20 +838,41 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::Deploy => return app.on_profile_action(Action::Deploy),
         Message::Purge => return app.on_profile_action(Action::Undeploy),
         Message::Verify => return app.on_profile_action(Action::Verify),
-        Message::ActionFinished(result) => app.on_action_finished(result),
+        Message::ActionFinished(result) => return app.on_action_finished(result),
         Message::DefPicked(choice) => app.on_def_picked(choice),
         Message::DefPathChanged(path) => app.form.def_path = path,
         Message::InstallPathChanged(path) => app.form.install_path = path,
         Message::AddGame => app.on_add_game(),
         Message::AddDetected(index) => app.on_add_detected(index),
-        Message::PickFiles => return pick_files(),
-        Message::FilesPicked(paths) => return app.on_install_files(paths),
-        Message::FileDropped(path) => return app.on_install_files(vec![path]),
         Message::CancelDownload(id) => app.on_cancel_download(id),
         Message::CopyText(text) => return iced::clipboard::write(text),
-        other => return update_overlay(app, other),
+        other => return update_files(app, other),
     }
     Task::none()
+}
+
+/// File-install, duplicate-prompt, and worker-result messages, split out of
+/// [`update`] (which is at the function-length lint's ceiling).
+fn update_files(app: &mut App, message: Message) -> Task<Message> {
+    match message {
+        Message::PickFiles => pick_files(),
+        Message::FilesPicked(paths) => app.on_install_files(paths),
+        Message::FileDropped(path) => app.on_install_files(vec![path]),
+        Message::InstallChecked { path, hash } => app.on_install_checked(path, hash),
+        Message::DupConfirm => app.on_dup_confirm(),
+        Message::DupCancel => {
+            if !app.dup_queue.is_empty() {
+                app.dup_queue.remove(0);
+            }
+            Task::none()
+        }
+        Message::PluginCounts(counts) => {
+            app.plugin_counts = counts;
+            Task::none()
+        }
+        Message::NoOp => Task::none(),
+        other => update_overlay(app, other),
+    }
 }
 
 /// Notification-center, wizard, conflict, sort, and scroll messages, split
@@ -816,9 +881,9 @@ fn update_overlay(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::SortBy(key) => app.on_sort_by(key),
         Message::SetRule { loser, winner } => {
-            app.on_rule_change(|e, p| e.set_mod_rule(p, loser, winner));
+            return app.on_rule_change(|e, p| e.set_mod_rule(p, loser, winner));
         }
-        Message::ClearRule(a, b) => app.on_rule_change(|e, p| e.clear_mod_rule(p, a, b)),
+        Message::ClearRule(a, b) => return app.on_rule_change(|e, p| e.clear_mod_rule(p, a, b)),
         Message::ExpandConflict(a, b) => {
             app.expanded_conflict = if app.expanded_conflict == Some((a, b)) {
                 None
@@ -827,7 +892,7 @@ fn update_overlay(app: &mut App, message: Message) -> Task<Message> {
             };
         }
         Message::PinFile { target, provider } => {
-            app.on_rule_change(|e, p| e.set_file_override(p, &target, provider));
+            return app.on_rule_change(|e, p| e.set_file_override(p, &target, provider));
         }
         Message::Scrolled(pane, offset, height) => match pane {
             Pane::Mods => app.mods_view = Some((offset, height)),
@@ -885,7 +950,7 @@ fn pick_files() -> Task<Message> {
 }
 
 impl App {
-    fn on_booted(&mut self, result: Result<Booted, String>) {
+    fn on_booted(&mut self, result: Result<Booted, String>) -> Task<Message> {
         match result {
             Ok(booted) => {
                 self.already_running = booted.link.is_none();
@@ -895,18 +960,22 @@ impl App {
                 self.paths = Some(booted.paths);
                 self.service = Some(booted.service);
                 self.refresh();
-                self.refresh_heavy();
+                self.refresh_heavy()
             }
-            Err(error) => self.boot_error = Some(error),
+            Err(error) => {
+                self.boot_error = Some(error);
+                Task::none()
+            }
         }
     }
 
-    fn on_navigate(&mut self, screen: Screen) {
+    fn on_navigate(&mut self, screen: Screen) -> Task<Message> {
         self.screen = screen;
         self.notes_open = false;
         if matches!(screen, Screen::LoadOrder | Screen::Conflicts) {
-            self.refresh_heavy();
+            return self.refresh_heavy();
         }
+        Task::none()
     }
 
     /// Re-pull downloads and engine state. Never blocks: if the engine is
@@ -1003,32 +1072,51 @@ impl App {
     }
 
     /// Recompute the plugin load order, conflicts, and health - the
-    /// expensive pass (it parses plugin headers and walks staged trees), so
-    /// it runs only after a mutation or a Load Order visit, never per tick.
-    fn refresh_heavy(&mut self) {
+    /// expensive pass, so it runs only after a mutation or a Load Order
+    /// visit, never per tick. The staged-tree walk (plugin counts) runs on a
+    /// worker task so a big library cannot stall the UI thread.
+    fn refresh_heavy(&mut self) -> Task<Message> {
         let Some(service) = self.service.clone() else {
-            return;
+            return Task::none();
         };
         let Some(profile) = self.active_profile.as_ref().map(|p| p.id) else {
             self.plugins = Vec::new();
             self.health = Vec::new();
             self.conflicts = Vec::new();
-            return;
+            return Task::none();
         };
         let Ok(engine) = service.engine().try_lock() else {
-            return;
+            return Task::none();
         };
         self.plugins = engine.plugins(profile).unwrap_or_default();
         self.health = engine.health(profile).unwrap_or_default();
         self.conflicts = engine.mod_conflicts(profile).unwrap_or_default();
         drop(engine);
-        self.plugin_counts = self
+        self.plugin_sel.retain_below(self.plugins.len());
+        self.spawn_plugin_counts()
+    }
+
+    /// Count staged plugins per mod off the UI thread (it walks every staged
+    /// tree, which can be thousands of directory reads on a big library).
+    fn spawn_plugin_counts(&self) -> Task<Message> {
+        let items: Vec<(ModId, PathBuf)> = self
             .mods
             .iter()
-            .map(|m| (m.id, staged_plugin_count(&m.staged_path)))
+            .map(|m| (m.id, m.staged_path.clone()))
             .collect();
-        self.plugin_sel.retain_below(self.plugins.len());
-        self.push_health_notes();
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    items
+                        .iter()
+                        .map(|(id, path)| (*id, staged_plugin_count(path)))
+                        .collect::<HashMap<ModId, usize>>()
+                })
+                .await
+                .unwrap_or_default()
+            },
+            Message::PluginCounts,
+        )
     }
 
     /// The display name of a mod, for ids referenced by conflicts/rules.
@@ -1044,31 +1132,14 @@ impl App {
     fn on_rule_change(
         &mut self,
         act: impl FnOnce(&Engine, ProfileId) -> modrix_core::Result<()>,
-    ) {
+    ) -> Task<Message> {
         let Some(profile) = self.active_profile.clone() else {
-            return;
+            return Task::none();
         };
         if self.with_engine(|e| act(e, profile.id)).is_some() {
-            self.refresh_heavy();
+            return self.refresh_heavy();
         }
-    }
-
-    /// Raise a red/amber notification for each health issue not seen this
-    /// refresh cycle (deduped by message text so ticks don't spam).
-    fn push_health_notes(&mut self) {
-        let fresh: Vec<modrix_core::Issue> = self
-            .health
-            .iter()
-            .filter(|i| !self.notes.iter().any(|n| n.text == i.message))
-            .cloned()
-            .collect();
-        for issue in fresh {
-            let tone = match issue.severity {
-                modrix_core::Severity::Error => Tone::Error,
-                modrix_core::Severity::Warning | modrix_core::Severity::Info => Tone::Info,
-            };
-            self.note(tone, issue.message);
-        }
+        Task::none()
     }
 
     /// The selection for whichever list currently has focus.
@@ -1114,10 +1185,7 @@ impl App {
     }
 
     /// Run a quick engine call, reporting failures as notifications.
-    fn with_engine<T>(
-        &mut self,
-        act: impl FnOnce(&Engine) -> modrix_core::Result<T>,
-    ) -> Option<T> {
+    fn with_engine<T>(&mut self, act: impl FnOnce(&Engine) -> modrix_core::Result<T>) -> Option<T> {
         let outcome = {
             let service = self.service.as_ref()?;
             match service.engine().try_lock() {
@@ -1161,22 +1229,23 @@ impl App {
         }
     }
 
-    fn on_toggle_mod(&mut self, id: ModId, on: bool) {
+    fn on_toggle_mod(&mut self, id: ModId, on: bool) -> Task<Message> {
         let Some(profile) = self.active_profile.clone() else {
-            return;
+            return Task::none();
         };
         if self
             .with_engine(|e| e.set_enabled(profile.id, id, on))
             .is_some()
         {
             self.refresh();
-            self.refresh_heavy();
+            return self.refresh_heavy();
         }
+        Task::none()
     }
 
-    fn on_enable_all(&mut self) {
+    fn on_enable_all(&mut self) -> Task<Message> {
         let Some(profile) = self.active_profile.clone() else {
-            return;
+            return Task::none();
         };
         let disabled: Vec<ModId> = self
             .mods
@@ -1194,8 +1263,9 @@ impl App {
         if done.is_some() {
             self.note(Tone::Ok, format!("{count} mods enabled"));
             self.refresh();
-            self.refresh_heavy();
+            return self.refresh_heavy();
         }
+        Task::none()
     }
 
     /// The mod ids currently selected in the Mods table.
@@ -1207,9 +1277,9 @@ impl App {
             .collect()
     }
 
-    fn on_set_selected(&mut self, on: bool) {
+    fn on_set_selected(&mut self, on: bool) -> Task<Message> {
         let Some(profile) = self.active_profile.clone() else {
-            return;
+            return Task::none();
         };
         let ids = self.selected_mod_ids();
         let count = ids.len();
@@ -1223,8 +1293,9 @@ impl App {
             let verb = if on { "enabled" } else { "disabled" };
             self.note(Tone::Ok, format!("{count} mods {verb}"));
             self.refresh();
-            self.refresh_heavy();
+            return self.refresh_heavy();
         }
+        Task::none()
     }
 
     fn on_delete_selected(&mut self) {
@@ -1253,6 +1324,8 @@ impl App {
     }
 
     /// A row was clicked: plain = select only, Ctrl = toggle, Shift = range.
+    /// A plain click on an already-selected row deselects everything -
+    /// consistent with Vortex and common list controls.
     fn on_row_click(&mut self, pane: Pane, index: usize, ctrl: bool, shift: bool) {
         self.focus_pane = pane;
         let sel = self.active_selection();
@@ -1260,6 +1333,8 @@ impl App {
             sel.range_to(index);
         } else if ctrl {
             sel.toggle(index);
+        } else if sel.items.contains(&index) {
+            sel.clear();
         } else {
             sel.only(index);
         }
@@ -1334,10 +1409,9 @@ impl App {
             Some(_) => None,
         };
         match target {
-            Some(y) => scrollable::scroll_to(
-                scroll_id(pane),
-                scrollable::AbsoluteOffset { x: 0.0, y },
-            ),
+            Some(y) => {
+                scrollable::scroll_to(scroll_id(pane), scrollable::AbsoluteOffset { x: 0.0, y })
+            }
             None => Task::none(),
         }
     }
@@ -1355,12 +1429,15 @@ impl App {
 
     /// Sort `self.mods` by the chosen column (stable; name tiebreak).
     fn apply_mod_sort(&mut self) {
-        let enabled: std::collections::HashSet<ModId> =
-            self.order.iter().map(|m| m.id).collect();
+        let enabled: std::collections::HashSet<ModId> = self.order.iter().map(|m| m.id).collect();
         let (key, ascending) = self.mod_sort;
         self.mods.sort_by(|a, b| {
             let ord = match key {
-                SortKey::Installed => a.id.cmp(&b.id),
+                // True install chronology: rows that predate the provenance
+                // migration have no timestamp and sort first (they really were
+                // installed earlier); id breaks ties within the same second.
+                SortKey::Installed => (a.created_at.unwrap_or(i64::MIN), a.id)
+                    .cmp(&(b.created_at.unwrap_or(i64::MIN), b.id)),
                 SortKey::Name => compare_names(&a.name, &b.name),
                 SortKey::Enabled => enabled
                     .contains(&b.id)
@@ -1450,9 +1527,9 @@ impl App {
             indices.sort_unstable();
         }
         // Bail if a block edge is already at the boundary.
-        let at_edge = indices.iter().any(|i| {
-            (delta < 0 && *i == 0) || (delta > 0 && *i >= len.saturating_sub(1))
-        });
+        let at_edge = indices
+            .iter()
+            .any(|i| (delta < 0 && *i == 0) || (delta > 0 && *i >= len.saturating_sub(1)));
         if at_edge {
             return;
         }
@@ -1520,17 +1597,70 @@ impl App {
         self.spawn_action(make(profile.id))
     }
 
+    /// Installing starts with an off-thread content hash so an archive that is
+    /// already installed raises the duplicate prompt instead of silently
+    /// staging a second copy.
     fn on_install_files(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
-        let Some(game) = self.selected_game else {
+        if self.selected_game.is_none() {
             self.note(Tone::Error, "Register a game first".to_owned());
             return Task::none();
-        };
+        }
         let tasks: Vec<Task<Message>> = paths
             .into_iter()
             .filter(|p| p.exists())
-            .map(|path| self.spawn_action(Action::Install { game, path }))
+            .map(|path| {
+                Task::perform(
+                    async move {
+                        let hash = if path.is_dir() {
+                            None
+                        } else {
+                            let for_hash = path.clone();
+                            tokio::task::spawn_blocking(move || {
+                                modrix_core::sha256_file(&for_hash).ok()
+                            })
+                            .await
+                            .ok()
+                            .flatten()
+                        };
+                        (path, hash)
+                    },
+                    |(path, hash)| Message::InstallChecked { path, hash },
+                )
+            })
             .collect();
         Task::batch(tasks)
+    }
+
+    /// The archive's hash is in: install it, or raise the duplicate prompt if
+    /// this exact content is already staged for the selected game.
+    fn on_install_checked(&mut self, path: PathBuf, hash: Option<String>) -> Task<Message> {
+        let Some(game) = self.selected_game else {
+            return Task::none();
+        };
+        let existing = hash
+            .and_then(|h| self.with_engine(|e| e.find_by_archive_hash(game, &h)))
+            .and_then(|mods| mods.into_iter().next());
+        match existing {
+            Some(m) => {
+                self.dup_queue.push(DupPrompt {
+                    path,
+                    existing: m.id,
+                    existing_name: m.name,
+                });
+                Task::none()
+            }
+            None => self.spawn_action(Action::Install { game, path }),
+        }
+    }
+
+    /// Duplicate prompt accepted: reinstall the existing mod (fresh staging
+    /// from its archive - same content as the file the user just dropped).
+    fn on_dup_confirm(&mut self) -> Task<Message> {
+        if self.dup_queue.is_empty() {
+            return Task::none();
+        }
+        let prompt = self.dup_queue.remove(0);
+        self.spawn_action(Action::ReinstallMany(vec![prompt.existing]))
     }
 
     /// Run a slow engine action on a worker thread so the UI stays live.
@@ -1551,16 +1681,16 @@ impl App {
         )
     }
 
-    fn on_action_finished(&mut self, result: Result<String, String>) {
+    fn on_action_finished(&mut self, result: Result<String, String>) -> Task<Message> {
         self.busy = false;
         match result {
             Ok(text) => self.note(Tone::Ok, text),
             Err(text) => self.note(Tone::Error, text),
         }
         self.refresh();
-        if self.screen == Screen::LoadOrder {
-            self.refresh_heavy();
-        }
+        // Always re-evaluate health/conflicts after a mutation so the bell and
+        // notification panel reflect the new truth (a fixed issue disappears).
+        self.refresh_heavy()
     }
 
     /// Make `game` the one being managed and remember it, so the next launch
@@ -1584,7 +1714,10 @@ impl App {
     fn on_add_game(&mut self) {
         let install = PathBuf::from(self.form.install_path.trim());
         if !install.is_dir() {
-            return self.note(Tone::Error, format!("{} is not a directory", install.display()));
+            return self.note(
+                Tone::Error,
+                format!("{} is not a directory", install.display()),
+            );
         }
         let def = match self.load_chosen_def() {
             Ok(def) => def,
@@ -1802,11 +1935,26 @@ impl App {
     }
 
     fn note(&mut self, tone: Tone, text: String) {
-        self.notes.insert(0, Note { tone, text });
+        self.notes.insert(
+            0,
+            Note {
+                tone,
+                text,
+                at: std::time::Instant::now(),
+            },
+        );
         self.notes.truncate(MAX_NOTES);
         if !self.notes_open {
             self.unread = self.unread.saturating_add(1);
         }
+    }
+
+    /// Drop event notifications past their TTL so the panel never shows stale
+    /// news. Runs every tick; live conditions are rendered from `health`
+    /// directly and are not involved.
+    fn expire_notes(&mut self) {
+        self.notes.retain(|n| n.at.elapsed() < NOTE_TTL);
+        self.unread = self.unread.min(self.notes.len());
     }
 }
 
@@ -1819,8 +1967,7 @@ fn staged_plugin_count(staged: &std::path::Path) -> usize {
         .flatten()
         .take(512)
         .filter(|e| {
-            modrix_core::esp::is_plugin_name(&e.file_name().to_string_lossy())
-                && e.path().is_file()
+            modrix_core::esp::is_plugin_name(&e.file_name().to_string_lossy()) && e.path().is_file()
         })
         .count()
 }
@@ -1848,7 +1995,9 @@ fn apply_wizard(
     engine
         .set_install_state(mod_id, "fomod")
         .map_err(|e| e.to_string())?;
-    Ok(format!("Options applied · {placed} files · deploy to update"))
+    Ok(format!(
+        "Options applied · {placed} files · deploy to update"
+    ))
 }
 
 /// Execute one slow action while holding the engine lock (worker thread).
@@ -1878,7 +2027,11 @@ fn run_action(engine: &Mutex<Engine>, action: &Action) -> Result<String, String>
                 if r.is_clean() {
                     format!("Verified · {} files healthy", r.checked())
                 } else {
-                    format!("Verify: {} of {} files changed", r.issues().len(), r.checked())
+                    format!(
+                        "Verify: {} of {} files changed",
+                        r.issues().len(),
+                        r.checked()
+                    )
                 }
             })
             .map_err(|e| e.to_string()),
@@ -1896,7 +2049,9 @@ fn run_action(engine: &Mutex<Engine>, action: &Action) -> Result<String, String>
             Ok(format!("{done} mods reinstalled"))
         }
         Action::AutoSortPlugins(profile) => {
-            let plugins = engine.auto_sort_plugins(*profile).map_err(|e| e.to_string())?;
+            let plugins = engine
+                .auto_sort_plugins(*profile)
+                .map_err(|e| e.to_string())?;
             Ok(format!("Load order sorted · {} plugins", plugins.len()))
         }
         Action::ApplyWizard {

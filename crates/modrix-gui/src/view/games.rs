@@ -71,14 +71,9 @@ fn game_card<'a>(app: &App, game: &'a Game) -> El<'a> {
         use std::fmt::Write as _;
         let _ = write!(meta, " · Steam {appid}");
     }
-    let mut head = row![
-        text(&game.name)
-            .size(15)
-            .font(BOLD)
-            .width(Length::Fill),
-    ]
-    .spacing(12)
-    .align_y(Alignment::Center);
+    let mut head = row![text(&game.name).size(15).font(BOLD).width(Length::Fill),]
+        .spacing(12)
+        .align_y(Alignment::Center);
     if selected {
         head = head.push(
             container(text("ACTIVE").size(10))
@@ -140,7 +135,9 @@ fn register_card(app: &App) -> El<'_> {
         picker,
         def_path,
         install,
-        container(submit).align_x(Alignment::End).width(Length::Fill),
+        container(submit)
+            .align_x(Alignment::End)
+            .width(Length::Fill),
     ]
     .spacing(10);
     labeled_card("REGISTER A GAME", inner.into())

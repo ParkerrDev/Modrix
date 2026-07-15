@@ -335,7 +335,11 @@ pub fn input(_: &Theme, status: text_input::Status) -> text_input::Style {
     text_input::Style {
         background: Background::Color(BG),
         border: Border {
-            color: if focused { faded(ACCENT, 0.6) } else { HAIRLINE },
+            color: if focused {
+                faded(ACCENT, 0.6)
+            } else {
+                HAIRLINE
+            },
             width: 1.0,
             radius: 8.0.into(),
         },

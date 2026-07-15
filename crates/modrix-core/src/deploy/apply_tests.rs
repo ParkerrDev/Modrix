@@ -129,7 +129,10 @@ impl Harness {
             progress: &progress,
             label: "Deploying",
         };
-        let ctx = super::ApplyCtx { faults, reporter: &reporter };
+        let ctx = super::ApplyCtx {
+            faults,
+            reporter: &reporter,
+        };
         apply(&self.conn, &self.paths, &p, self.profile, &ctx)
     }
 

@@ -116,8 +116,9 @@ fn apply_saved(plugins: &mut Vec<GamePlugin>, saved: &[(String, bool)]) {
 
 /// The game always loads the master tier first; mirror that visibly.
 fn tier_partition(plugins: &mut Vec<GamePlugin>) {
-    let (masters, regular): (Vec<GamePlugin>, Vec<GamePlugin>) =
-        std::mem::take(plugins).into_iter().partition(|p| p.is_master);
+    let (masters, regular): (Vec<GamePlugin>, Vec<GamePlugin>) = std::mem::take(plugins)
+        .into_iter()
+        .partition(|p| p.is_master);
     *plugins = masters;
     plugins.extend(regular);
 }
@@ -192,7 +193,12 @@ fn sort_tier(members: &[&GamePlugin]) -> Vec<String> {
         .collect();
     let mut out = Vec::with_capacity(members.len());
     let mut emitted = vec![false; members.len()];
-    while let Some(pos) = ready.iter().enumerate().min_by_key(|(_, i)| **i).map(|(p, _)| p) {
+    while let Some(pos) = ready
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, i)| **i)
+        .map(|(p, _)| p)
+    {
         let node = ready.swap_remove(pos);
         if let Some(e) = emitted.get_mut(node) {
             *e = true;
@@ -309,7 +315,10 @@ mod tests {
             plugin("base.esp", false, &["Skyrim.esm"]),
             plugin("core.esm", true, &[]),
         ];
-        assert_eq!(auto_sort(&plugins), vec!["core.esm", "base.esp", "patch.esp"]);
+        assert_eq!(
+            auto_sort(&plugins),
+            vec!["core.esm", "base.esp", "patch.esp"]
+        );
     }
 
     #[test]

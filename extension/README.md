@@ -13,7 +13,7 @@ binary.
 
 ## Setup
 
-1. Start the service - it prints a **port** and a **session token**:
+1. Have Modrix running - the GUI, or headless:
    ```sh
    modrix serve
    ```
@@ -22,8 +22,11 @@ binary.
      unpacked* → select this `extension/` folder.
    - **Firefox**: `about:debugging` → *This Firefox* → *Load Temporary Add-on* →
      select `extension/manifest.json`.
-3. Open the extension's options (its toolbar icon) and paste the **port** and
-   **token**. Click *Test connection*.
+
+That's it - no token, no pairing. The listener recognizes requests coming from
+a browser extension by their `Origin` and lets them through; the options page
+(toolbar icon) has a *Test connection* button and advanced overrides (port,
+optional token) if you ever need them.
 
 ## Using it
 
@@ -33,10 +36,13 @@ binary.
   domain the page URL identifies.
 - **Explicit**: right-click any link → *Download with Modrix*.
 
-The connection is **loopback-only and token-authed** (`x-modrix-token`), so only
-a client that knows your per-session token can reach the engine. Cookies are only
-read for the download's own host and are forwarded solely so an authenticated
-download replays correctly.
+The connection is **loopback-only**. A request is accepted when its `Origin`
+is a browser-extension origin (`chrome-extension://…`, `moz-extension://…`) -
+which web pages cannot forge - or when it carries the per-session
+`x-modrix-token` (how the CLI and `modrix-protocol` authenticate). A drive-by
+website therefore still cannot reach the engine. Cookies are only read for the
+download's own host and are forwarded solely so an authenticated download
+replays correctly.
 
 ## Notes
 

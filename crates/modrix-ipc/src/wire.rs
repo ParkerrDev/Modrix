@@ -31,6 +31,11 @@ pub(crate) struct ParsedRequest {
     pub method: String,
     pub path: String,
     pub token: Option<String>,
+    /// The `Origin` header, when the client sent one. Browsers set this on
+    /// every cross-origin fetch and pages cannot forge another scheme, so an
+    /// extension origin (`chrome-extension://…`) is trustworthy evidence the
+    /// request came from an installed browser extension.
+    pub origin: Option<String>,
     pub body: String,
 }
 
@@ -48,11 +53,13 @@ pub(crate) async fn read_request(stream: &mut TcpStream) -> Result<ParsedRequest
     let path = parts.next().ok_or(Error::Malformed("no path"))?.to_owned();
 
     let mut token = None;
+    let mut origin = None;
     let mut content_length = 0_usize;
     for line in lines.filter(|l| !l.is_empty()) {
         let (name, value) = line.split_once(':').ok_or(Error::Malformed("bad header"))?;
         match name.trim().to_ascii_lowercase().as_str() {
             TOKEN_HEADER => token = Some(value.trim().to_owned()),
+            "origin" => origin = Some(value.trim().to_owned()),
             "content-length" => {
                 content_length = value
                     .trim()
@@ -73,6 +80,7 @@ pub(crate) async fn read_request(stream: &mut TcpStream) -> Result<ParsedRequest
         method,
         path,
         token,
+        origin,
         body: String::from_utf8_lossy(&body).into_owned(),
     })
 }
@@ -127,13 +135,23 @@ async fn read_body(
     Ok(())
 }
 
-/// Write a response with CORS headers so the browser userscript can reach us.
-pub(crate) async fn write_response(stream: &mut TcpStream, status: u16, body: &str) -> Result<()> {
+/// Write a response with CORS headers so the browser extension can reach us.
+/// When the request carried an `Origin`, echo that specific origin back
+/// (with `Vary: Origin`) instead of the wildcard. Header values parsed by
+/// [`read_request`] cannot contain CRLF, so echoing is injection-safe.
+pub(crate) async fn write_response(
+    stream: &mut TcpStream,
+    status: u16,
+    body: &str,
+    origin: Option<&str>,
+) -> Result<()> {
+    let allow_origin = origin.unwrap_or("*");
     let response = format!(
         "HTTP/1.1 {status} {reason}\r\n\
          Content-Type: text/plain; charset=utf-8\r\n\
          Content-Length: {len}\r\n\
-         Access-Control-Allow-Origin: *\r\n\
+         Access-Control-Allow-Origin: {allow_origin}\r\n\
+         Vary: Origin\r\n\
          Access-Control-Allow-Methods: POST, OPTIONS\r\n\
          Access-Control-Allow-Headers: content-type, {TOKEN_HEADER}\r\n\
          Connection: close\r\n\r\n{body}",

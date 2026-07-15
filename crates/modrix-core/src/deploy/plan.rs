@@ -300,7 +300,13 @@ mod tests {
     }
 
     fn plan_of(ordered: &[(ModId, Vec<ResolvedFile>)], rows: &[DeployedRow]) -> DeployPlan {
-        plan(game(), roots(), ordered, &current(rows), &Overrides::default())
+        plan(
+            game(),
+            roots(),
+            ordered,
+            &current(rows),
+            &Overrides::default(),
+        )
     }
 
     #[test]
@@ -311,7 +317,11 @@ mod tests {
         ];
         let overrides: Overrides = [("shared.esp".to_owned(), m(1))].into_iter().collect();
         let p = plan(game(), roots(), &mods, &current(&[]), &overrides);
-        let add = p.adds.iter().find(|a| a.target_rel == "shared.esp").unwrap();
+        let add = p
+            .adds
+            .iter()
+            .find(|a| a.target_rel == "shared.esp")
+            .unwrap();
         assert_eq!(add.mod_id, m(1));
         assert_eq!(add.source, PathBuf::from("/s/1/shared"));
         // The conflict is still surfaced, with the pinned winner.

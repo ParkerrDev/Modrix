@@ -59,14 +59,16 @@ fn pairing_strip(app: &App) -> El<'_> {
 }
 
 fn download_row<'a>(status: &'a DownloadStatus, outcome: Option<&'a InstallOutcome>) -> El<'a> {
-    let name = status
-        .file
-        .file_name()
-        .map_or_else(|| "download".to_owned(), |n| n.to_string_lossy().into_owned());
+    let name = status.file.file_name().map_or_else(
+        || "download".to_owned(),
+        |n| n.to_string_lossy().into_owned(),
+    );
     let (color, label) = badge(status.state, outcome);
     let head = row![
         text(name).size(13).width(Length::Fill),
-        container(text(label).size(10)).padding([2, 8]).style(theme::chip(color)),
+        container(text(label).size(10))
+            .padding([2, 8])
+            .style(theme::chip(color)),
         cancel_slot(status),
     ]
     .spacing(10)
@@ -74,7 +76,9 @@ fn download_row<'a>(status: &'a DownloadStatus, outcome: Option<&'a InstallOutco
     let meta = row![
         text(size_line(status)).size(12).color(theme::MUTED),
         iced::widget::Space::with_width(Length::Fill),
-        text(fmt::percent(status.done, status.total)).size(12).color(theme::MUTED),
+        text(fmt::percent(status.done, status.total))
+            .size(12)
+            .color(theme::MUTED),
     ];
     let mut inner = column![
         head,

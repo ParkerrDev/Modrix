@@ -12,24 +12,29 @@
       button { margin-top: 14px; padding: 8px 14px; cursor: pointer; }
       #status { margin-top: 12px; min-height: 1.2em; }
       .hint { color: #666; font-size: 0.9em; }
+      details { margin-top: 16px; }
+      summary { cursor: pointer; font-weight: 600; }
     </style>
   </head>
   <body>
     <h1>Modrix Bridge</h1>
     <p class="hint">
-      Run <code>modrix serve</code> - it prints a port and a session token. Paste
-      them here. Downloads you start on Nexus (and other sites) are then handed
-      to Modrix over loopback, authenticated with your own browser session.
+      No setup needed: with Modrix (the app or <code>modrix serve</code>)
+      running, mod downloads you start in the browser are handed to it
+      automatically, authenticated with your own browser session.
     </p>
-    <label for="port">Port</label>
-    <input id="port" type="number" min="1" max="65535" placeholder="41015" />
-    <label for="token">Session token</label>
-    <input id="token" type="text" placeholder="paste the token from `modrix serve`" />
     <div>
-      <button id="save">Save</button>
       <button id="test">Test connection</button>
     </div>
     <div id="status"></div>
+    <details>
+      <summary>Advanced</summary>
+      <label for="port">Port</label>
+      <input id="port" type="number" min="1" max="65535" placeholder="41015" />
+      <label for="token">Session token (optional)</label>
+      <input id="token" type="text" placeholder="only needed if origin auth is disabled" />
+      <button id="save">Save</button>
+    </details>
     <script src="options.js"></script>
   </body>
 </html>

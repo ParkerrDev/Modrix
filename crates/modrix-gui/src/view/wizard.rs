@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 //! The FOMOD wizard: a modal that walks the installer's steps and groups.
 
-use iced::widget::{button, checkbox, column, container, mouse_area, opaque, row, scrollable, text};
+use iced::widget::{
+    button, checkbox, column, container, mouse_area, opaque, row, scrollable, text,
+};
 use iced::{Alignment, Length};
 use modrix_plugin::fomod;
 
@@ -102,14 +104,7 @@ fn preview(wizard: &Wizard, current_step: usize) -> El<'_> {
 /// selected on the current page.
 fn focused_plugin(wizard: &Wizard, current_step: usize) -> Option<&fomod::Plugin> {
     let lookup = |(s, g, p): (usize, usize, usize)| {
-        wizard
-            .installer
-            .steps
-            .get(s)?
-            .groups
-            .get(g)?
-            .plugins
-            .get(p)
+        wizard.installer.steps.get(s)?.groups.get(g)?.plugins.get(p)
     };
     if let Some(focus) = wizard.focus
         && let Some(plugin) = lookup(focus)
@@ -135,7 +130,10 @@ fn header<'a>(wizard: &'a Wizard, step_name: &'a str, page: usize, pages: usize)
     let progress = format!("{} / {pages}", page.saturating_add(1));
     column![
         row![
-            text(&wizard.mod_name).size(17).font(BOLD).width(Length::Fill),
+            text(&wizard.mod_name)
+                .size(17)
+                .font(BOLD)
+                .width(Length::Fill),
             button(text("×").size(15))
                 .padding([2, 10])
                 .style(theme::icon)
@@ -199,10 +197,7 @@ fn group_view<'a>(
     flags: &std::collections::HashMap<String, String>,
 ) -> El<'a> {
     let mut items = column![].spacing(6);
-    let selected = wizard
-        .selections
-        .get(step)
-        .and_then(|s| s.get(g));
+    let selected = wizard.selections.get(step).and_then(|s| s.get(g));
     for (p, plugin) in group.plugins.iter().enumerate() {
         let slot = Slot {
             step,
@@ -217,7 +212,10 @@ fn group_view<'a>(
     let mut head = row![].spacing(8).align_y(Alignment::Center);
     // A single "select all" checkbox for checkbox-style groups (a patch hub
     // has hundreds); checked when every usable option is already selected.
-    if matches!(group.kind, fomod::GroupKind::Any | fomod::GroupKind::AtLeastOne) {
+    if matches!(
+        group.kind,
+        fomod::GroupKind::Any | fomod::GroupKind::AtLeastOne
+    ) {
         let usable: Vec<usize> = group
             .plugins
             .iter()
@@ -231,15 +229,16 @@ fn group_view<'a>(
             && usable
                 .iter()
                 .all(|i| selected.is_some_and(|s| s.contains(i)));
-        head = head.push(
-            checkbox("", all_on)
-                .size(15)
-                .on_toggle(move |_| Message::WizardGroupSet {
-                    step,
-                    group: g,
-                    all: !all_on,
-                }),
-        );
+        head =
+            head.push(
+                checkbox("", all_on)
+                    .size(15)
+                    .on_toggle(move |_| Message::WizardGroupSet {
+                        step,
+                        group: g,
+                        all: !all_on,
+                    }),
+            );
     }
     // The name takes the flexible space (wrapping if long); the hint keeps
     // its natural width - otherwise a long name squeezes it into a one-
@@ -279,7 +278,11 @@ fn plugin_row(plugin: &fomod::Plugin, slot: Slot) -> El<'_> {
     let mut check = checkbox(&plugin.name, slot.on).size(16).text_size(13);
     if !locked {
         let (step, group, plugin) = (slot.step, slot.group, slot.plugin);
-        check = check.on_toggle(move |_| Message::WizardPick { step, group, plugin });
+        check = check.on_toggle(move |_| Message::WizardPick {
+            step,
+            group,
+            plugin,
+        });
     }
     let mut head = row![check].spacing(8).align_y(Alignment::Center);
     if let Some((label, color)) = kind_chip(slot.kind) {

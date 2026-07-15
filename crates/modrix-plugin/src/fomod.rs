@@ -218,7 +218,10 @@ fn find_fomod_in(dir: &Path) -> Option<PathBuf> {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir()
-            && entry.file_name().to_string_lossy().eq_ignore_ascii_case("fomod")
+            && entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("fomod")
             && find_ci(&path, "ModuleConfig.xml").is_some()
         {
             return Some(path);
@@ -248,7 +251,9 @@ pub fn parse(staged_root: &Path) -> Result<Option<Installer>> {
         module_name: child_text(root, "moduleName").unwrap_or_default(),
         info_name: None,
         info_version: None,
-        required: child(root, "requiredInstallFiles").map(|n| parse_files(n)).unwrap_or_default(),
+        required: child(root, "requiredInstallFiles")
+            .map(|n| parse_files(n))
+            .unwrap_or_default(),
         steps: parse_steps(root),
         conditional: parse_conditional(root),
         module_image: child(root, "moduleImage")
@@ -344,7 +349,9 @@ fn parse_plugin(node: roxmltree::Node<'_, '_>) -> Plugin {
         image: child(node, "image")
             .map(|n| attr(n, "path").replace('\\', "/"))
             .filter(|p| !p.is_empty()),
-        files: child(node, "files").map(|n| parse_files(n)).unwrap_or_default(),
+        files: child(node, "files")
+            .map(|n| parse_files(n))
+            .unwrap_or_default(),
         flags: child(node, "conditionFlags")
             .map(|n| {
                 elements(n, "flag")
@@ -474,7 +481,9 @@ fn elements<'a, 'input: 'a>(
 }
 
 fn child_text(node: roxmltree::Node<'_, '_>, name: &str) -> Option<String> {
-    child(node, name).and_then(|n| n.text()).map(|t| t.trim().to_owned())
+    child(node, name)
+        .and_then(|n| n.text())
+        .map(|t| t.trim().to_owned())
 }
 
 fn descendant_text(node: roxmltree::Node<'_, '_>, name: &str) -> Option<String> {
@@ -552,10 +561,9 @@ fn default_group(
     present: &Present,
 ) -> BTreeSet<usize> {
     let kind = |i: usize| {
-        group
-            .plugins
-            .get(i)
-            .map_or(PluginKind::NotUsable, |p| plugin_kind(&p.kind, flags, present))
+        group.plugins.get(i).map_or(PluginKind::NotUsable, |p| {
+            plugin_kind(&p.kind, flags, present)
+        })
     };
     let mut sel: BTreeSet<usize> = (0..group.plugins.len())
         .filter(|i| match (group.kind == GroupKind::All, kind(*i)) {
@@ -718,9 +726,15 @@ fn clean_destination(destination: &str, source: &str, is_folder: bool) -> Result
         .filter(|p| !p.is_empty() && *p != ".")
         .collect();
     if parts.contains(&"..") {
-        return Err(fomod_err(Path::new(destination), "destination escapes the mod"));
+        return Err(fomod_err(
+            Path::new(destination),
+            "destination escapes the mod",
+        ));
     }
-    if parts.first().is_some_and(|p| p.eq_ignore_ascii_case("data")) {
+    if parts
+        .first()
+        .is_some_and(|p| p.eq_ignore_ascii_case("data"))
+    {
         parts = parts.split_off(1);
     }
     let mut out: PathBuf = parts.iter().collect();
@@ -930,7 +944,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         build_tree(tmp.path());
         let installer = parse(tmp.path()).unwrap().unwrap();
-        let ops = resolve(&installer, &defaults(&installer, &Present::new()), &Present::new());
+        let ops = resolve(
+            &installer,
+            &defaults(&installer, &Present::new()),
+            &Present::new(),
+        );
         let sources: Vec<_> = ops.iter().map(|o| o.source.as_str()).collect();
         assert!(sources.contains(&"Required"));
         assert!(sources.contains(&"00 Core/Meshes"));
@@ -944,7 +962,11 @@ mod tests {
         build_tree(tmp.path());
         let installer = parse(tmp.path()).unwrap().unwrap();
         let none = Present::new();
-        let n = apply(tmp.path(), &resolve(&installer, &defaults(&installer, &none), &none)).unwrap();
+        let n = apply(
+            tmp.path(),
+            &resolve(&installer, &defaults(&installer, &none), &none),
+        )
+        .unwrap();
         assert_eq!(n, 3);
         assert!(tmp.path().join("base.esp").is_file());
         assert!(tmp.path().join("meshes/a.nif").is_file());

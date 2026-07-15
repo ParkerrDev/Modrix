@@ -45,3 +45,15 @@ pub use model::{Game, LinkType, Mod, Profile};
 pub use paths::Paths;
 pub use progress::{Progress, ProgressSnapshot};
 pub use rules::{ConflictFile, ModConflict, ModRule};
+
+/// Compute the lowercase hex SHA-256 of a file's contents (streaming; bounded
+/// buffer). Public so frontends can hash a candidate archive off their UI
+/// thread and check it against [`Engine::find_by_archive_hash`] before
+/// staging.
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] if the file cannot be opened or read.
+pub fn sha256_file(path: &std::path::Path) -> Result<String> {
+    deploy::fsops::hash_file(path)
+}

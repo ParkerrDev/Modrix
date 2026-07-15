@@ -118,4 +118,10 @@ pub struct Mod {
     pub archive_path: Option<PathBuf>,
     /// The Nexus mod id recovered from the filename, when known.
     pub nexus_mod_id: Option<i64>,
+    /// When the mod was staged (unix seconds). `None` for rows that predate
+    /// the provenance migration; sorts fall back to insertion (rowid) order.
+    pub created_at: Option<i64>,
+    /// Lowercase hex SHA-256 of the source archive, used to detect installing
+    /// the same archive twice. `None` when staged from a directory.
+    pub archive_sha256: Option<String>,
 }

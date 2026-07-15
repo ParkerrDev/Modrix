@@ -149,9 +149,10 @@ pub(crate) fn apply(
     ctx: &ApplyCtx<'_>,
 ) -> Result<DeployReport> {
     let (faults, reporter) = (ctx.faults, ctx.reporter);
-    reporter
-        .progress
-        .set_message(&format!("{} · preparing (hashing + backups)", reporter.label));
+    reporter.progress.set_message(&format!(
+        "{} · preparing (hashing + backups)",
+        reporter.label
+    ));
     let snapshot = snapshot(plan, faults)?;
 
     faults.checkpoint()?;

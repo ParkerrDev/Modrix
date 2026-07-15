@@ -86,11 +86,7 @@ impl Progress {
         if !self.active.load(Ordering::Relaxed) {
             return None;
         }
-        let message = self
-            .message
-            .lock()
-            .map(|m| m.clone())
-            .unwrap_or_default();
+        let message = self.message.lock().map(|m| m.clone()).unwrap_or_default();
         Some(ProgressSnapshot {
             done: self.done.load(Ordering::Relaxed),
             total: self.total.load(Ordering::Relaxed),

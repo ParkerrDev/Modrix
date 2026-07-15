@@ -47,13 +47,14 @@ pub(super) fn body(app: &App) -> El<'_> {
 /// Everything currently blocking a deploy, so the user sees why the button
 /// is off and what to fix - conflicts, missing masters, rule cycles.
 fn blockers_card(app: &App) -> Option<El<'_>> {
-    let blocking: Vec<&modrix_core::Issue> =
-        app.health.iter().filter(|i| i.blocking).collect();
+    let blocking: Vec<&modrix_core::Issue> = app.health.iter().filter(|i| i.blocking).collect();
     if blocking.is_empty() {
         return None;
     }
     let mut list = column![
-        text("DEPLOY BLOCKED UNTIL RESOLVED").size(10).color(theme::DANGER)
+        text("DEPLOY BLOCKED UNTIL RESOLVED")
+            .size(10)
+            .color(theme::DANGER)
     ]
     .spacing(6);
     for issue in blocking.iter().take(8) {
@@ -83,7 +84,11 @@ fn summary(app: &App) -> El<'_> {
     } else {
         format!("{total} conflicting pairs · {unresolved} need a rule")
     };
-    let color = if unresolved == 0 { theme::OK } else { theme::DANGER };
+    let color = if unresolved == 0 {
+        theme::OK
+    } else {
+        theme::DANGER
+    };
     row![
         icons::dot(8.0, color),
         text(label).size(13).color(theme::MUTED),
@@ -117,7 +122,11 @@ fn head_row(conflict: &ModConflict, name_a: &str, name_b: &str) -> El<'static> {
     let a = conflict.first;
     let dot = icons::dot(
         8.0,
-        if conflict.resolved() { theme::OK } else { theme::DANGER },
+        if conflict.resolved() {
+            theme::OK
+        } else {
+            theme::DANGER
+        },
     );
     let files = conflict.files.len();
     let (state, color) = match conflict.rule {
@@ -227,12 +236,17 @@ fn file_list<'a>(conflict: &'a ModConflict, name_a: &str, name_b: &str) -> El<'a
         }
         list = list.push(
             row![
-                text(&file.target).size(11).color(theme::MUTED).width(Length::Fill),
-                text(format!("→ {winner_name}")).size(11).color(if file.overridden {
-                    theme::ACCENT
-                } else {
-                    theme::FAINT
-                }),
+                text(&file.target)
+                    .size(11)
+                    .color(theme::MUTED)
+                    .width(Length::Fill),
+                text(format!("→ {winner_name}"))
+                    .size(11)
+                    .color(if file.overridden {
+                        theme::ACCENT
+                    } else {
+                        theme::FAINT
+                    }),
                 controls,
             ]
             .spacing(10)

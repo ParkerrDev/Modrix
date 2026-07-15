@@ -302,7 +302,10 @@ impl Service {
             ),
             Some(InstallOutcome::NoGame) => "{\"state\":\"no_game\"}".to_owned(),
             Some(InstallOutcome::Failed(error)) => {
-                format!("{{\"state\":\"failed\",\"error\":\"{}\"}}", json_escape(&error))
+                format!(
+                    "{{\"state\":\"failed\",\"error\":\"{}\"}}",
+                    json_escape(&error)
+                )
             }
         };
         format!(
@@ -312,7 +315,13 @@ impl Service {
             status.done,
             status.total.unwrap_or(0),
             status.connections,
-            json_escape(&status.file.file_name().unwrap_or_default().to_string_lossy()),
+            json_escape(
+                &status
+                    .file
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+            ),
         )
     }
 
@@ -366,7 +375,10 @@ impl Service {
         let outcome = {
             let Ok(engine) = self.engine.lock() else {
                 tracing::warn!("engine lock poisoned; cannot stage");
-                self.record(id, InstallOutcome::Failed("engine lock poisoned".to_owned()));
+                self.record(
+                    id,
+                    InstallOutcome::Failed("engine lock poisoned".to_owned()),
+                );
                 return;
             };
             install_file(&engine, game, file)
