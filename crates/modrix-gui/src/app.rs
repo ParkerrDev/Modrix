@@ -145,6 +145,30 @@ impl PartialEq for DefChoice {
 }
 impl Eq for DefChoice {}
 
+/// One community plugin from the registry index, as the Games screen shows it.
+#[derive(Debug, Clone)]
+pub struct RegistryChoice {
+    /// Stable plugin id (= game id).
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Registry version.
+    pub version: String,
+    /// The full index entry (needed to install).
+    pub entry: modrix_registry::IndexEntry,
+}
+
+/// An installed plugin row for the Settings screen.
+#[derive(Debug, Clone)]
+pub struct InstalledPlugin {
+    /// Stable plugin id.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Installed version.
+    pub version: String,
+}
+
 /// A supported game found installed on disk by `install_probe`, whether or not
 /// it is registered yet. Lets the Games screen offer a one-click add + switch.
 #[derive(Debug, Clone)]
@@ -369,8 +393,14 @@ pub struct App {
     pub busy: bool,
     /// Selectable game definitions.
     pub defs: Vec<DefChoice>,
+    /// Stable ids of `defs`, index-aligned (drives "already supported").
+    pub def_ids: Vec<String>,
     /// Supported games found installed on disk (from `install_probe`).
     pub detected: Vec<Detected>,
+    /// Community plugins available in the registry (fetched at boot).
+    pub registry: Vec<RegistryChoice>,
+    /// Locally installed registry plugins (Settings screen).
+    pub installed_plugins: Vec<InstalledPlugin>,
     /// Form fields.
     pub form: Forms,
     /// The engine's resolved on-disk locations (shown in Settings).
@@ -385,6 +415,7 @@ pub struct Booted {
     service: Service,
     link: Option<Link>,
     defs: Vec<DefChoice>,
+    def_ids: Vec<String>,
     detected: Vec<Detected>,
     paths: Paths,
 }
@@ -487,6 +518,16 @@ pub enum Message {
     AddGame,
     /// Register a detected install (index into `detected`) and switch to it.
     AddDetected(usize),
+    /// The registry index finished loading (at boot, or after a change).
+    RegistryLoaded(Result<Vec<RegistryChoice>, String>),
+    /// Install game support from the registry (index into `registry`).
+    InstallSupport(usize),
+    /// A registry plugin finished installing.
+    SupportInstalled(Result<String, String>),
+    /// Remove an installed registry plugin by id.
+    UninstallPlugin(String),
+    /// Remove every installed plugin no registered game uses.
+    GcPlugins,
     /// Open the file picker for local archives.
     PickFiles,
     /// Files chosen in the picker.
@@ -633,7 +674,10 @@ pub fn boot() -> (App, Task<Message>) {
         prompted: HashSet::new(),
         busy: false,
         defs: Vec::new(),
+        def_ids: Vec::new(),
         detected: Vec::new(),
+        registry: Vec::new(),
+        installed_plugins: Vec::new(),
         form: Forms::default(),
         paths: None,
         theme: theme::app_theme(),
@@ -704,7 +748,7 @@ fn start_service(progress: &std::sync::Arc<modrix_core::Progress>) -> Result<Boo
     // Tier-2 plugins (game.lua) hook in before the engine is shared.
     modrix_plugin::register_lua_logic(&mut engine);
     let lockfile = paths.instance_lock();
-    let defs = discover_defs(&paths);
+    let (defs, def_ids) = discover_defs(&paths);
     let detected = detect_installs(&defs);
     let service = Service::new(engine, MAX_CONCURRENT).map_err(|e| format!("{e:#}"))?;
     let link = match service
@@ -718,6 +762,7 @@ fn start_service(progress: &std::sync::Arc<modrix_core::Progress>) -> Result<Boo
         service,
         link,
         defs,
+        def_ids,
         detected,
         paths,
     })
@@ -746,15 +791,37 @@ fn detect_installs(defs: &[DefChoice]) -> Vec<Detected> {
 }
 
 /// Every definition this installation can register a game from - built-ins,
-/// user definitions, installed plugins - via core's catalog.
-fn discover_defs(paths: &Paths) -> Vec<DefChoice> {
-    modrix_core::defcat::discover_defs(paths)
+/// user definitions, installed plugins - via core's catalog. Returns the
+/// choices plus their index-aligned stable ids.
+fn discover_defs(paths: &Paths) -> (Vec<DefChoice>, Vec<String>) {
+    let entries = modrix_core::defcat::discover_defs(paths);
+    let ids = entries.iter().map(|e| e.def.id.clone()).collect();
+    let defs = entries
         .into_iter()
         .map(|entry| DefChoice {
             name: entry.def.name,
             toml: entry.toml,
         })
-        .collect()
+        .collect();
+    (defs, ids)
+}
+
+/// Fetch the registry index into the Games screen's choice list.
+async fn fetch_registry(paths: Paths) -> Result<Vec<RegistryChoice>, String> {
+    let client =
+        modrix_registry::RegistryClient::new(modrix_registry::RegistrySource::resolve(), &paths)
+            .map_err(|e| e.to_string())?;
+    let index = client.index(false).await.map_err(|e| e.to_string())?;
+    Ok(index
+        .plugins
+        .into_iter()
+        .map(|entry| RegistryChoice {
+            id: entry.id.clone(),
+            name: entry.name.clone(),
+            version: entry.version.clone(),
+            entry,
+        })
+        .collect())
 }
 
 /// The update loop: route each message to its handler.
@@ -837,6 +904,20 @@ fn update_files(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::PluginCounts(counts) => {
             app.plugin_counts = counts;
+            Task::none()
+        }
+        Message::RegistryLoaded(result) => {
+            app.on_registry_loaded(result);
+            Task::none()
+        }
+        Message::InstallSupport(index) => app.on_install_support(index),
+        Message::SupportInstalled(result) => app.on_support_installed(result),
+        Message::UninstallPlugin(id) => {
+            app.on_uninstall_plugin(&id);
+            Task::none()
+        }
+        Message::GcPlugins => {
+            app.on_gc_plugins();
             Task::none()
         }
         Message::NoOp => Task::none(),
@@ -925,17 +1006,161 @@ impl App {
                 self.already_running = booted.link.is_none();
                 self.link = booted.link;
                 self.defs = booted.defs;
+                self.def_ids = booted.def_ids;
                 self.detected = booted.detected;
                 self.paths = Some(booted.paths);
                 self.service = Some(booted.service);
+                self.refresh_installed_plugins();
                 self.refresh();
-                self.refresh_heavy()
+                Task::batch([self.refresh_heavy(), self.spawn_registry_fetch()])
             }
             Err(error) => {
                 self.boot_error = Some(error);
                 Task::none()
             }
         }
+    }
+
+    /// Load the registry index in the background (offline is fine - the
+    /// section simply stays empty).
+    fn spawn_registry_fetch(&self) -> Task<Message> {
+        let Some(paths) = self.paths.clone() else {
+            return Task::none();
+        };
+        Task::perform(fetch_registry(paths), Message::RegistryLoaded)
+    }
+
+    fn on_registry_loaded(&mut self, result: Result<Vec<RegistryChoice>, String>) {
+        match result {
+            Ok(choices) => self.registry = choices,
+            // Offline or private registry without an override: not an error
+            // worth a notification, the section just stays empty.
+            Err(error) => tracing::debug!(%error, "registry index unavailable"),
+        }
+    }
+
+    /// Registry entries whose game support is not installed locally yet,
+    /// paired with their index into `registry`.
+    #[must_use]
+    pub fn available_support(&self) -> Vec<(usize, &RegistryChoice)> {
+        self.registry
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| !self.def_ids.contains(&r.id))
+            .collect()
+    }
+
+    fn on_install_support(&mut self, index: usize) -> Task<Message> {
+        let Some(choice) = self.registry.get(index).cloned() else {
+            return Task::none();
+        };
+        let Some(paths) = self.paths.clone() else {
+            return Task::none();
+        };
+        self.busy = true;
+        Task::perform(
+            async move {
+                let client = modrix_registry::RegistryClient::new(
+                    modrix_registry::RegistrySource::resolve(),
+                    &paths,
+                )
+                .map_err(|e| e.to_string())?;
+                client
+                    .install(&choice.entry)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(choice.id)
+            },
+            Message::SupportInstalled,
+        )
+    }
+
+    /// Support installed: rescan definitions and detection; when the game is
+    /// found on disk and not yet registered, register and switch to it -
+    /// the "pick a game, its plugin just works" flow.
+    fn on_support_installed(&mut self, result: Result<String, String>) -> Task<Message> {
+        self.busy = false;
+        let id = match result {
+            Ok(id) => id,
+            Err(error) => {
+                self.note(Tone::Error, format!("Plugin install failed: {error}"));
+                return Task::none();
+            }
+        };
+        self.note(Tone::Ok, format!("{id} support installed"));
+        if let Some(paths) = self.paths.clone() {
+            let (defs, def_ids) = discover_defs(&paths);
+            self.defs = defs;
+            self.def_ids = def_ids;
+            self.detected = detect_installs(&self.defs);
+        }
+        self.refresh_installed_plugins();
+        let found = self
+            .detected
+            .iter()
+            .position(|d| d.id == id)
+            .filter(|_| !self.games.iter().any(|g| g.plugin_id == id));
+        if let Some(index) = found {
+            self.on_add_detected(index);
+        }
+        Task::none()
+    }
+
+    fn refresh_installed_plugins(&mut self) {
+        let Some(paths) = &self.paths else {
+            return;
+        };
+        self.installed_plugins = modrix_registry::installed_at(paths)
+            .into_iter()
+            .map(|m| InstalledPlugin {
+                id: m.id,
+                name: m.name,
+                version: m.version,
+            })
+            .collect();
+    }
+
+    fn on_uninstall_plugin(&mut self, id: &str) {
+        let Some(paths) = self.paths.clone() else {
+            return;
+        };
+        let referenced: Vec<String> = self.games.iter().map(|g| g.plugin_id.clone()).collect();
+        let client = modrix_registry::RegistryClient::new(
+            modrix_registry::RegistrySource::resolve(),
+            &paths,
+        );
+        match client.and_then(|c| c.uninstall(id, &referenced).map(|()| c)) {
+            Ok(_) => self.note(Tone::Ok, format!("{id} removed")),
+            Err(error) => self.note(Tone::Error, error.to_string()),
+        }
+        let (defs, def_ids) = discover_defs(&paths);
+        self.defs = defs;
+        self.def_ids = def_ids;
+        self.refresh_installed_plugins();
+    }
+
+    fn on_gc_plugins(&mut self) {
+        let Some(paths) = self.paths.clone() else {
+            return;
+        };
+        let referenced: Vec<String> = self.games.iter().map(|g| g.plugin_id.clone()).collect();
+        let client = modrix_registry::RegistryClient::new(
+            modrix_registry::RegistrySource::resolve(),
+            &paths,
+        );
+        match client.and_then(|c| c.gc(&referenced)) {
+            Ok(removed) if removed.is_empty() => {
+                self.note(Tone::Info, "No unused plugins".to_owned());
+            }
+            Ok(removed) => {
+                self.note(Tone::Ok, format!("Removed unused: {}", removed.join(", ")));
+            }
+            Err(error) => self.note(Tone::Error, error.to_string()),
+        }
+        let (defs, def_ids) = discover_defs(&paths);
+        self.defs = defs;
+        self.def_ids = def_ids;
+        self.refresh_installed_plugins();
     }
 
     fn on_navigate(&mut self, screen: Screen) -> Task<Message> {

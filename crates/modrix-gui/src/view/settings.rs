@@ -14,6 +14,7 @@ pub(super) fn body(app: &App) -> El<'_> {
         column![
             service_card(app),
             extension_card(),
+            plugins_card(app),
             locations_card(app),
             profiles_card(app),
             about_card(),
@@ -22,6 +23,45 @@ pub(super) fn body(app: &App) -> El<'_> {
     )
     .height(Length::Fill)
     .into()
+}
+
+/// Installed community plugins, with removal and cleanup.
+fn plugins_card(app: &App) -> El<'_> {
+    let mut listing = column![].spacing(8);
+    if app.installed_plugins.is_empty() {
+        listing = listing.push(
+            text("None installed - game support fetched from the registry appears here.")
+                .size(12)
+                .color(theme::FAINT),
+        );
+    }
+    for plugin in &app.installed_plugins {
+        let in_use = app.games.iter().any(|g| g.plugin_id == plugin.id);
+        let mut remove = button(text("Remove").size(11))
+            .padding([4, 10])
+            .style(theme::danger_ghost);
+        if !in_use {
+            remove = remove.on_press(Message::UninstallPlugin(plugin.id.clone()));
+        }
+        let label = if in_use { "in use" } else { "" };
+        listing = listing.push(
+            row![
+                text(&plugin.name).size(13).width(Length::Fill),
+                text(format!("v{}", plugin.version))
+                    .size(12)
+                    .color(theme::MUTED),
+                text(label).size(11).color(theme::FAINT),
+                remove,
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center),
+        );
+    }
+    let gc = button(text("Remove unused").size(12))
+        .padding([6, 12])
+        .style(theme::ghost)
+        .on_press(Message::GcPlugins);
+    labeled_card("COMMUNITY PLUGINS", column![listing, gc].spacing(12).into())
 }
 
 fn service_card(app: &App) -> El<'_> {
@@ -48,8 +88,9 @@ fn service_card(app: &App) -> El<'_> {
 fn extension_card() -> El<'static> {
     let steps = column![
         bullet("Load the `extension/` folder unpacked (developer mode)."),
-        bullet("Paste the address and token above into its options."),
+        bullet("That's it - no token or pairing needed while Modrix runs."),
         bullet("Click Download on nexusmods.com."),
+        bullet("The token above is an advanced fallback (extension options)."),
     ]
     .spacing(6);
     labeled_card("BROWSER EXTENSION", steps.into())

@@ -20,26 +20,53 @@ use crate::error::Error;
 /// Maximum redirects to follow before giving up.
 const MAX_REDIRECTS: u8 = 5;
 
-/// A reusable HTTP client. Cheap to clone (shares one TLS config).
+/// A reusable HTTP client. Cheap to clone (shares one TLS config). Public so
+/// sibling crates (the plugin registry, artwork fetching) reuse the one
+/// GPLv2-clean stack instead of growing their own.
 #[derive(Clone)]
-pub(crate) struct HttpClient {
+pub struct HttpClient {
     tls: Arc<rustls::ClientConfig>,
 }
 
 /// The head of a response plus its still-streaming body.
-pub(crate) struct Response {
+pub struct Response {
+    /// HTTP status code.
     pub status: u16,
+    /// Response headers, lowercased names.
     pub headers: Vec<(String, String)>,
+    /// The streaming body.
     pub body: Incoming,
 }
 
 impl Response {
     /// A header value by (lowercase) name.
+    #[must_use]
     pub fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.as_str())
+    }
+
+    /// Collect the whole body, refusing to buffer more than `cap` bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Http`] on a transport failure or an over-cap body.
+    pub async fn bytes(self, cap: usize) -> Result<Vec<u8>, Error> {
+        use http_body_util::BodyExt as _;
+        let mut body = self.body;
+        let mut out = Vec::new();
+        while let Some(frame) = body.frame().await {
+            let frame = frame.map_err(|e| Error::Http(e.to_string()))?;
+            if let Some(data) = frame.data_ref() {
+                if out.len().saturating_add(data.len()) > cap {
+                    return Err(Error::Http("response body over the size cap".to_owned()));
+                }
+                out.extend_from_slice(data);
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -50,7 +77,7 @@ impl HttpClient {
     /// # Errors
     ///
     /// Returns [`Error::Tls`] if the TLS configuration cannot be built.
-    pub(crate) fn new() -> Result<Self, Error> {
+    pub fn new() -> Result<Self, Error> {
         let provider = Arc::new(rustls_rustcrypto::provider());
         let mut roots = rustls::RootCertStore::empty();
         let loaded = rustls_native_certs::load_native_certs();
@@ -73,11 +100,7 @@ impl HttpClient {
     /// # Errors
     ///
     /// Returns [`Error::Http`] on a transport failure or a redirect loop.
-    pub(crate) async fn get(
-        &self,
-        url: &str,
-        headers: &[(&str, String)],
-    ) -> Result<Response, Error> {
+    pub async fn get(&self, url: &str, headers: &[(&str, String)]) -> Result<Response, Error> {
         let mut current = url.to_owned();
         for _ in 0..MAX_REDIRECTS {
             let response = self.get_once(&current, headers).await?;

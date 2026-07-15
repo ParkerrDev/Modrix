@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[package]
+name = "modrix-registry"
+description = "Modrix community plugin registry client: search, fetch, verify, install."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+modrix-core.workspace = true
+modrix-download.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

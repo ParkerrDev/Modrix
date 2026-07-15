@@ -23,6 +23,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 rfd.workspace = true
 modrix-plugin.workspace = true
+modrix-registry.workspace = true
 
 [lints]
 workspace = true

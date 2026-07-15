@@ -6,7 +6,7 @@ use iced::{Alignment, Length};
 use modrix_core::Game;
 
 use super::{BOLD, El, empty_state, labeled_card};
-use crate::app::{App, Detected, GameChoice, Message};
+use crate::app::{App, Detected, GameChoice, Message, RegistryChoice};
 use crate::theme;
 
 /// The games body.
@@ -25,7 +25,48 @@ pub(super) fn body(app: &App) -> El<'_> {
     if let Some(card) = detected_card(app) {
         root = root.push(card);
     }
+    if let Some(card) = registry_card(app) {
+        root = root.push(card);
+    }
     root.push(register_card(app)).into()
+}
+
+/// Community game-support plugins available in the registry but not
+/// installed locally. Installing one auto-registers the game when its
+/// install is found on disk. `None` when everything is already local (or
+/// the registry is unreachable).
+fn registry_card(app: &App) -> Option<El<'_>> {
+    let available = app.available_support();
+    if available.is_empty() {
+        return None;
+    }
+    let mut rows = column![].spacing(8);
+    for (index, choice) in available {
+        rows = rows.push(registry_row(index, choice, app.busy));
+    }
+    Some(labeled_card("MORE GAMES - community plugins", rows.into()))
+}
+
+fn registry_row(index: usize, choice: &RegistryChoice, busy: bool) -> El<'_> {
+    let info = column![
+        text(&choice.name).size(14).font(BOLD),
+        text(format!("{} · v{}", choice.id, choice.version))
+            .size(12)
+            .color(theme::FAINT),
+    ]
+    .spacing(4)
+    .width(Length::Fill);
+    let mut install = button(text("Install support").size(13))
+        .padding([8, 16])
+        .style(theme::primary);
+    if !busy {
+        install = install.on_press(Message::InstallSupport(index));
+    }
+    container(row![info, install].spacing(12).align_y(Alignment::Center))
+        .padding(12)
+        .width(Length::Fill)
+        .style(theme::inset)
+        .into()
 }
 
 /// A one-click "add and switch" list of supported games found installed on

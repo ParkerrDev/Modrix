@@ -25,7 +25,7 @@ mod bits;
 mod checksum;
 mod control;
 mod error;
-mod http;
+pub mod http;
 mod manager;
 mod nxm;
 mod request;

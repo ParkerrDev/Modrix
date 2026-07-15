@@ -2875,8 +2875,10 @@ dependencies = [
  "modrix-core",
  "modrix-ipc",
  "modrix-plugin",
+ "modrix-registry",
  "modrix-service",
  "tokio",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2931,6 +2933,7 @@ dependencies = [
  "modrix-download",
  "modrix-ipc",
  "modrix-plugin",
+ "modrix-registry",
  "modrix-service",
  "rfd",
  "tokio",
@@ -2970,6 +2973,22 @@ dependencies = [
  "modrix-core",
  "modrix-ipc",
  "tokio",
+]
+
+[[package]]
+name = "modrix-registry"
+version = "0.0.0"
+dependencies = [
+ "modrix-core",
+ "modrix-download",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
+ "tracing",
 ]
 
 [[package]]

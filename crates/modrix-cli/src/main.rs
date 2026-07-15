@@ -7,6 +7,7 @@
 //! parses arguments, calls engine methods, and formats the result.
 
 mod output;
+mod registry;
 mod serve;
 
 use std::io::Write;
@@ -74,6 +75,16 @@ enum Command {
         /// Loopback port to bind (single-instance mutex).
         #[arg(long, default_value_t = modrix_ipc::DEFAULT_PORT)]
         port: u16,
+    },
+    /// Search, install, and manage community plugins from the registry.
+    Registry {
+        #[command(subcommand)]
+        cmd: registry::RegistryCmd,
+    },
+    /// Plugin-development tools (validation for registry submissions).
+    Plugin {
+        #[command(subcommand)]
+        cmd: registry::PluginCmd,
     },
 }
 
@@ -178,6 +189,8 @@ fn dispatch(cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
         Command::Deploy { dry_run } => deploy(cli, engine, *dry_run, out),
         Command::Undeploy => undeploy(cli, engine, out),
         Command::Verify => verify(cli, engine, out),
+        Command::Registry { cmd } => registry::registry_cmd(cmd, engine, out),
+        Command::Plugin { cmd } => registry::plugin_cmd(cmd, out),
         // Handled in `main` before dispatch (needs to own the engine).
         Command::Serve { .. } => Ok(()),
     }
