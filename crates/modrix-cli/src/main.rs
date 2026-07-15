@@ -219,12 +219,7 @@ fn mod_cmd(cmd: &ModCmd, cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Res
             }
             match modrix_service::install_file(engine, game.id, source)? {
                 modrix_service::InstallOutcome::Installed { name, configurable } => {
-                    let extra = if configurable {
-                        " [fomod defaults]"
-                    } else {
-                        ""
-                    };
-                    writeln!(out, "installed {name}{extra}")?;
+                    writeln!(out, "installed {name}{}", fomod_suffix(configurable))?;
                 }
                 other => writeln!(out, "install did not finish: {other:?}")?,
             }
@@ -259,14 +254,23 @@ fn mod_cmd(cmd: &ModCmd, cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Res
             let configurable = modrix_service::fomod_pass(engine, &fresh)?;
             let profile = engine.active_profile(game.id)?;
             engine.set_enabled(profile.id, fresh.id, true)?;
-            let extra = if configurable {
-                " [fomod defaults]"
-            } else {
-                ""
-            };
-            writeln!(out, "reinstalled {}{extra}", fresh.name)?;
+            writeln!(
+                out,
+                "reinstalled {}{}",
+                fresh.name,
+                fomod_suffix(configurable)
+            )?;
             Ok(())
         }
+    }
+}
+
+/// The suffix marking an install whose FOMOD options were set to defaults.
+fn fomod_suffix(configurable: bool) -> &'static str {
+    if configurable {
+        " [fomod defaults]"
+    } else {
+        ""
     }
 }
 

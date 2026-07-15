@@ -103,15 +103,6 @@ impl Selection {
 /// Simultaneously-active downloads (matches `modrix serve`).
 const MAX_CONCURRENT: u8 = 4;
 
-/// Game definitions compiled into the binary, available out of the box.
-const BUILTIN_DEFS: [&str; 2] = [
-    include_str!("../../../games/skyrimse/game.toml"),
-    include_str!("../../../games/subnautica/game.toml"),
-];
-
-/// Most files a definition scan will consider (bounded loop).
-const MAX_DEF_SCAN: usize = 256;
-
 /// Notifications kept before the oldest are dropped.
 const MAX_NOTES: usize = 200;
 
@@ -752,40 +743,16 @@ fn detect_installs(defs: &[DefChoice]) -> Vec<Detected> {
     out
 }
 
-/// Built-in definitions plus any `game.toml` under `<config>/games/`.
+/// Every definition this installation can register a game from - built-ins,
+/// user definitions, installed plugins - via core's catalog.
 fn discover_defs(paths: &Paths) -> Vec<DefChoice> {
-    let mut defs: Vec<DefChoice> = BUILTIN_DEFS
-        .iter()
-        .filter_map(|text| choice_from_toml(text))
-        .collect();
-    let dir = paths.config_dir().join("games");
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return defs;
-    };
-    for entry in entries.flatten().take(MAX_DEF_SCAN) {
-        let path = entry.path();
-        let file = if path.is_dir() {
-            path.join("game.toml")
-        } else {
-            path
-        };
-        if file.extension().is_some_and(|e| e == "toml")
-            && let Ok(text) = std::fs::read_to_string(&file)
-            && let Some(choice) = choice_from_toml(&text)
-            && !defs.contains(&choice)
-        {
-            defs.push(choice);
-        }
-    }
-    defs
-}
-
-fn choice_from_toml(text: &str) -> Option<DefChoice> {
-    let def = GameDef::from_toml_str(text, std::path::Path::new("<definition>")).ok()?;
-    Some(DefChoice {
-        name: def.name,
-        toml: text.to_owned(),
-    })
+    modrix_core::defcat::discover_defs(paths)
+        .into_iter()
+        .map(|entry| DefChoice {
+            name: entry.def.name,
+            toml: entry.toml,
+        })
+        .collect()
 }
 
 /// The update loop: route each message to its handler.
@@ -2001,6 +1968,20 @@ fn apply_wizard(
 }
 
 /// Execute one slow action while holding the engine lock (worker thread).
+/// Reinstall each mod from its archive, re-run FOMOD defaults, and re-enable.
+fn run_reinstall_many(engine: &Engine, ids: &[ModId]) -> Result<String, String> {
+    let mut done: usize = 0;
+    for id in ids {
+        let fresh = engine.reinstall_mod(*id).map_err(|e| e.to_string())?;
+        modrix_service::fomod_pass(engine, &fresh).map_err(|e| format!("{e:#}"))?;
+        if let Ok(profile) = engine.active_profile(fresh.game_id) {
+            let _ = engine.set_enabled(profile.id, fresh.id, true);
+        }
+        done = done.saturating_add(1);
+    }
+    Ok(format!("{done} mods reinstalled"))
+}
+
 fn run_action(engine: &Mutex<Engine>, action: &Action) -> Result<String, String> {
     let engine = engine
         .lock()
@@ -2036,18 +2017,7 @@ fn run_action(engine: &Mutex<Engine>, action: &Action) -> Result<String, String>
             })
             .map_err(|e| e.to_string()),
         Action::Install { game, path } => run_install(&engine, *game, path),
-        Action::ReinstallMany(ids) => {
-            let mut done: usize = 0;
-            for id in ids {
-                let fresh = engine.reinstall_mod(*id).map_err(|e| e.to_string())?;
-                modrix_service::fomod_pass(&engine, &fresh).map_err(|e| format!("{e:#}"))?;
-                if let Ok(profile) = engine.active_profile(fresh.game_id) {
-                    let _ = engine.set_enabled(profile.id, fresh.id, true);
-                }
-                done = done.saturating_add(1);
-            }
-            Ok(format!("{done} mods reinstalled"))
-        }
+        Action::ReinstallMany(ids) => run_reinstall_many(&engine, ids),
         Action::AutoSortPlugins(profile) => {
             let plugins = engine
                 .auto_sort_plugins(*profile)

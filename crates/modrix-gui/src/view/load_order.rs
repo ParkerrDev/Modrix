@@ -86,12 +86,9 @@ fn toolbar(app: &App) -> El<'_> {
     bar.into()
 }
 
-fn plugin_row(plugin: &GamePlugin, index: usize, len: usize, selected: bool, drop: bool) -> El<'_> {
-    let handle = mouse_area(icons::grip::<Message>())
-        .interaction(iced::mouse::Interaction::Grab)
-        .on_press(Message::DragStart(Pane::Plugins, index));
-    let position = index.saturating_add(1);
-    let arrows = row![
+/// The up/down move buttons for a row.
+fn move_arrows(index: usize, len: usize) -> El<'static> {
+    row![
         arrow_button(
             true,
             (index > 0).then_some(Message::MoveSelection {
@@ -107,7 +104,16 @@ fn plugin_row(plugin: &GamePlugin, index: usize, len: usize, selected: bool, dro
             })
         ),
     ]
-    .spacing(4);
+    .spacing(4)
+    .into()
+}
+
+fn plugin_row(plugin: &GamePlugin, index: usize, len: usize, selected: bool, drop: bool) -> El<'_> {
+    let handle = mouse_area(icons::grip::<Message>())
+        .interaction(iced::mouse::Interaction::Grab)
+        .on_press(Message::DragStart(Pane::Plugins, index));
+    let position = index.saturating_add(1);
+    let arrows = move_arrows(index, len);
     let activate = toggler(plugin.enabled)
         .size(15)
         .on_toggle(move |_| Message::TogglePlugin(index))

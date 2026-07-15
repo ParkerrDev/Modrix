@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-only
-# A declarative (Tier 1) game definition - no code required. This is the whole
-# thing needed to manage a simple Steam title: an id, a name, and where mods
-# deploy relative to the install directory.
-api_version   = 1
+# A declarative (Tier 1) game definition - no code required. Since
+# api_version 2 the definition also carries the game's *capabilities*:
+# its load-order strategy, which archive-root directories are mod content,
+# what the base game ships, how hand-installed mods appear on disk, and
+# game-specific health checks. Core has no Skyrim-specific code - everything
+# Bethesda-shaped about this game lives in this file.
+api_version   = 2
 id            = "skyrimse"
 name          = "The Elder Scrolls V: Skyrim Special Edition"
 steam_appid   = 489830
@@ -10,4 +13,57 @@ nexus_domain  = "skyrimspecialedition"   # routes nxm://skyrimspecialedition/…
 mod_root      = "Data"          # mods deploy into <install>/Data
 deploy        = "link"          # hardlink → symlink → copy (applier falls back)
 install_probe = ["steam", "registry", "path-hint"]
-load_order    = "plugins_txt"
+
+# Directory names that ARE mod content at an archive root, never a packaging
+# wrapper to hoist away (a lone `meshes/` is a mod that ships meshes; a lone
+# `SkyUI_5_2/` is packaging).
+content_dirs = [
+  "meshes", "textures", "scripts", "interface", "sound", "music", "strings",
+  "seq", "grass", "shadersfx", "lodsettings", "skse", "fomod", "source",
+  # Community Shaders feature packs ship a lone `Shaders/` tree; MCM Helper
+  # settings mods ship a lone `MCM/` tree.
+  "shaders", "mcm",
+]
+
+# What the base game ships in Data/ (lowercased; trailing `*` is a prefix
+# match). Unowned files matching these are vanilla, not foreign mods.
+base_files = [
+  "skyrim.esm", "update.esm", "dawnguard.esm", "hearthfires.esm",
+  "dragonborn.esm", "_resourcepack.esl",
+  "cc*",  # Creation Club content
+]
+
+# The game reads its plugin activation/order from Plugins.txt under the
+# user's local app data (inside the Proton prefix on Linux).
+[load_order]
+strategy    = "plugins_txt"
+appdata_dir = "Skyrim Special Edition"
+
+# Hand-installed mods appear as loose plugins in Data/ …
+[[external_scan]]
+kind      = "file"
+label     = "plugin"
+exts      = ["esp", "esm", "esl"]
+skip_base = true
+
+# … or as SKSE plugin DLLs (the base game ships no SKSE directory).
+[[external_scan]]
+kind  = "file"
+label = "SKSE plugin"
+dir   = "SKSE/Plugins"
+exts  = ["dll"]
+
+# SKSE plugins do nothing without the loader binaries at the game root
+# (the CommunityShaders/TerrainHelper class of silent failure).
+[health.loader]
+plugins_dir = "SKSE/Plugins"
+root_prefix = "skse"
+message     = "SKSE plugins are installed but the SKSE loader is missing - install Skyrim Script Extender"
+
+# SSE Engine Fixes ships as two parts; part 1 without the part-2 preloader
+# fails at launch.
+[[health.recommended]]
+if_file            = "SKSE/Plugins/EngineFixes.dll"
+if_name_contains   = "engine fixes"
+requires_root_file = "d3dx9_42.dll"
+message            = "Engine Fixes is installed without its Part 2 preloader (d3dx9_42.dll) - download the Part 2 archive"

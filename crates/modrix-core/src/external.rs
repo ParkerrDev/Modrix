@@ -9,14 +9,19 @@
 //! picture of what is installed is honest. This module reports them, read-only.
 //!
 //! Detection is "present but not owned and not vanilla", grouped into nameable
-//! mod units per ecosystem: loose game plugins and `SKSE/Plugins` DLLs (Bethesda)
-//! and `BepInEx/plugins/<Mod>/` folders (Unity/BepInEx). Each detector is a
-//! no-op when its layout is absent, so one scan serves every game. Every scan is
-//! bounded (Power of Ten §9.3): no unbounded directory walk, no recursion.
+//! mod units. **What** to look for comes from the game definition's
+//! `[[external_scan]]` entries (see [`crate::gamedef::ExternalScanDef`]) - a
+//! `file` scan reports matching loose files (Bethesda plugins, SKSE DLLs), a
+//! `folder` scan reports subdirectories as units (BepInEx plugins). Core has
+//! no per-game layout knowledge of its own; a v1 definition that declares
+//! nothing falls back to [`v1_default_scans`]. Every scan is bounded (Power
+//! of Ten §9.3): no unbounded directory walk, no recursion.
 
 use std::collections::HashSet;
 use std::hash::BuildHasher;
 use std::path::{Path, PathBuf};
+
+use crate::gamedef::ExternalScanDef;
 
 /// Most directory entries any single scan level will consider (bounded loop).
 const MAX_SCAN: usize = 8192;
@@ -28,103 +33,96 @@ const MAX_DEPTH: u32 = 32;
 /// walked whole just to show a number).
 const MAX_COUNT: usize = 100_000;
 
-/// What kind of external content this is - drives the frontend's label.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExternalKind {
-    /// A loose game plugin (`.esp`/`.esl`/`.esm`) not deployed by Modrix.
-    Plugin,
-    /// An SKSE plugin DLL under `SKSE/Plugins/`.
-    SksePlugin,
-    /// A BepInEx plugin folder under `BepInEx/plugins/`.
-    BepInExPlugin,
-}
-
-impl ExternalKind {
-    /// A short human label for the kind.
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Plugin => "plugin",
-            Self::SksePlugin => "SKSE plugin",
-            Self::BepInExPlugin => "BepInEx plugin",
-        }
-    }
-}
-
 /// One mod present in the game directory but outside Modrix's management.
 #[derive(Debug, Clone)]
 pub struct ExternalMod {
-    /// Display name (the folder or plugin file name).
+    /// Display name (the folder or file name).
     pub name: String,
-    /// Which ecosystem/layout it was found in.
-    pub kind: ExternalKind,
+    /// The detector's human label (e.g. `plugin`, `SKSE plugin`,
+    /// `BepInEx plugin`), from the game definition.
+    pub label: String,
     /// Absolute path to its main artifact (the folder, or the file).
     pub path: PathBuf,
     /// Number of files it contributes (1 for a single-file plugin/DLL).
     pub files: usize,
 }
 
-/// Scan a game's deploy root for mods it holds that the deployment does not own
-/// (`owned` = lowercased deployed target paths) and the base game does not ship.
-/// Results are sorted by kind then name for a stable display.
+/// Scan a game's deploy root for mods it holds that the deployment does not
+/// own (`owned` = lowercased deployed target paths, relative to the deploy
+/// root) and the base game does not ship (`base_files`, lowercased; trailing
+/// `*` = prefix match). Results are sorted by label then name for a stable
+/// display.
 #[must_use]
 pub fn scan<S: BuildHasher>(
-    mod_root: &Path,
+    deploy_root: &Path,
     owned: &HashSet<String, S>,
-    steam_appid: Option<i64>,
+    scans: &[ExternalScanDef],
+    base_files: &[String],
 ) -> Vec<ExternalMod> {
     let mut out = Vec::new();
-    loose_plugins(mod_root, owned, steam_appid, &mut out);
-    skse_plugins(mod_root, owned, &mut out);
-    bepinex_plugins(mod_root, owned, &mut out);
+    for def in scans {
+        match def.kind.as_str() {
+            "file" => file_scan(deploy_root, owned, def, base_files, &mut out),
+            "folder" => folder_scan(deploy_root, owned, def, &mut out),
+            _ => {}
+        }
+    }
     out.sort_by(|a, b| {
-        (a.kind.label(), a.name.to_ascii_lowercase())
-            .cmp(&(b.kind.label(), b.name.to_ascii_lowercase()))
+        (a.label.as_str(), a.name.to_ascii_lowercase())
+            .cmp(&(b.label.as_str(), b.name.to_ascii_lowercase()))
     });
     out
 }
 
-/// Loose plugins at the deploy root that are neither deployed nor vanilla.
-fn loose_plugins<S: BuildHasher>(
-    mod_root: &Path,
-    owned: &HashSet<String, S>,
-    steam_appid: Option<i64>,
-    out: &mut Vec<ExternalMod>,
-) {
-    let base = crate::health::base_plugins(steam_appid);
-    let Ok(entries) = std::fs::read_dir(mod_root) else {
-        return;
-    };
-    for entry in entries.flatten().take(MAX_SCAN) {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let key = name.to_ascii_lowercase();
-        if crate::esp::is_plugin_name(&name)
-            && !owned.contains(&key)
-            && !base.contains(&key.as_str())
-            && !key.starts_with("cc")
-        {
-            out.push(ExternalMod {
-                name,
-                kind: ExternalKind::Plugin,
-                path,
-                files: 1,
-            });
-        }
-    }
+/// The detectors applied to a v1 definition that declares no `external_scan`:
+/// exactly the layouts the pre-v2 hard-coded scanner knew. New definitions
+/// declare their own instead.
+#[must_use]
+pub fn v1_default_scans() -> Vec<ExternalScanDef> {
+    vec![
+        ExternalScanDef {
+            kind: "file".to_owned(),
+            label: "plugin".to_owned(),
+            dir: String::new(),
+            exts: vec!["esp".to_owned(), "esm".to_owned(), "esl".to_owned()],
+            skip_base: true,
+        },
+        ExternalScanDef {
+            kind: "file".to_owned(),
+            label: "SKSE plugin".to_owned(),
+            dir: "SKSE/Plugins".to_owned(),
+            exts: vec!["dll".to_owned()],
+            skip_base: false,
+        },
+        ExternalScanDef {
+            kind: "folder".to_owned(),
+            label: "BepInEx plugin".to_owned(),
+            dir: "BepInEx/plugins".to_owned(),
+            exts: Vec::new(),
+            skip_base: false,
+        },
+    ]
 }
 
-/// SKSE plugin DLLs under `SKSE/Plugins/` we did not deploy. The base game
-/// ships no such directory, so any unowned DLL there is external.
-fn skse_plugins<S: BuildHasher>(
-    mod_root: &Path,
+/// Whether a lowercased file name matches an entry in `base_files`
+/// (exact, or prefix when the entry ends with `*`).
+fn is_base_file(key: &str, base_files: &[String]) -> bool {
+    base_files.iter().any(|b| match b.strip_suffix('*') {
+        Some(prefix) => key.starts_with(prefix),
+        None => key == b,
+    })
+}
+
+/// Loose files matching the scan's extensions that are neither deployed nor
+/// shipped by the base game.
+fn file_scan<S: BuildHasher>(
+    deploy_root: &Path,
     owned: &HashSet<String, S>,
+    def: &ExternalScanDef,
+    base_files: &[String],
     out: &mut Vec<ExternalMod>,
 ) {
-    let Some(dir) = resolve_ci(mod_root, &["SKSE", "Plugins"]) else {
+    let Some((dir, prefix)) = scan_dir(deploy_root, &def.dir) else {
         return;
     };
     let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -136,34 +134,41 @@ fn skse_plugins<S: BuildHasher>(
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        if !name.to_ascii_lowercase().ends_with(".dll") {
+        let key = name.to_ascii_lowercase();
+        let matches_ext = def
+            .exts
+            .iter()
+            .any(|ext| key.rsplit('.').next() == Some(ext.as_str()) && key.contains('.'));
+        if !matches_ext {
             continue;
         }
-        let key = format!("skse/plugins/{}", name.to_ascii_lowercase());
-        if owned.contains(&key) {
+        if owned.contains(&format!("{prefix}{key}")) {
+            continue;
+        }
+        if def.skip_base && is_base_file(&key, base_files) {
             continue;
         }
         out.push(ExternalMod {
             name,
-            kind: ExternalKind::SksePlugin,
+            label: def.label.clone(),
             path,
             files: 1,
         });
     }
 }
 
-/// BepInEx plugin folders we did not deploy. A folder is ours if any deployed
-/// target lives beneath it; the base game ships no BepInEx tree, so every other
-/// folder is an external mod.
-fn bepinex_plugins<S: BuildHasher>(
-    mod_root: &Path,
+/// Subdirectories of the scan dir that no deployed target lives beneath -
+/// each is one external mod (the BepInEx layout).
+fn folder_scan<S: BuildHasher>(
+    deploy_root: &Path,
     owned: &HashSet<String, S>,
+    def: &ExternalScanDef,
     out: &mut Vec<ExternalMod>,
 ) {
-    let Some((plugins, prefix)) = bepinex_container(mod_root) else {
+    let Some((dir, prefix)) = scan_dir(deploy_root, &def.dir) else {
         return;
     };
-    let Ok(entries) = std::fs::read_dir(&plugins) else {
+    let Ok(entries) = std::fs::read_dir(&dir) else {
         return;
     };
     for entry in entries.flatten().take(MAX_SCAN) {
@@ -179,36 +184,25 @@ fn bepinex_plugins<S: BuildHasher>(
         let files = count_files(&path);
         out.push(ExternalMod {
             name,
-            kind: ExternalKind::BepInExPlugin,
+            label: def.label.clone(),
             path,
             files,
         });
     }
 }
 
-/// The BepInEx plugin container under the deploy root, paired with the manifest
-/// prefix that addresses entries inside it.
-///
-/// Manifest paths are relative to the game's mod root, so where the container
-/// sits decides how a deployed plugin is addressed. When the mod root points
-/// straight at the container (Subnautica's `BepInEx/plugins`) the deploy root
-/// *is* the container and its entries are addressed bare. When the mod root is
-/// the install root the container sits beneath it, and entries carry the
-/// `bepinex/plugins/` prefix the deployer's case-folding produced.
-fn bepinex_container(deploy_root: &Path) -> Option<(PathBuf, String)> {
-    if is_plugins_dir(deploy_root) {
+/// Resolve a scan's directory under the deploy root (case-insensitively) and
+/// the lowercased manifest prefix addressing entries inside it. An empty
+/// `dir` is the deploy root itself (bare manifest paths).
+fn scan_dir(deploy_root: &Path, dir: &str) -> Option<(PathBuf, String)> {
+    if dir.is_empty() {
         return Some((deploy_root.to_path_buf(), String::new()));
     }
-    let dir = resolve_ci(deploy_root, &["BepInEx", "plugins"])?;
-    Some((dir, "bepinex/plugins/".to_owned()))
-}
-
-/// Whether `path` is itself a `BepInEx/plugins` directory.
-fn is_plugins_dir(path: &Path) -> bool {
-    let named = |name: Option<&std::ffi::OsStr>, want: &str| {
-        name.is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(want))
-    };
-    named(path.file_name(), "plugins") && named(path.parent().and_then(Path::file_name), "BepInEx")
+    let chain: Vec<&str> = dir.split('/').filter(|c| !c.is_empty()).collect();
+    let resolved = resolve_ci(deploy_root, &chain)?;
+    let mut prefix = chain.join("/").to_ascii_lowercase();
+    prefix.push('/');
+    Some((resolved, prefix))
 }
 
 /// Resolve a chain of child names under `root`, matching each component
@@ -277,6 +271,13 @@ mod tests {
         paths.iter().map(|p| (*p).to_owned()).collect()
     }
 
+    fn skyrim_base() -> Vec<String> {
+        ["skyrim.esm", "cc*"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
+    }
+
     #[test]
     fn bepinex_folders_are_external_unless_deployed() {
         let tmp = tempfile::tempdir().unwrap();
@@ -288,10 +289,15 @@ mod tests {
         );
         write(&root.join("BepInEx/plugins/Managed/managed.dll"), "x");
         // `Managed` was deployed by us; `CharacterForge` was hand-installed.
-        let got = scan(root, &owned(&["bepinex/plugins/managed/managed.dll"]), None);
+        let got = scan(
+            root,
+            &owned(&["bepinex/plugins/managed/managed.dll"]),
+            &v1_default_scans(),
+            &[],
+        );
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].name, "CharacterForge");
-        assert_eq!(got[0].kind, ExternalKind::BepInExPlugin);
+        assert_eq!(got[0].label, "BepInEx plugin");
         assert_eq!(got[0].files, 2);
     }
 
@@ -299,19 +305,24 @@ mod tests {
     fn bepinex_folders_are_found_when_the_deploy_root_is_the_container() {
         let tmp = tempfile::tempdir().unwrap();
         // Subnautica's mod_root IS `BepInEx/plugins`, so the deploy root is the
-        // container itself and manifest paths are bare. Regression: the scan
-        // used to descend into `<root>/BepInEx/plugins` unconditionally, which
-        // under this mod_root looked for `BepInEx/plugins/BepInEx/plugins` and
-        // silently reported nothing installed.
+        // container itself and manifest paths are bare. Its v2 definition
+        // declares a folder scan with `dir = ""`.
         let root = tmp.path().join("Subnautica/BepInEx/plugins");
         write(&root.join("HandInstalled/mod.dll"), "x");
         write(&root.join("Nautilus/Nautilus.dll"), "x");
         write(&root.join("Deployed/mod.dll"), "x");
-        let got = scan(&root, &owned(&["deployed/mod.dll"]), Some(264_710));
+        let scans = vec![ExternalScanDef {
+            kind: "folder".to_owned(),
+            label: "BepInEx plugin".to_owned(),
+            dir: String::new(),
+            exts: Vec::new(),
+            skip_base: false,
+        }];
+        let got = scan(&root, &owned(&["deployed/mod.dll"]), &scans, &[]);
 
         let names: Vec<_> = got.iter().map(|m| m.name.as_str()).collect();
         assert_eq!(names, vec!["HandInstalled", "Nautilus"]);
-        assert_eq!(got[0].kind, ExternalKind::BepInExPlugin);
+        assert_eq!(got[0].label, "BepInEx plugin");
     }
 
     #[test]
@@ -320,16 +331,21 @@ mod tests {
         let root = tmp.path();
         for f in [
             "CBBE.esp",        // external
-            "Skyrim.esm",      // vanilla
-            "ccBGSSSE037.esl", // Creation Club
+            "Skyrim.esm",      // vanilla (base_files)
+            "ccBGSSSE037.esl", // Creation Club (cc* prefix)
             "Managed.esp",     // deployed by us
         ] {
             write(&root.join(f), "x");
         }
-        let got = scan(root, &owned(&["managed.esp"]), Some(489_830));
+        let got = scan(
+            root,
+            &owned(&["managed.esp"]),
+            &v1_default_scans(),
+            &skyrim_base(),
+        );
         let names: Vec<_> = got.iter().map(|m| m.name.as_str()).collect();
         assert_eq!(names, vec!["CBBE.esp"]);
-        assert_eq!(got[0].kind, ExternalKind::Plugin);
+        assert_eq!(got[0].label, "plugin");
     }
 
     #[test]
@@ -339,10 +355,15 @@ mod tests {
         write(&root.join("SKSE/Plugins/hand_installed.dll"), "x");
         write(&root.join("SKSE/Plugins/deployed.dll"), "x");
         write(&root.join("SKSE/Plugins/readme.txt"), "x"); // not a DLL
-        let got = scan(root, &owned(&["skse/plugins/deployed.dll"]), Some(489_830));
+        let got = scan(
+            root,
+            &owned(&["skse/plugins/deployed.dll"]),
+            &v1_default_scans(),
+            &skyrim_base(),
+        );
         let names: Vec<_> = got.iter().map(|m| m.name.as_str()).collect();
         assert_eq!(names, vec!["hand_installed.dll"]);
-        assert_eq!(got[0].kind, ExternalKind::SksePlugin);
+        assert_eq!(got[0].label, "SKSE plugin");
     }
 
     #[test]
@@ -351,6 +372,21 @@ mod tests {
         let root = tmp.path();
         write(&root.join("Skyrim.esm"), "x");
         write(&root.join("Managed.esp"), "x");
-        assert!(scan(root, &owned(&["managed.esp"]), Some(489_830)).is_empty());
+        assert!(
+            scan(
+                root,
+                &owned(&["managed.esp"]),
+                &v1_default_scans(),
+                &skyrim_base()
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_definition_with_no_scans_reports_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(&tmp.path().join("Something.esp"), "x");
+        assert!(scan(tmp.path(), &owned(&[]), &[], &[]).is_empty());
     }
 }

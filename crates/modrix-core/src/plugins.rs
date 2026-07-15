@@ -261,36 +261,6 @@ pub fn vanilla_plugins<S: std::hash::BuildHasher>(
     vanilla
 }
 
-/// The per-game local-appdata directory holding `Plugins.txt`, when it can be
-/// resolved. For Steam installs running under Proton this lives inside the
-/// game's compatdata prefix.
-///
-/// The game-specific leaf is **created** if the prefix itself is initialized:
-/// after a fresh reinstall the game has not run yet, and skipping the write
-/// would silently deploy mods whose plugins never activate.
-#[must_use]
-pub fn plugins_txt_dir(install_path: &Path, steam_appid: Option<i64>) -> Option<PathBuf> {
-    let appid = steam_appid?;
-    let local_dir = match appid {
-        489_830 => "Skyrim Special Edition",
-        377_160 => "Fallout4",
-        _ => return None,
-    };
-    // <steamapps>/common/<Game> -> <steamapps>/compatdata/<appid>/pfx/...
-    let steamapps = install_path.parent()?.parent()?;
-    let local = steamapps
-        .join("compatdata")
-        .join(appid.to_string())
-        .join("pfx/drive_c/users/steamuser/AppData/Local");
-    if !local.is_dir() {
-        // No initialized prefix - the game has never run under Proton here.
-        return None;
-    }
-    let dir = local.join(local_dir);
-    std::fs::create_dir_all(&dir).ok()?;
-    Some(dir)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,23 +319,6 @@ mod tests {
         let vanilla: HashSet<String> = ["skyrim.esm".to_owned()].into();
         annotate_missing(&mut plugins, &vanilla);
         assert_eq!(plugins[0].missing_masters, vec!["ELE_SSE.esp"]);
-    }
-
-    #[test]
-    fn plugins_txt_dir_creates_the_leaf_inside_an_initialized_prefix() {
-        let tmp = tempfile::tempdir().unwrap();
-        let install = tmp.path().join("steamapps/common/Skyrim Special Edition");
-        let local = tmp
-            .path()
-            .join("steamapps/compatdata/489830/pfx/drive_c/users/steamuser/AppData/Local");
-        std::fs::create_dir_all(&install).unwrap();
-        // No prefix yet → no directory (the game never ran).
-        assert_eq!(plugins_txt_dir(&install, Some(489_830)), None);
-        // Initialized prefix → the leaf is created on demand.
-        std::fs::create_dir_all(&local).unwrap();
-        let dir = plugins_txt_dir(&install, Some(489_830)).unwrap();
-        assert_eq!(dir, local.join("Skyrim Special Edition"));
-        assert!(dir.is_dir());
     }
 
     #[test]

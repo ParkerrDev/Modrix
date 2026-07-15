@@ -91,8 +91,9 @@ impl Engine {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "INSERT INTO games \
-                 (plugin_id, name, install_path, mod_root, store, steam_appid, nexus_domain, staging_root) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 (plugin_id, name, install_path, mod_root, store, steam_appid, nexus_domain, \
+                  staging_root, def_json) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 def.id,
                 def.name,
@@ -102,6 +103,7 @@ impl Engine {
                 def.steam_appid,
                 def.nexus_domain,
                 staging_root.to_string_lossy(),
+                def.to_json()?,
             ],
         )?;
         let game = GameId::from_raw(tx.last_insert_rowid());
@@ -183,6 +185,96 @@ impl Engine {
                 key: id.to_string(),
             })
     }
+
+    /// The full definition a game was registered with - the data every
+    /// capability dispatch (load order, external scans, health checks,
+    /// content dirs) runs on. Rows persisted before `def_json` existed
+    /// rehydrate from the definition catalog by plugin id, falling back to a
+    /// minimal definition synthesized from the row itself.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotFound`] if the game does not exist, or
+    /// [`Error::Database`] on query failure.
+    pub fn game_def(&self, id: GameId) -> Result<GameDef> {
+        let stored: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT def_json FROM games WHERE id = ?1",
+                [id.get()],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        if let Some(json) = stored
+            && let Ok(def) = GameDef::from_json(&json)
+        {
+            return Ok(def);
+        }
+        let game = self.game(id)?;
+        if let Some(entry) = crate::defcat::find_def(&self.paths, &game.plugin_id) {
+            return Ok(entry.def);
+        }
+        Ok(synthesize_def(&game))
+    }
+
+    /// What the selected game supports - drives which screens/commands a
+    /// frontend offers.
+    ///
+    /// # Errors
+    ///
+    /// As for [`Engine::game_def`].
+    pub fn capabilities(&self, id: GameId) -> Result<GameCapabilities> {
+        let def = self.game_def(id)?;
+        Ok(GameCapabilities {
+            load_order: crate::loadorder::LoadOrderStrategy::from_def(&def).is_some(),
+            external_scan: !external_scans_of(&def).is_empty(),
+            health_checks: def.health.is_some(),
+        })
+    }
+}
+
+/// What a game supports, derived from its definition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameCapabilities {
+    /// The game has a load-order strategy (a Load Order screen makes sense).
+    pub load_order: bool,
+    /// The game declares external-mod detection.
+    pub external_scan: bool,
+    /// The game declares game-specific health checks.
+    pub health_checks: bool,
+}
+
+/// A minimal definition for a legacy row whose definition file is gone:
+/// enough for staging and deployment, no capabilities.
+fn synthesize_def(game: &Game) -> GameDef {
+    GameDef {
+        api_version: 1,
+        id: game.plugin_id.clone(),
+        name: game.name.clone(),
+        steam_appid: game.steam_appid,
+        nexus_domain: game.nexus_domain.clone(),
+        mod_root: game.mod_root.clone(),
+        deploy: None,
+        install_probe: Vec::new(),
+        load_order: None,
+        content_dirs: Vec::new(),
+        base_files: Vec::new(),
+        external_scan: Vec::new(),
+        health: None,
+    }
+}
+
+/// The external scans a definition implies: its own list, or the pre-v2
+/// defaults for a v1 definition that declares none.
+fn external_scans_of(def: &GameDef) -> Vec<crate::gamedef::ExternalScanDef> {
+    if !def.external_scan.is_empty() {
+        return def.external_scan.clone();
+    }
+    if def.api_version == 1 {
+        return crate::external::v1_default_scans();
+    }
+    Vec::new()
 }
 
 // --- profiles --------------------------------------------------------------
@@ -310,9 +402,15 @@ impl Engine {
         let version = detected.and_then(|d| d.version.as_deref());
         let nexus_mod_id = detected.and_then(|d| d.nexus_mod_id);
         let mod_root = self.game(game)?.mod_root;
+        // The definition's content-dir list steers archive normalization
+        // (which lone root directories are content vs packaging wrappers).
+        let content_dirs = self
+            .game_def(game)
+            .map(|d| d.content_dirs)
+            .unwrap_or_default();
         let staged = self.paths.staging_root().join(game.to_string()).join(name);
         self.progress.begin(&format!("Installing · {name}"), 0);
-        let extracted = extract_into(path, &staged, &mod_root);
+        let extracted = extract_into(path, &staged, &mod_root, &content_dirs);
         self.progress.finish();
         if let Err(error) = extracted {
             // Never leave a half-staged tree behind a failed stage.
@@ -500,6 +598,7 @@ impl Engine {
     /// Returns [`Error::Database`] on query failure.
     pub fn external_mods(&self, game: GameId) -> Result<Vec<crate::external::ExternalMod>> {
         let g = self.game(game)?;
+        let def = self.game_def(game)?;
         let owned: std::collections::HashSet<String> = self
             .current_rows(game)?
             .iter()
@@ -508,7 +607,8 @@ impl Engine {
         Ok(crate::external::scan(
             &g.deploy_target_root(),
             &owned,
-            g.steam_appid,
+            &external_scans_of(&def),
+            &def.base_files,
         ))
     }
 
@@ -876,8 +976,9 @@ impl Engine {
     /// Returns any planning error.
     pub fn health(&self, profile: ProfileId) -> Result<Vec<crate::health::Issue>> {
         let plugins = self.plugins(profile)?;
-        let game = self.game(self.game_of_profile(profile)?)?;
-        let mods = self.mods(game.id)?;
+        let game_id = self.game_of_profile(profile)?;
+        let def = self.game_def(game_id)?;
+        let mods = self.mods(game_id)?;
         let (_, plan) = self.build_plan(profile)?;
         let conflicts = {
             let rules = self.mod_rules(profile)?;
@@ -893,21 +994,15 @@ impl Engine {
                     .map_or_else(|| id.to_string(), |m| m.name.clone())
             })
             .collect();
-        let owned: std::collections::HashSet<String> = self
-            .current_rows(game.id)?
-            .iter()
-            .map(|row| row.target_rel.to_ascii_lowercase())
-            .collect();
-        let data_dir = game.deploy_target_root();
+        let externals = self.external_mods(game_id)?;
         let snapshot = crate::health::Snapshot {
             plugins: &plugins,
             mods: &mods,
             plan: &plan,
             conflicts: &conflicts,
             rule_cycle: &cycle_names,
-            data_dir: &data_dir,
-            owned: &owned,
-            steam_appid: game.steam_appid,
+            externals: &externals,
+            health_def: def.health.as_ref(),
         };
         Ok(crate::health::check(&snapshot))
     }
@@ -921,8 +1016,7 @@ impl Engine {
     /// Returns [`Error::Io`] if the files cannot be written.
     pub fn sync_plugins_txt(&self, profile: ProfileId) -> Result<Option<std::path::PathBuf>> {
         let game = self.game(self.game_of_profile(profile)?)?;
-        let Some(dir) = crate::plugins::plugins_txt_dir(&game.install_path, game.steam_appid)
-        else {
+        let Some(dir) = self.load_order_dir(&game)? else {
             return Ok(None);
         };
         let list = self.plugins(profile)?;
@@ -937,6 +1031,15 @@ impl Engine {
         }
         write_atomic(&dir.join("loadorder.txt"), &loadorder)?;
         Ok(Some(dir))
+    }
+
+    /// Where the game's load-order strategy writes its activation file, or
+    /// `None` when the game has no strategy (or its location cannot be
+    /// resolved yet).
+    fn load_order_dir(&self, game: &Game) -> Result<Option<std::path::PathBuf>> {
+        let def = self.game_def(game.id)?;
+        Ok(crate::loadorder::LoadOrderStrategy::from_def(&def)
+            .and_then(|s| s.plugins_dir(&game.install_path, game.steam_appid)))
     }
 }
 
@@ -1019,7 +1122,7 @@ impl Engine {
         };
         let report = apply::run(&self.conn, &self.paths, &plan, profile, &reporter)?;
         // Nothing is deployed any more; deactivate every managed plugin.
-        if let Some(dir) = crate::plugins::plugins_txt_dir(&game.install_path, game.steam_appid) {
+        if let Ok(Some(dir)) = self.load_order_dir(&game) {
             let _ = write_atomic(&dir.join("Plugins.txt"), "# Managed by Modrix\n");
         }
         Ok(report)
@@ -1164,7 +1267,7 @@ fn is_system_archive(path: &Path) -> bool {
 }
 
 /// Extract or copy `path` into `staged`, then normalize the tree.
-fn extract_into(path: &Path, staged: &Path, mod_root: &str) -> Result<()> {
+fn extract_into(path: &Path, staged: &Path, mod_root: &str, content_dirs: &[String]) -> Result<()> {
     if path.is_dir() {
         store::stage_extracted(path, staged)?;
     } else if is_zip(path) {
@@ -1178,7 +1281,7 @@ fn extract_into(path: &Path, staged: &Path, mod_root: &str) -> Result<()> {
                 .to_owned(),
         });
     }
-    store::normalize_staged(staged, mod_root)?;
+    store::normalize_staged(staged, mod_root, content_dirs)?;
     // Stamp AFTER structural normalization so the final tree is covered
     // (renames preserve mtimes, so order is for clarity, not correctness).
     store::refresh_mtimes(staged)
@@ -1345,6 +1448,47 @@ mod tests {
         let names: Vec<_> = ext.iter().map(|m| m.name.as_str()).collect();
         assert!(names.contains(&"HandInstalled.esp"), "got {names:?}");
         assert!(names.contains(&"CoolMod"), "got {names:?}");
+    }
+
+    #[test]
+    fn game_def_persists_and_drives_capabilities() {
+        let (tmp, engine) = engine();
+        let install = tmp.path().join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        let def = GameDef::from_toml_str(
+            "api_version = 2\nid = \"capgame\"\nname = \"Cap\"\nmod_root = \"Data\"\n\
+             steam_appid = 42\n\
+             [load_order]\nstrategy = \"plugins_txt\"\nappdata_dir = \"Cap Game\"\n\
+             [[external_scan]]\nkind = \"folder\"\nlabel = \"plugin\"\ndir = \"\"\n",
+            Path::new("<test>"),
+        )
+        .unwrap();
+        let game = engine.add_game(&def, &install, "manual").unwrap();
+
+        // The full definition survives registration...
+        let back = engine.game_def(game.id).unwrap();
+        assert_eq!(back.id, "capgame");
+        assert!(back.load_order.is_some());
+        // ...and capabilities dispatch on it.
+        let caps = engine.capabilities(game.id).unwrap();
+        assert!(caps.load_order);
+        assert!(caps.external_scan);
+        assert!(!caps.health_checks);
+
+        // A legacy row (no def_json, unknown id) synthesizes a minimal def:
+        // no capabilities, but staging/deploy fields intact.
+        engine
+            .conn
+            .execute(
+                "UPDATE games SET def_json = NULL, plugin_id = 'gone' WHERE id = ?1",
+                [game.id.get()],
+            )
+            .unwrap();
+        let synth = engine.game_def(game.id).unwrap();
+        assert_eq!(synth.mod_root, "Data");
+        assert!(synth.load_order.is_none());
+        let caps = engine.capabilities(game.id).unwrap();
+        assert!(!caps.load_order);
     }
 
     #[test]

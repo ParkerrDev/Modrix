@@ -2,19 +2,23 @@
 //! Setup health checks: the problems Vortex surfaces before you launch.
 //!
 //! Analysis over a [`Snapshot`] of the profile - its plugins, mods, deploy
-//! plan, and conflict state. Each issue carries a severity so frontends can
-//! colour it, and `blocking` marks the issues a deploy refuses to run over.
+//! plan, conflict state, and external (unmanaged) content. Each issue carries
+//! a severity so frontends can colour it, and `blocking` marks the issues a
+//! deploy refuses to run over.
+//!
+//! Game-specific checks (script-extender loaders, known mod pairings) are
+//! **data-driven**: they run only when the game definition declares them in
+//! its `[health]` block, and their parameters come from that block. Core
+//! carries no per-game knowledge.
 
-use std::collections::{BTreeMap, HashSet};
-use std::path::Path;
+use std::collections::BTreeMap;
 
 use crate::deploy::DeployPlan;
+use crate::external::ExternalMod;
+use crate::gamedef::{HealthDef, LoaderCheckDef, RecommendDef};
 use crate::model::Mod;
 use crate::plugins::GamePlugin;
 use crate::rules::ModConflict;
-
-/// Most Data-directory entries scanned for foreign files (bounded loop).
-const MAX_SCAN: usize = 8192;
 
 /// How serious a health issue is (drives the notification colour).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,12 +54,10 @@ pub struct Snapshot<'a> {
     pub conflicts: &'a [ModConflict],
     /// Mods caught in a conflict-rule cycle (empty when acyclic).
     pub rule_cycle: &'a [String],
-    /// The game's deploy root (its `Data` directory).
-    pub data_dir: &'a Path,
-    /// Lowercased target paths the current deployment owns.
-    pub owned: &'a HashSet<String>,
-    /// The game's Steam app id, when known (drives the vanilla whitelist).
-    pub steam_appid: Option<i64>,
+    /// External (unmanaged) mods found in the game directory.
+    pub externals: &'a [ExternalMod],
+    /// The game definition's health block, when it declares one.
+    pub health_def: Option<&'a HealthDef>,
 }
 
 /// Analyse a profile for setup problems, worst first.
@@ -65,14 +67,15 @@ pub fn check(snapshot: &Snapshot<'_>) -> Vec<Issue> {
     rule_cycle(snapshot.rule_cycle, &mut issues);
     missing_masters(snapshot.plugins, &mut issues);
     unresolved_conflicts(snapshot.conflicts, snapshot.plan, &mut issues);
-    skse_loader(snapshot.mods, &mut issues);
-    engine_fixes_pair(snapshot.mods, &mut issues);
-    foreign_files(
-        snapshot.data_dir,
-        snapshot.owned,
-        snapshot.steam_appid,
-        &mut issues,
-    );
+    if let Some(def) = snapshot.health_def {
+        if let Some(loader) = &def.loader {
+            loader_check(snapshot.mods, loader, &mut issues);
+        }
+        for rec in &def.recommended {
+            recommended_check(snapshot.mods, rec, &mut issues);
+        }
+    }
+    foreign_files(snapshot.externals, &mut issues);
     issues.sort_by_key(|i| match i.severity {
         Severity::Error => 0_u8,
         Severity::Warning => 1,
@@ -156,13 +159,16 @@ fn unresolved_conflicts(conflicts: &[ModConflict], plan: &DeployPlan, issues: &m
     }
 }
 
-/// SKSE plugins (`SKSE/Plugins/*.dll`) need the SKSE loader; without it they
-/// silently do nothing (the CommunityShaders/TerrainHelper class of failure).
-fn skse_loader(mods: &[Mod], issues: &mut Vec<Issue>) {
-    let has_skse_plugins = mods.iter().any(|m| {
-        let dir = m.staged_path.join("SKSE").join("Plugins");
+/// Script-extender loader requirement, parameterized by the definition:
+/// mods shipping `<plugins_dir>` content need a `.root/<root_prefix>*`
+/// loader binary; without it they silently do nothing (the
+/// CommunityShaders/TerrainHelper class of failure).
+fn loader_check(mods: &[Mod], def: &LoaderCheckDef, issues: &mut Vec<Issue>) {
+    let has_plugins = mods.iter().any(|m| {
+        let dir = m.staged_path.join(&def.plugins_dir);
         std::fs::read_dir(&dir).is_ok_and(|mut e| e.any(|f| f.is_ok()))
     });
+    let prefix = def.root_prefix.to_ascii_lowercase();
     let has_loader = mods.iter().any(|m| {
         let root = m.staged_path.join(".root");
         std::fs::read_dir(&root).is_ok_and(|entries| {
@@ -170,128 +176,71 @@ fn skse_loader(mods: &[Mod], issues: &mut Vec<Issue>) {
                 e.file_name()
                     .to_string_lossy()
                     .to_ascii_lowercase()
-                    .starts_with("skse")
+                    .starts_with(&prefix)
             })
         })
     });
-    if has_skse_plugins && !has_loader {
+    if has_plugins && !has_loader {
         issues.push(Issue {
             severity: Severity::Error,
-            message: "SKSE plugins are installed but the SKSE loader is missing - \
-                      install Skyrim Script Extender"
-                .to_owned(),
+            message: def.message.clone(),
             blocking: false,
         });
     }
 }
 
-/// SSE Engine Fixes ships as two parts: the SKSE plugin and a root preloader
-/// (`d3dx9_42.dll`). One without the other fails at launch.
-fn engine_fixes_pair(mods: &[Mod], issues: &mut Vec<Issue>) {
-    let has_plugin = mods.iter().any(|m| {
-        m.staged_path.join("SKSE/Plugins/EngineFixes.dll").exists()
-            || m.name.to_ascii_lowercase().contains("engine fixes")
+/// A known "part A needs part B" pairing, parameterized by the definition
+/// (the SSE Engine Fixes two-part install is the canonical case).
+fn recommended_check(mods: &[Mod], def: &RecommendDef, issues: &mut Vec<Issue>) {
+    let name_needle = def.if_name_contains.as_deref().map(str::to_ascii_lowercase);
+    let triggered = mods.iter().any(|m| {
+        let by_file = def
+            .if_file
+            .as_deref()
+            .is_some_and(|f| m.staged_path.join(f).exists());
+        let by_name = name_needle
+            .as_deref()
+            .is_some_and(|n| m.name.to_ascii_lowercase().contains(n));
+        by_file || by_name
     });
-    let has_preloader = mods
-        .iter()
-        .any(|m| m.staged_path.join(".root/d3dx9_42.dll").exists());
-    if has_plugin && !has_preloader {
+    let satisfied = mods.iter().any(|m| {
+        m.staged_path
+            .join(".root")
+            .join(&def.requires_root_file)
+            .exists()
+    });
+    if triggered && !satisfied {
         issues.push(Issue {
             severity: Severity::Error,
-            message: "Engine Fixes is installed without its Part 2 preloader \
-                      (d3dx9_42.dll) - download the Part 2 archive"
-                .to_owned(),
+            message: def.message.clone(),
             blocking: false,
         });
-    }
-}
-
-/// Vanilla plugins of the base game (lowercased), by Steam app id. Creation
-/// Club content (`cc*`) is matched by prefix.
-pub(crate) fn base_plugins(steam_appid: Option<i64>) -> &'static [&'static str] {
-    match steam_appid {
-        Some(489_830) => &[
-            "skyrim.esm",
-            "update.esm",
-            "dawnguard.esm",
-            "hearthfires.esm",
-            "dragonborn.esm",
-            "_resourcepack.esl",
-        ],
-        Some(377_160) => &[
-            "fallout4.esm",
-            "dlcrobot.esm",
-            "dlcworkshop01.esm",
-            "dlccoast.esm",
-            "dlcworkshop02.esm",
-            "dlcworkshop03.esm",
-            "dlcnukaworld.esm",
-            "dlcultrahighresolution.esm",
-        ],
-        _ => &[],
     }
 }
 
 /// Files in the game the deployment does not own and the base game does not
 /// ship: leftovers from a previous manager or hand-copied installs. These
 /// survive Steam uninstall/reinstall (Steam removes only its own files) and
-/// cause "ghost mod" behaviour - plugins and SKSE DLLs that keep loading
-/// after their mod was deleted here.
-fn foreign_files(
-    data_dir: &Path,
-    owned: &HashSet<String>,
-    steam_appid: Option<i64>,
-    issues: &mut Vec<Issue>,
-) {
-    let base = base_plugins(steam_appid);
-    let mut foreign: Vec<String> = Vec::new();
-    // Loose plugins in Data that are neither deployed nor vanilla.
-    if let Ok(entries) = std::fs::read_dir(data_dir) {
-        for entry in entries.flatten().take(MAX_SCAN) {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let key = name.to_ascii_lowercase();
-            if crate::esp::is_plugin_name(&name)
-                && !owned.contains(&key)
-                && !base.contains(&key.as_str())
-                && !key.starts_with("cc")
-            {
-                foreign.push(name);
-            }
-        }
-    }
-    // The base game ships no SKSE directory: anything unowned there is foreign.
-    if let Ok(entries) = std::fs::read_dir(data_dir.join("SKSE/Plugins")) {
-        for entry in entries.flatten().take(MAX_SCAN) {
-            if !entry.path().is_file() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let key = format!("skse/plugins/{}", name.to_ascii_lowercase());
-            if !owned.contains(&key) {
-                foreign.push(format!("SKSE/Plugins/{name}"));
-            }
-        }
-    }
-    if foreign.is_empty() {
+/// cause "ghost mod" behaviour - plugins and script-extender DLLs that keep
+/// loading after their mod was deleted here. The detection itself is the
+/// definition-driven external scan; this just summarizes it as an issue.
+fn foreign_files(externals: &[ExternalMod], issues: &mut Vec<Issue>) {
+    if externals.is_empty() {
         return;
     }
-    foreign.sort();
-    let mut shown = foreign
-        .iter()
-        .take(3)
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .join(", ");
-    if foreign.len() > 3 {
+    let mut names: Vec<&str> = externals.iter().map(|m| m.name.as_str()).collect();
+    names.sort_unstable();
+    let mut shown = names.iter().take(3).copied().collect::<Vec<_>>().join(", ");
+    if names.len() > 3 {
         shown.push_str(", …");
     }
     issues.push(Issue {
         severity: Severity::Warning,
         message: format!(
-            "{} file(s) in the game folder are not managed by Modrix \
-             ({shown}) - leftovers from installs outside Modrix; \
-             delete them or reinstall the mod here",
-            foreign.len(),
+            "{} mod(s) in the game folder are not managed by Modrix \
+             ({shown}) - installed by hand or by another manager; \
+             manage them where you installed them, or reinstall them here",
+            externals.len(),
         ),
         blocking: false,
     });

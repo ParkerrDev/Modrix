@@ -43,6 +43,10 @@ const MIGRATIONS: &[Migration] = &[
         version: 5,
         sql: include_str!("../migrations/0005_mod_provenance.sql"),
     },
+    Migration {
+        version: 6,
+        sql: include_str!("../migrations/0006_game_def.sql"),
+    },
 ];
 
 /// Open (creating if needed) the database at `path` and bring its schema up to

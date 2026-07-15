@@ -210,7 +210,7 @@ fn external_header(count: usize) -> El<'static> {
 fn external_row(m: &ExternalMod) -> El<'_> {
     let files = format!(
         "{} · {} file{}",
-        m.kind.label(),
+        m.label,
         m.files,
         if m.files == 1 { "" } else { "s" }
     );

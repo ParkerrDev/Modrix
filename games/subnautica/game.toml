@@ -14,7 +14,7 @@
 # container from `mod_root` also keeps the `BepInEx` directory's exact casing -
 # deploying it as a relative path folded it to `bepinex/`, a second directory
 # the game never reads.
-api_version   = 1
+api_version   = 2
 id            = "subnautica"
 name          = "Subnautica"
 steam_appid   = 264710
@@ -22,3 +22,16 @@ nexus_domain  = "subnautica"        # routes nxm://subnautica/… here
 mod_root      = "BepInEx/plugins"   # mods deploy into <install>/BepInEx/plugins
 deploy        = "link"              # hardlink -> symlink -> copy (applier falls back)
 install_probe = ["steam", "registry", "path-hint"]
+
+# A lone `BepInEx/` (or legacy `QMods/`) tree at an archive root is content,
+# not a packaging wrapper - hoisting it would strip the container and deploy
+# the plugin where the loader never finds it.
+content_dirs = ["bepinex", "qmods", "fomod"]
+
+# Hand-installed mods are folders in the plugin container (the deploy root
+# itself, since mod_root points straight at BepInEx/plugins). The base game
+# ships nothing there, so every unowned folder is an external mod.
+[[external_scan]]
+kind  = "folder"
+label = "BepInEx plugin"
+dir   = ""

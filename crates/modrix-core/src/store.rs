@@ -294,13 +294,17 @@ fn make_owner_writable(path: &Path) -> Result<()> {
     fs::set_permissions(path, perms).map_err(|e| Error::io(path, e))
 }
 
-pub(crate) fn normalize_staged(dest: &Path, mod_root: &str) -> Result<()> {
+pub(crate) fn normalize_staged(dest: &Path, mod_root: &str, content_dirs: &[String]) -> Result<()> {
+    let ctx = ContentCtx {
+        mod_root,
+        content_dirs,
+    };
     // Bounded: a wrapper-in-wrapper-in-wrapper is the deepest seen in the wild.
     for _ in 0_u8..3 {
-        if hoist_single_root(dest, mod_root)? {
+        if hoist_single_root(dest, &ctx)? {
             continue;
         }
-        if !hoist_lone_content_dir(dest, mod_root)? {
+        if !hoist_lone_content_dir(dest, &ctx)? {
             break;
         }
     }
@@ -371,10 +375,18 @@ fn has_fomod(dest: &Path) -> bool {
     false
 }
 
-/// Directory names that ARE mod content, never a wrapper to hoist. A lone
-/// `meshes/` is a mod that ships meshes; a lone `SkyUI_5_2/` is packaging.
-/// (Conservative, Bethesda-centric for now; game plugins can extend later.)
-const CONTENT_DIRS: [&str; 18] = [
+/// What counts as mod content during normalization: the game's mod root plus
+/// its definition's `content_dirs` list (or the built-in default when the
+/// definition declares none - v1 compatibility).
+struct ContentCtx<'a> {
+    mod_root: &'a str,
+    content_dirs: &'a [String],
+}
+
+/// The default content-dir list applied when a definition declares none.
+/// Kept for v1 definitions; v2 definitions ship their own list (see
+/// `games/*/game.toml`), so this table no longer needs to grow.
+const DEFAULT_CONTENT_DIRS: [&str; 18] = [
     "meshes",
     "textures",
     "scripts",
@@ -389,21 +401,30 @@ const CONTENT_DIRS: [&str; 18] = [
     "skse",
     "fomod",
     "source",
-    // Community Shaders feature packs ship a lone `Shaders/` tree; hoisting
-    // it strips the directory and the features land at the Data root.
     "shaders",
-    // MCM Helper settings/preset mods ship a lone `MCM/` tree.
     "mcm",
-    // Unity/BepInEx games (Subnautica): a mod is commonly just a lone
-    // `BepInEx/plugins/<Mod>/` tree with no mod_root - hoisting the wrapper
-    // would strip `BepInEx/` and deploy the plugin to the game root, where the
-    // loader never finds it. `QMods/` is the legacy QModManager equivalent.
     "bepinex",
     "qmods",
 ];
 
-fn is_content_dir(name: &str, mod_root: &str) -> bool {
-    name.eq_ignore_ascii_case(mod_root) || CONTENT_DIRS.iter().any(|c| name.eq_ignore_ascii_case(c))
+impl ContentCtx<'_> {
+    /// Whether a directory name IS mod content, never a wrapper to hoist. A
+    /// lone `meshes/` is a mod that ships meshes; a lone `SkyUI_5_2/` is
+    /// packaging.
+    fn is_content_dir(&self, name: &str) -> bool {
+        if name.eq_ignore_ascii_case(self.mod_root) {
+            return true;
+        }
+        if self.content_dirs.is_empty() {
+            DEFAULT_CONTENT_DIRS
+                .iter()
+                .any(|c| name.eq_ignore_ascii_case(c))
+        } else {
+            self.content_dirs
+                .iter()
+                .any(|c| name.eq_ignore_ascii_case(c))
+        }
+    }
 }
 
 /// The visible top-level entries of `dir`.
@@ -420,13 +441,13 @@ fn top_entries(dir: &Path) -> Result<Vec<PathBuf>> {
 /// If `dest` holds exactly one *wrapper* directory and nothing else, replace
 /// `dest`'s contents with that directory's contents. Returns whether it
 /// hoisted. Content directories (the mod root, `meshes/`, …) never hoist.
-fn hoist_single_root(dest: &Path, mod_root: &str) -> Result<bool> {
+fn hoist_single_root(dest: &Path, ctx: &ContentCtx<'_>) -> Result<bool> {
     let entries = top_entries(dest)?;
     let [only] = entries.as_slice() else {
         return Ok(false);
     };
     let name = file_name_of(only).into_owned();
-    if !only.is_dir() || name.starts_with('.') || is_content_dir(&name, mod_root) {
+    if !only.is_dir() || name.starts_with('.') || ctx.is_content_dir(&name) {
         return Ok(false);
     }
     // Rename aside first so a child sharing the wrapper's name cannot collide.
@@ -451,11 +472,11 @@ fn is_game_file(name: &str) -> bool {
 
 /// Whether `dir`'s top level carries recognizable game content: the mod
 /// root (`Data/`), a known content directory, or a loose game file.
-fn contains_game_content(dir: &Path, mod_root: &str) -> Result<bool> {
+fn contains_game_content(dir: &Path, ctx: &ContentCtx<'_>) -> Result<bool> {
     Ok(top_entries(dir)?.iter().any(|p| {
         let name = file_name_of(p).into_owned();
         if p.is_dir() {
-            is_content_dir(&name, mod_root)
+            ctx.is_content_dir(&name)
         } else {
             is_game_file(&name)
         }
@@ -467,7 +488,7 @@ fn contains_game_content(dir: &Path, mod_root: &str) -> Result<bool> {
 /// top-level directory carries game content and none of the loose files do,
 /// park the extras under `.unmanaged/` and hoist the directory. Returns
 /// whether it hoisted.
-fn hoist_lone_content_dir(dest: &Path, mod_root: &str) -> Result<bool> {
+fn hoist_lone_content_dir(dest: &Path, ctx: &ContentCtx<'_>) -> Result<bool> {
     let mut dirs = Vec::new();
     let mut extras = Vec::new();
     for entry in top_entries(dest)? {
@@ -487,9 +508,9 @@ fn hoist_lone_content_dir(dest: &Path, mod_root: &str) -> Result<bool> {
     // A bare wrapper is hoist_single_root's job; a content dir stays put; a
     // loose game file means the root is already the intended layout.
     if extras.is_empty()
-        || is_content_dir(name, mod_root)
+        || ctx.is_content_dir(name)
         || extras.iter().any(|(_, n)| is_game_file(n))
-        || !contains_game_content(dir, mod_root)?
+        || !contains_game_content(dir, ctx)?
     {
         return Ok(false);
     }
@@ -854,7 +875,7 @@ mod tests {
             &dest.join("The One Ring Redux/Data/Scripts/OneRingScript.pex"),
             b"pex",
         );
-        normalize_staged(&dest, "Data").unwrap();
+        normalize_staged(&dest, "Data", &[]).unwrap();
 
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
@@ -885,7 +906,7 @@ mod tests {
             &dest.join("Shaders/CloudShadows/CloudShadows.hlsli"),
             b"hlsl",
         );
-        normalize_staged(&dest, "Data").unwrap();
+        normalize_staged(&dest, "Data", &[]).unwrap();
 
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
@@ -912,7 +933,7 @@ mod tests {
         // it.
         write(&dest.join("BepInEx/plugins/Tweaks/Tweaks.dll"), b"dll");
         write(&dest.join("BepInEx/plugins/Tweaks/config.json"), b"json");
-        normalize_staged(&dest, "").unwrap();
+        normalize_staged(&dest, "", &[]).unwrap();
 
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
@@ -944,7 +965,7 @@ mod tests {
             b"a",
         );
         write(&dest.join("README.md"), b"readme");
-        normalize_staged(&dest, "BepInEx/plugins").unwrap();
+        normalize_staged(&dest, "BepInEx/plugins", &[]).unwrap();
 
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
@@ -970,7 +991,7 @@ mod tests {
         // - that deployed it beside the .exe where BepInEx never loads it.
         write(&dest.join("ECCLibrary.dll"), b"dll");
         write(&dest.join("Assets/bundle"), b"a");
-        normalize_staged(&dest, "BepInEx/plugins").unwrap();
+        normalize_staged(&dest, "BepInEx/plugins", &[]).unwrap();
 
         assert!(
             !dest.join(".root").exists(),
@@ -995,7 +1016,7 @@ mod tests {
         // silently drop the config, so the tree is left as-is.
         write(&dest.join("BepInEx/plugins/Mod/mod.dll"), b"dll");
         write(&dest.join("BepInEx/config/Mod.cfg"), b"cfg");
-        normalize_staged(&dest, "BepInEx/plugins").unwrap();
+        normalize_staged(&dest, "BepInEx/plugins", &[]).unwrap();
         assert!(dest.join("BepInEx/plugins/Mod/mod.dll").is_file());
         assert!(dest.join("BepInEx/config/Mod.cfg").is_file());
     }
@@ -1008,7 +1029,7 @@ mod tests {
         // side directory (whatever it holds) must not be hoisted over it.
         write(&dest.join("Mod.esp"), b"esp");
         write(&dest.join("Extras/Data/Optional.esp"), b"esp");
-        normalize_staged(&dest, "Data").unwrap();
+        normalize_staged(&dest, "Data", &[]).unwrap();
         assert!(dest.join("Mod.esp").is_file());
         assert!(dest.join("Extras/Data/Optional.esp").is_file());
     }
@@ -1022,7 +1043,7 @@ mod tests {
         write(&dest.join("skse64_2_02_06/skse64_1_6_1170.dll"), b"dll");
         write(&dest.join("skse64_2_02_06/Data/Scripts/Actor.pex"), b"pex");
         write(&dest.join("skse64_2_02_06/src/skse64/main.cpp"), b"cpp");
-        normalize_staged(&dest, "Data").unwrap();
+        normalize_staged(&dest, "Data", &[]).unwrap();
 
         // Scripts became the mod root; loaders/src parked, never deployed.
         let rels: Vec<_> = resolve_files(&dest)
@@ -1048,7 +1069,7 @@ mod tests {
         let dest = tmp.path().join("staged");
         write(&dest.join("SkyUI.esp"), b"esp");
         write(&dest.join("textures/ui.dds"), b"dds");
-        normalize_staged(&dest, "Data").unwrap();
+        normalize_staged(&dest, "Data", &[]).unwrap();
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
             .iter()
@@ -1066,7 +1087,7 @@ mod tests {
         let dest = tmp.path().join("staged");
         write(&dest.join("MyMod-1.0/meshes/m.nif"), b"m");
         write(&dest.join("MyMod-1.0/MyMod.esp"), b"e");
-        normalize_staged(&dest, "Data").unwrap();
+        normalize_staged(&dest, "Data", &[]).unwrap();
         assert!(dest.join("MyMod.esp").is_file());
         assert!(dest.join("meshes/m.nif").is_file());
         assert!(!dest.join("MyMod-1.0").exists());
@@ -1078,7 +1099,7 @@ mod tests {
         let dest = tmp.path().join("staged");
         // A mod that IS just meshes must stay under meshes/.
         write(&dest.join("meshes/armor/a.nif"), b"m");
-        normalize_staged(&dest, "Data").unwrap();
+        normalize_staged(&dest, "Data", &[]).unwrap();
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
             .iter()
@@ -1132,7 +1153,7 @@ mod tests {
         let dest = tmp.path().join("staged");
         extract_with_system(&archive, &dest).unwrap();
         assert!(dest.join("inner/Data/Scripts/s.pex").is_file());
-        normalize_staged(&dest, "Data").unwrap();
+        normalize_staged(&dest, "Data", &[]).unwrap();
         assert!(dest.join("Scripts/s.pex").is_file());
     }
 

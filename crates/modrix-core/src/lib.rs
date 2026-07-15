@@ -17,6 +17,7 @@
 #![deny(clippy::arithmetic_side_effects)]
 
 mod db;
+pub mod defcat;
 mod deploy;
 pub mod detect;
 mod engine;
@@ -26,6 +27,7 @@ pub mod external;
 mod gamedef;
 pub mod health;
 mod id;
+pub mod loadorder;
 mod model;
 pub mod naming;
 mod paths;
@@ -35,10 +37,12 @@ pub mod rules;
 mod store;
 
 pub use deploy::{Conflict, DeployPlan, DeployReport, FileStatus, VerifyIssue, VerifyReport};
-pub use engine::Engine;
+pub use engine::{Engine, GameCapabilities};
 pub use error::{Error, Result};
-pub use external::{ExternalKind, ExternalMod};
-pub use gamedef::GameDef;
+pub use external::ExternalMod;
+pub use gamedef::{
+    ExternalScanDef, GameDef, HealthDef, LoadOrderDef, LoaderCheckDef, PluginsTxtDef, RecommendDef,
+};
 pub use health::{Issue, Severity};
 pub use id::{GameId, ModId, ProfileId};
 pub use model::{Game, LinkType, Mod, Profile};
