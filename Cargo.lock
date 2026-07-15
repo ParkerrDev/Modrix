@@ -2874,6 +2874,7 @@ dependencies = [
  "clap",
  "modrix-core",
  "modrix-ipc",
+ "modrix-mcp",
  "modrix-plugin",
  "modrix-registry",
  "modrix-service",
@@ -2953,6 +2954,22 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "modrix-mcp"
+version = "0.0.0"
+dependencies = [
+ "modrix-core",
+ "modrix-ipc",
+ "modrix-plugin",
+ "modrix-registry",
+ "modrix-service",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

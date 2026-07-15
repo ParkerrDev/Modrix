@@ -110,6 +110,9 @@ enum Command {
         #[command(subcommand)]
         cmd: parity::FomodCmd,
     },
+    /// Run the MCP server over stdio - point an AI agent's MCP client at
+    /// `modrix mcp` to let it manage mods autonomously.
+    Mcp,
 }
 
 #[derive(Subcommand)]
@@ -218,10 +221,18 @@ fn main() -> Result<()> {
     // Tier-2 plugins (game.lua) hook in before any command runs.
     modrix_plugin::register_lua_logic(&mut engine);
 
-    // `serve` runs its own async runtime and owns the engine; everything else is
-    // a quick synchronous action.
+    // `serve` and `mcp` own the engine for their whole session; everything
+    // else is a quick synchronous action.
     if let Command::Serve { port } = &cli.command {
         return serve::run(engine, *port);
+    }
+    if matches!(cli.command, Command::Mcp) {
+        let ctx = modrix_mcp::Ctx::new(engine).context("starting the MCP runtime")?;
+        let stdin = std::io::stdin();
+        let stdout = std::io::stdout();
+        modrix_mcp::serve(&ctx, &mut stdin.lock(), &mut stdout.lock())
+            .context("serving MCP over stdio")?;
+        return Ok(());
     }
 
     let stdout = std::io::stdout();
@@ -257,8 +268,8 @@ fn dispatch(cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
         Command::External => parity::external(cli, engine, out),
         Command::Downloads { cmd } => parity::downloads_cmd(cmd, cli, engine, out),
         Command::Fomod { cmd } => parity::fomod_cmd(cmd, cli, engine, out),
-        // Handled in `main` before dispatch (needs to own the engine).
-        Command::Serve { .. } => Ok(()),
+        // Handled in `main` before dispatch (they own the engine).
+        Command::Serve { .. } | Command::Mcp => Ok(()),
     }
 }
 

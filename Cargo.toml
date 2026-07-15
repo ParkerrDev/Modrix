@@ -16,6 +16,7 @@ modrix-core = { path = "crates/modrix-core" }
 modrix-plugin = { path = "crates/modrix-plugin" }
 modrix-download = { path = "crates/modrix-download" }
 modrix-ipc = { path = "crates/modrix-ipc" }
+modrix-mcp = { path = "crates/modrix-mcp" }
 modrix-registry = { path = "crates/modrix-registry" }
 modrix-service = { path = "crates/modrix-service" }
 # --- external (pinned; further deps added per phase as they are used) ---
