@@ -3,7 +3,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>ModManager Bridge</title>
+    <title>Modrix Bridge</title>
     <style>
       body { font: 14px system-ui, sans-serif; margin: 20px; max-width: 32rem; }
       h1 { font-size: 1.1rem; }
@@ -15,16 +15,16 @@
     </style>
   </head>
   <body>
-    <h1>ModManager Bridge</h1>
+    <h1>Modrix Bridge</h1>
     <p class="hint">
-      Run <code>modman serve</code> - it prints a port and a session token. Paste
+      Run <code>modrix serve</code> - it prints a port and a session token. Paste
       them here. Downloads you start on Nexus (and other sites) are then handed
-      to ModManager over loopback, authenticated with your own browser session.
+      to Modrix over loopback, authenticated with your own browser session.
     </p>
     <label for="port">Port</label>
     <input id="port" type="number" min="1" max="65535" placeholder="41015" />
     <label for="token">Session token</label>
-    <input id="token" type="text" placeholder="paste the token from `modman serve`" />
+    <input id="token" type="text" placeholder="paste the token from `modrix serve`" />
     <div>
       <button id="save">Save</button>
       <button id="test">Test connection</button>

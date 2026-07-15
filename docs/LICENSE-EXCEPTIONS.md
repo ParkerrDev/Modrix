@@ -1,12 +1,12 @@
 # License Exceptions: GUI Linking Exception
 
-ModManager is licensed under **GPL-2.0-only** (see [LICENSE](../LICENSE)).
+Modrix is licensed under **GPL-2.0-only** (see [LICENSE](../LICENSE)).
 
 ## Additional permission for GUI windowing/rendering libraries
 
 As an additional permission under section 10 of the GNU General Public
-License version 2, the copyright holders of ModManager grant you permission
-to combine the `modman-gui` program with the following Apache-2.0-licensed
+License version 2, the copyright holders of Modrix grant you permission
+to combine the `modrix-gui` program with the following Apache-2.0-licensed
 libraries (or modified versions of them, under the same license), and to
 convey the resulting work:
 
@@ -29,7 +29,7 @@ convey the resulting work:
 | `glutin_wgl_sys`      | Windows WGL bindings (wgpu GL fallback)     |
 
 You must comply with the Apache License 2.0 in all respects for those
-libraries themselves. If you modify ModManager, you may extend this
+libraries themselves. If you modify Modrix, you may extend this
 exception to your version, but you are not obligated to do so; if you do
 not wish to, delete this exception statement from your version.
 
@@ -39,9 +39,9 @@ not wish to, delete this exception statement from your version.
   windowing/GPU stack is built on `winit` and `wgpu`, which are
   Apache-2.0 licensed (or depend on Apache-2.0-only crates) and have no
   GPLv2-compatible substitute.
-- It applies **only** to the `modman-gui` binary. The engine
-  (`modman-core`), the download manager (`modman-download`), the IPC
-  layer (`modman-ipc`), the protocol handler, the CLI, and the TUI link
+- It applies **only** to the `modrix-gui` binary. The engine
+  (`modrix-core`), the download manager (`modrix-download`), the IPC
+  layer (`modrix-ipc`), the protocol handler, the CLI, and the TUI link
   **zero** Apache-2.0 code - this is enforced mechanically by
   [`deny.toml`](../deny.toml), which forbids Apache-2.0 globally and excepts
   precisely the fifteen crates named above, by name.

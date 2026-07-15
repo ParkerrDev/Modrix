@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Options page: persist the ModManager port + session token and test the link.
+// Options page: persist the Modrix port + session token and test the link.
 
 const api = globalThis.browser ?? globalThis.chrome;
 const $ = (id) => document.getElementById(id);
@@ -26,11 +26,11 @@ async function test() {
   const token = $("token").value.trim();
   try {
     const res = await fetch(`http://127.0.0.1:${port}/downloads`, {
-      headers: { "x-modman-token": token },
+      headers: { "x-modrix-token": token },
     });
-    setStatus(res.ok ? "Connected to ModManager." : `ModManager replied ${res.status}.`);
+    setStatus(res.ok ? "Connected to Modrix." : `Modrix replied ${res.status}.`);
   } catch (_e) {
-    setStatus("Could not reach ModManager - is `modman serve` running?");
+    setStatus("Could not reach Modrix - is `modrix serve` running?");
   }
 }
 

@@ -8,15 +8,15 @@ version = "0.0.0"
 edition = "2024"
 rust-version = "1.96"
 license = "GPL-2.0-only"
-authors = ["ModManager contributors"]
+authors = ["Modrix contributors"]
 
 [workspace.dependencies]
 # --- internal crates ---
-modman-core = { path = "crates/modman-core" }
-modman-plugin = { path = "crates/modman-plugin" }
-modman-download = { path = "crates/modman-download" }
-modman-ipc = { path = "crates/modman-ipc" }
-modman-service = { path = "crates/modman-service" }
+modrix-core = { path = "crates/modrix-core" }
+modrix-plugin = { path = "crates/modrix-plugin" }
+modrix-download = { path = "crates/modrix-download" }
+modrix-ipc = { path = "crates/modrix-ipc" }
+modrix-service = { path = "crates/modrix-service" }
 # --- external (pinned; further deps added per phase as they are used) ---
 anyhow = "1"
 thiserror = "2"
@@ -76,7 +76,7 @@ todo = "deny"
 unimplemented = "deny"
 expect_used = "warn"                 # justified form: `.expect("why it can't fail")`
 indexing_slicing = "deny"            # `v[i]` can panic; use `.get(i)`
-arithmetic_side_effects = "warn"     # promote to "deny" in modman-core
+arithmetic_side_effects = "warn"     # promote to "deny" in modrix-core
 mem_forget = "deny"
 undocumented_unsafe_blocks = "warn"
 allow_attributes = "warn"            # prefer `#[expect(..)]` over `#[allow(..)]`

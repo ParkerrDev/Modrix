@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[package]
+name = "modrix-service"
+description = "The embedded browser hand-off service every frontend hosts: engine + download manager + loopback listener."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+modrix-core.workspace = true
+modrix-download.workspace = true
+modrix-plugin.workspace = true
+modrix-ipc.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

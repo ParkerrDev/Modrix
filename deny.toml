@@ -77,10 +77,10 @@ unused-allowed-license = "allow"
 # --- GUI linking exception (Apache-2.0 for the windowing/rendering stack only) --
 # Apache-2.0 is NOT allowed in general (it is GPLv2-incompatible). But every
 # native Rust GUI is built on `winit` (Apache-2.0), and Iced needs it plus a few
-# Apache-2.0 text/clipboard crates. ModManager grants a documented additional
+# Apache-2.0 text/clipboard crates. Modrix grants a documented additional
 # permission (see docs/LICENSE-EXCEPTIONS.md) to link these specific GUI libraries, so
 # they are excepted BY NAME here - the engine stays 100% Apache-free; only the
-# `modman-gui` windowing layer relies on this.
+# `modrix-gui` windowing layer relies on this.
 [[licenses.exceptions]]
 name = "winit"
 allow = ["Apache-2.0"]

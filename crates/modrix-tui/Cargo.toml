@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[package]
+name = "modrix-tui"
+description = "Modrix terminal frontend (ratatui). Thin layer over modrix-core."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "modrix-tui"
+path = "src/main.rs"
+
+# Dependencies (modrix-core, ratatui, anyhow) are added in Phase 4.
+[dependencies]
+
+[lints]
+workspace = true

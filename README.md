@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-2.0-only -->
-# ModManager
+# Modrix
 
 A fast, native, cross-platform (Linux, Windows, macOS) mod manager in Rust - an
 open-source [Vortex](https://www.nexusmods.com/about/vortex/) replacement with a
@@ -28,22 +28,22 @@ Steam + Proton as first-class.
 
 | Crate | Role |
 |---|---|
-| `modman-core` | Engine: domain, deployment, manifest, storage. No UI deps. |
-| `modman-plugin` | Lua (mlua) plugin host + `game.toml` loader + FOMOD. |
-| `modman-download` | Segmented, resumable download engine (aria2/Motrix-style); fed by the browser extension's hand-off, not a site API. |
-| `modman-ipc` | Single-instance guard + loopback listener. |
-| `modman-protocol` | Tiny `nxm://` OS handler that forwards to the running instance. |
-| `modman-cli` | `clap` frontend (binary: `modman`). |
-| `modman-service` | The embedded hand-off service every frontend hosts (engine + downloads + loopback listener). |
-| `modman-tui` | `ratatui` frontend. |
-| `modman-gui` | `iced` frontend. |
+| `modrix-core` | Engine: domain, deployment, manifest, storage. No UI deps. |
+| `modrix-plugin` | Lua (mlua) plugin host + `game.toml` loader + FOMOD. |
+| `modrix-download` | Segmented, resumable download engine (aria2/Motrix-style); fed by the browser extension's hand-off, not a site API. |
+| `modrix-ipc` | Single-instance guard + loopback listener. |
+| `modrix-protocol` | Tiny `nxm://` OS handler that forwards to the running instance. |
+| `modrix-cli` | `clap` frontend (binary: `modrix`). |
+| `modrix-service` | The embedded hand-off service every frontend hosts (engine + downloads + loopback listener). |
+| `modrix-tui` | `ratatui` frontend. |
+| `modrix-gui` | `iced` frontend. |
 
 ## Quick start (GUI)
 
 ```sh
-cargo install --path crates/modman-cli --locked    # `modman`
-cargo install --path crates/modman-gui --locked    # `modman-gui`
-modman-gui
+cargo install --path crates/modrix-cli --locked    # `modrix`
+cargo install --path crates/modrix-gui --locked    # `modrix-gui`
+modrix-gui
 ```
 
 1. **Games** → register your game (Skyrim SE ships built-in; point it at the
@@ -54,7 +54,7 @@ modman-gui
    itself into the library, and appears under **Mods** - enable it and hit
    **Deploy**.
 
-The GUI embeds the same `modman-service` as `modman serve`, so hand-offs work
+The GUI embeds the same `modrix-service` as `modrix serve`, so hand-offs work
 whichever one is running (only one holds the port at a time).
 
 ## Build

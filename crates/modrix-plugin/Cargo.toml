@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[package]
+name = "modrix-plugin"
+description = "Modrix plugin host: sandboxed Lua (mlua) API, game.toml loader, FOMOD engine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+modrix-core.workspace = true
+roxmltree.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -2804,21 +2804,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "modman-cli"
+name = "modrix-cli"
 version = "0.0.0"
 dependencies = [
  "anyhow",
  "clap",
- "modman-core",
- "modman-ipc",
- "modman-service",
+ "modrix-core",
+ "modrix-ipc",
+ "modrix-service",
  "tokio",
  "tracing",
  "tracing-subscriber",
 ]
 
 [[package]]
-name = "modman-core"
+name = "modrix-core"
 version = "0.0.0"
 dependencies = [
  "directories",
@@ -2836,14 +2836,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "modman-download"
+name = "modrix-download"
 version = "0.0.0"
 dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
  "md-5",
- "modman-core",
+ "modrix-core",
  "rustls",
  "rustls-native-certs",
  "rustls-rustcrypto",
@@ -2859,15 +2859,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "modman-gui"
+name = "modrix-gui"
 version = "0.0.0"
 dependencies = [
  "iced",
- "modman-core",
- "modman-download",
- "modman-ipc",
- "modman-plugin",
- "modman-service",
+ "modrix-core",
+ "modrix-download",
+ "modrix-ipc",
+ "modrix-plugin",
+ "modrix-service",
  "rfd",
  "tokio",
  "tracing",
@@ -2875,7 +2875,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "modman-ipc"
+name = "modrix-ipc"
 version = "0.0.0"
 dependencies = [
  "getrandom 0.3.4",
@@ -2887,10 +2887,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "modman-plugin"
+name = "modrix-plugin"
 version = "0.0.0"
 dependencies = [
- "modman-core",
+ "modrix-core",
  "roxmltree",
  "tempfile",
  "thiserror 2.0.18",
@@ -2898,31 +2898,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "modman-protocol"
+name = "modrix-protocol"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "modman-core",
- "modman-ipc",
+ "modrix-core",
+ "modrix-ipc",
  "tokio",
 ]
 
 [[package]]
-name = "modman-service"
+name = "modrix-service"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "modman-core",
- "modman-download",
- "modman-ipc",
- "modman-plugin",
+ "modrix-core",
+ "modrix-download",
+ "modrix-ipc",
+ "modrix-plugin",
  "tempfile",
  "tokio",
  "tracing",
 ]
 
 [[package]]
-name = "modman-tui"
+name = "modrix-tui"
 version = "0.0.0"
 
 [[package]]

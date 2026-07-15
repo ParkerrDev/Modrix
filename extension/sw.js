@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 //
-// ModManager Bridge - MV3 background service worker.
+// Modrix Bridge - MV3 background service worker.
 //
 // It watches the browser's own downloads and, when one looks like a mod
-// (an archive, or a Nexus CDN URL, or an explicit "Download with ModManager"
+// (an archive, or a Nexus CDN URL, or an explicit "Download with Modrix"
 // context-menu click), it cancels the browser download and hands the
 // already-authenticated request (URL + cookies + User-Agent + referrer) to the
-// local ModManager service over loopback. There is no site API and no API key -
+// local Modrix service over loopback. There is no site API and no API key -
 // the browser already did the authentication.
 //
 // Listeners are registered at the top level (MV3 wakes the worker on the event);
@@ -15,11 +15,11 @@
 const api = globalThis.browser ?? globalThis.chrome;
 const ARCHIVE = /\.(zip|7z|rar|fomod|tar\.gz|tar\.bz2)(\?|$)/i;
 
-// --- explicit "Download with ModManager" context-menu (works on any link) ---
+// --- explicit "Download with Modrix" context-menu (works on any link) ---
 api.runtime.onInstalled.addListener(() => {
   api.contextMenus?.create({
     id: "mm-download",
-    title: "Download with ModManager",
+    title: "Download with Modrix",
     contexts: ["link"],
   });
 });
@@ -69,7 +69,7 @@ async function intercept(item) {
 async function handoff(url, extra = {}) {
   const { port, token } = await api.storage.local.get(["port", "token"]);
   if (!port || !token) {
-    notify("Open the ModManager Bridge options and set the port + token from `modman serve`.");
+    notify("Open the Modrix Bridge options and set the port + token from `modrix serve`.");
     return;
   }
   const cookies = await api.cookies.getAll({ url }).catch(() => []);
@@ -89,12 +89,12 @@ async function handoff(url, extra = {}) {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/download`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-modman-token": token },
+      headers: { "Content-Type": "application/json", "x-modrix-token": token },
       body: JSON.stringify(job),
     });
-    notify(res.ok ? "Sent to ModManager." : `ModManager rejected it: ${await safeText(res)}`);
+    notify(res.ok ? "Sent to Modrix." : `Modrix rejected it: ${await safeText(res)}`);
   } catch (_e) {
-    notify("ModManager isn't running - start it with `modman serve`.");
+    notify("Modrix isn't running - start it with `modrix serve`.");
   }
 }
 
@@ -136,7 +136,7 @@ async function safeText(res) {
 function notify(message) {
   // Chrome requires an iconUrl; fall back to the console if notifications fail.
   api.notifications
-    ?.create({ type: "basic", iconUrl: api.runtime.getURL("icon.png"), title: "ModManager", message })
-    .catch?.(() => console.log("[ModManager]", message));
-  console.log("[ModManager]", message);
+    ?.create({ type: "basic", iconUrl: api.runtime.getURL("icon.png"), title: "Modrix", message })
+    .catch?.(() => console.log("[Modrix]", message));
+  console.log("[Modrix]", message);
 }

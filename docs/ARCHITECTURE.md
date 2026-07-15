@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-2.0-only -->
-# ModManager - Architecture
+# Modrix - Architecture
 
 A multi-platform, open-source, Vortex-style mod manager written in Rust, with a
 GUI, a TUI, and a CLI over one engine. Automated `nxm://` download→install,
@@ -35,7 +35,7 @@ engine that touches users' files.
 |---|---|---|
 | Language | **Rust** | Safety where it matters most: the file-deployment engine touches users' game installs. Cargo + the crate ecosystem make 3 frontends cheap. |
 | GUI | **Iced** (MIT, pure-Rust) | GPLv2-compatible; one renderer → identical on all 3 OSes; tiny self-contained binary; themed toward a clean macOS-like look. |
-| GUI - ruled out | Slint | Was the first pick, but its free build is **GPLv3-only**, incompatible with our GPLv2 goal (see §11). Only `modman-gui` links a toolkit, so this stayed a cheap swap. |
+| GUI - ruled out | Slint | Was the first pick, but its free build is **GPLv3-only**, incompatible with our GPLv2 goal (see §11). Only `modrix-gui` links a toolkit, so this stayed a cheap swap. |
 | TUI | **ratatui** | Mature, the standard. |
 | CLI | **clap** (derive) | Standard, scriptable. |
 | Plugins | **Two-tier: `game.toml` + `game.lua` (`mlua`, vendored Lua 5.4)** | Most games are just data; Lua only when logic is needed. |
@@ -52,31 +52,31 @@ engine that touches users' files.
 
 ## 3. Workspace layout
 
-A single Cargo workspace. **All logic in `modman-core`; frontends are thin.**
-Dependency direction is a hard rule: **`modman-core` depends on no UI, no
+A single Cargo workspace. **All logic in `modrix-core`; frontends are thin.**
+Dependency direction is a hard rule: **`modrix-core` depends on no UI, no
 site-specific, and no protocol crate; frontends depend on core; no cycles.**
 
 ```
-modman/  (cargo workspace)
-├── modman-core        # engine: games, profiles, mod store, deploy, conflicts,
+modrix/  (cargo workspace)
+├── modrix-core        # engine: games, profiles, mod store, deploy, conflicts,
 │                      #   manifest, transactions. ZERO UI/network-UI deps.
 │                      #   Owns the declarative `game.toml` loader (pure data, no
 │                      #   code exec) so the engine can add games without linking
 │                      #   the Lua host.
-├── modman-plugin      # mlua host + the sandboxed `modman` API given to Lua.
+├── modrix-plugin      # mlua host + the sandboxed `modrix` API given to Lua.
 │                      #   Also: FOMOD installer. (The `game.toml` loader lives in
 │                      #   core; this crate adds the Lua tier on top of it.)
-├── modman-download    # segmented, resumable download engine (aria2/Motrix-style,
+├── modrix-download    # segmented, resumable download engine (aria2/Motrix-style,
 │                      #   no aria2 code). Fed by the browser extension's hand-off,
 │                      #   NOT a site API. Retains the nxm:// identity parser.
-├── modman-ipc         # single-instance guard + loopback listener. The one
+├── modrix-ipc         # single-instance guard + loopback listener. The one
 │                      #   ingress for both the OS protocol handler and the
 │                      #   browser extension.
-├── modman-protocol    # tiny binary the OS launches for nxm://; forwards the
+├── modrix-protocol    # tiny binary the OS launches for nxm://; forwards the
 │                      #   URL to the running instance (or starts a headless one).
-├── modman-cli         # thin: clap over core. The scriptable surface.
-├── modman-tui         # thin: ratatui over core.
-├── modman-gui         # thin: Iced over core. The only crate that links a GUI toolkit.
+├── modrix-cli         # thin: clap over core. The scriptable surface.
+├── modrix-tui         # thin: ratatui over core.
+├── modrix-gui         # thin: Iced over core. The only crate that links a GUI toolkit.
 └── extension/         # userscript (v1) + WebExtension (later). JS - unavoidable
                        #   in a browser.
 ```
@@ -88,7 +88,7 @@ Iced and not Slint.
 
 ---
 
-## 4. Core engine (`modman-core`)
+## 4. Core engine (`modrix-core`)
 
 The correctness-critical heart. Everything else is presentation or I/O. Built to
 the Power of Ten reliability standard (§9.3): panic-free, `unsafe`-free, bounded.
@@ -139,7 +139,7 @@ Game/plugin definitions and per-game config stay as plain files (see §5); SQLit
 
 ---
 
-## 5. Plugin system (`modman-plugin`)
+## 5. Plugin system (`modrix-plugin`)
 
 **Two tiers so nobody writes code they don't need to.**
 
@@ -160,7 +160,7 @@ load_order    = "plugins_txt"          # named strategy provided by core
 For custom installers, conditional deploy, special load-order formats, etc.
 Loaded via **`mlua`** (vendored **Lua 5.4** - no system Lua dependency).
 
-**Sandbox:** plugins get a curated `modman` table and **no raw `io`/`os`/`debug`/
+**Sandbox:** plugins get a curated `modrix` table and **no raw `io`/`os`/`debug`/
 `require`**. Every filesystem effect goes through the core's transactional layer
 (a plugin returns an install/stage plan; it never writes files directly). Each
 plugin call gets a step/time budget so a bad plugin can't hang or loop forever.
@@ -172,12 +172,12 @@ function install(archive, ctx) ... end  -- drive a custom/FOMOD-like flow
 function load_order(mods, ctx) ... end  -- return ordered list / write order file
 
 -- API surface exposed to plugins (all mediated):
-modman.game            -- paths, appid, store, profile
-modman.fs.stage(src, dest)      -- register a file for deployment (goes to manifest)
-modman.fs.exists / read_dir / read_text
-modman.http.get(url)            -- rate-limited, through the client
-modman.log.info / warn / error
-modman.install.choose(step)     -- present a wizard step to the active frontend
+modrix.game            -- paths, appid, store, profile
+modrix.fs.stage(src, dest)      -- register a file for deployment (goes to manifest)
+modrix.fs.exists / read_dir / read_text
+modrix.http.get(url)            -- rate-limited, through the client
+modrix.log.info / warn / error
+modrix.install.choose(step)     -- present a wizard step to the active frontend
 ```
 **API versioning:** every plugin declares `api_version`; the host refuses or
 shims mismatches. Plugins live in a discovered directory (user data dir +
@@ -193,23 +193,23 @@ Bound recursion over the step/condition tree (§9.3).
 
 ## 6. Download pipeline (the "seamless" part)
 
-> **Corrected (supersedes the earlier API-based design).** ModManager does **not**
+> **Corrected (supersedes the earlier API-based design).** Modrix does **not**
 > use the Nexus API, API keys, or any third-party site API. An earlier draft made
 > downloads depend on `download_link.json` + a personal `apikey`; that path is
 > removed. The public API refuses free users download links anyway, so it could
-> never serve the common case. Instead ModManager is a **download manager** fed by
+> never serve the common case. Instead Modrix is a **download manager** fed by
 > a **browser extension** that hands off the user's own browser download.
 
-ModManager is, at its core, a clean-room Rust reimplementation of the aria2/Motrix
+Modrix is, at its core, a clean-room Rust reimplementation of the aria2/Motrix
 download *engine* (segmented, multi-connection, resumable) with no UI and **no
 aria2 code or binary** - a GPLv2-clean rebuild on our hyper + rustls stack. A thin
 **WebExtension** captures the browser's real, already-authenticated download and
 hands it to the engine over loopback; the engine downloads and installs.
 
 ### 6.1 Extension hand-off - the primary path
-The `ModManager Bridge` WebExtension (MV3; Chrome + Firefox) observes downloads via
+The `Modrix Bridge` WebExtension (MV3; Chrome + Firefox) observes downloads via
 `chrome.downloads` (primary hook `onDeterminingFilename`; `onCreated` fallback on
-Firefox), plus an explicit "Download with ModManager" context-menu item. When it
+Firefox), plus an explicit "Download with Modrix" context-menu item. When it
 recognizes a mod download (an archive, or a `*.nexus-cdn.com` URL) it:
 1. cancels + erases the browser's own download (no duplicate file);
 2. gathers auth context: `cookies.getAll({url})` → a `Cookie:` header, plus
@@ -223,7 +223,7 @@ in its query string), so the engine re-issues it directly - segmented and
 resumable - provided it runs on the same public IP and before `expires`. An
 expired/IP-mismatched URL surfaces a "re-click the download" prompt.
 
-### 6.2 The engine (`modman-download`)
+### 6.2 The engine (`modrix-download`)
 A generic segmented downloader on hyper + rustls: it probes for `Range` support
 (`206` vs `200`), preallocates the target, and drives up to N connections (default
 16) issuing `Range` GETs whose bodies stream to disjoint file offsets on
@@ -243,19 +243,19 @@ domain (or an `nxm://` link's domain, via the retained `NxmUri` identity helper)
 **parked**, and the user is prompted to pick a registered game. A download is never
 lost because a game is unregistered.
 
-### 6.4 IPC seam (`modman-ipc`)
+### 6.4 IPC seam (`modrix-ipc`)
 The loopback HTTP listener **is** the single-instance mechanism: whoever binds the
-port is primary; a second launch (or `modman-protocol`) detects the bound port and
+port is primary; a second launch (or `modrix-protocol`) detects the bound port and
 forwards its request instead of starting a duplicate. If nothing is running, a
 headless engine starts to service the download, so browser clicks work even with
-the GUI closed. Loopback-only + a per-session token (`x-modman-token`), CORS for
+the GUI closed. Loopback-only + a per-session token (`x-modrix-token`), CORS for
 the extension origin; never bind non-localhost. New JSON endpoints - `POST
 /download`, `GET /download/<id>`, `GET /downloads` - carry the hand-off and progress.
 
 ### 6.5 `nxm://` - dormant, identity-only
 Resolving an `nxm://` link to a file requires the browser session we deliberately
 don't automate, so `nxm://` is no longer a download mechanism. The OS protocol
-handler (`modman-protocol`) and the `NxmUri` parser are retained only to extract
+handler (`modrix-protocol`) and the `NxmUri` parser are retained only to extract
 game/mod/file **identity**; they are not registered by default. Real downloads
 always come through the extension hand-off.
 
@@ -263,7 +263,7 @@ always come through the extension hand-off.
 
 ## 7. Frontends (thin, over core)
 
-All three call the same **action layer** in `modman-core` (add mod, enable,
+All three call the same **action layer** in `modrix-core` (add mod, enable,
 reorder, deploy, switch profile, resolve download, run installer). No business
 logic in a frontend.
 

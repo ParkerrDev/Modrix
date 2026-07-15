@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: GPL-2.0-only -->
-# ModManager Bridge (browser extension)
+# Modrix Bridge (browser extension)
 
-ModManager has **no Nexus API and needs no API key**. It is a download manager
+Modrix has **no Nexus API and needs no API key**. It is a download manager
 fed by this browser extension: you stay logged into Nexus (or any site) in your
 own browser, click the normal **Download**, and the extension hands that
 already-authenticated download - the real CDN URL plus your cookies, referrer,
-and User-Agent - to the local ModManager service, which downloads it (segmented,
+and User-Agent - to the local Modrix service, which downloads it (segmented,
 resumable) and installs it into the right game.
 
 This is the same idea as Motrix/JDownloader, reimplemented in Rust with no aria2
@@ -15,7 +15,7 @@ binary.
 
 1. Start the service - it prints a **port** and a **session token**:
    ```sh
-   modman serve
+   modrix serve
    ```
 2. Load the extension:
    - **Chrome/Edge**: `chrome://extensions` → enable Developer mode → *Load
@@ -28,12 +28,12 @@ binary.
 ## Using it
 
 - **Automatic**: clicking Nexus's *Manual Download* (or any archive download -
-  `.zip`/`.7z`/`.rar`/`.fomod`) hands it to ModManager instead of your browser's
+  `.zip`/`.7z`/`.rar`/`.fomod`) hands it to Modrix instead of your browser's
   download folder. The mod is downloaded and staged into the game whose Nexus
   domain the page URL identifies.
-- **Explicit**: right-click any link → *Download with ModManager*.
+- **Explicit**: right-click any link → *Download with Modrix*.
 
-The connection is **loopback-only and token-authed** (`x-modman-token`), so only
+The connection is **loopback-only and token-authed** (`x-modrix-token`), so only
 a client that knows your per-session token can reach the engine. Cookies are only
 read for the download's own host and are forwarded solely so an authenticated
 download replays correctly.
@@ -42,7 +42,7 @@ download replays correctly.
 
 - `nxm://` links are **no longer** a download mechanism (resolving them requires
   the site session, which lives in the browser - exactly what this extension
-  captures). `modman-protocol` and the `nxm://` parser are retained only to read
+  captures). `modrix-protocol` and the `nxm://` parser are retained only to read
   game/mod identity.
 - This is a v1 draft and needs verification against live sites' download flows.
   A packaged (signed) build follows in a later phase.

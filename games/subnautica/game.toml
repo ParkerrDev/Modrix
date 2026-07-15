@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# A declarative (Tier 1) game definition for Subnautica - a Unity title modded
+# through BepInEx (the modern successor to QModManager). No code required.
+#
+# Unlike a Bethesda game, Subnautica has no plugins.txt / ESP load order: BepInEx
+# discovers every DLL under `BepInEx/plugins/` and orders them by their declared
+# dependencies, so `load_order` is intentionally omitted.
+#
+# `mod_root` is the plugin container, mirroring what a manual install does:
+# "extract the archive into BepInEx/plugins". Most mods ship their files bare
+# (ECC Library, Kallie's Prop Pack) and land there directly; the minority that
+# ship the full `BepInEx/plugins/<Mod>/…` path have that redundant prefix
+# stripped at staging, so both styles end up in the same place. Taking the
+# container from `mod_root` also keeps the `BepInEx` directory's exact casing -
+# deploying it as a relative path folded it to `bepinex/`, a second directory
+# the game never reads.
+api_version   = 1
+id            = "subnautica"
+name          = "Subnautica"
+steam_appid   = 264710
+nexus_domain  = "subnautica"        # routes nxm://subnautica/… here
+mod_root      = "BepInEx/plugins"   # mods deploy into <install>/BepInEx/plugins
+deploy        = "link"              # hardlink -> symlink -> copy (applier falls back)
+install_probe = ["steam", "registry", "path-hint"]

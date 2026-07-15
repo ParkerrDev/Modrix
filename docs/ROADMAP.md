@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-2.0-only -->
-# ModManager - Build Roadmap
+# Modrix - Build Roadmap
 
 Phased so each stage produces something real and testable. The rules throughout:
 **engine first, frontends thin** (the CLI exists before the TUI/GUI precisely to
@@ -31,10 +31,10 @@ Workspace + plumbing. No features yet.
 ## Phase 1 - Deployment engine + CLI  ← the core bet
 The correctness-critical heart, exercised headless. Panic-free, `unsafe`-free,
 bounded (Power of Ten).
-- `modman-core`: domain model, mod store (stage an extracted folder), the pure
+- `modrix-core`: domain model, mod store (stage an extracted folder), the pure
   planner + transactional applier (link→symlink→copy), manifest, backup/restore,
   journal, dry-run, verify.
-- `modman-cli`: `game add`, `mod add <archive>`, `mod enable/disable`,
+- `modrix-cli`: `game add`, `mod add <archive>`, `mod enable/disable`,
   `loadorder`, `deploy`, `undeploy`, `verify`, `profile` commands.
 - One game as a **`game.toml`** (a simple Steam title) to prove the data-driven path.
 - Heavy tests: the five engine invariants -
@@ -50,13 +50,13 @@ byte-identical.
 ## Phase 2 - Downloads: browser hand-off end-to-end
 Make "click in browser → installed" real - **with no site API and no API key**
 (corrected from the original API-based plan; see `ARCHITECTURE.md §6`).
-- `modman-download`: a segmented, multi-connection, **resumable, checksum-verified**
+- `modrix-download`: a segmented, multi-connection, **resumable, checksum-verified**
   download engine (a clean-room aria2/Motrix-style engine, no aria2 code), on the
   GPLv2-clean hyper + rustls stack. FIFO queue + concurrency cap + progress events.
   Retains an `nxm://` identity parser (not a download mechanism).
-- `modman-ipc`: loopback listener + single-instance guard + session token; a JSON
+- `modrix-ipc`: loopback listener + single-instance guard + session token; a JSON
   `POST /download` hand-off endpoint (+ `GET /download/<id>`, `/downloads`).
-- `modman-protocol`: the tiny OS-registered forwarder (dormant; identity-only).
+- `modrix-protocol`: the tiny OS-registered forwarder (dormant; identity-only).
 - `extension/`: the **MV3 WebExtension** (Chrome + Firefox) that intercepts the
   browser's own download, captures URL + cookies + User-Agent + referrer, cancels
   it, and hands it to the loopback endpoint with the session token.
@@ -71,7 +71,7 @@ verification; the headless pipeline is proven end-to-end against a mock.)
 
 ## Phase 3 - Plugins + installers
 Open the gates for community compatibility.
-- `modman-plugin`: `mlua` host, the sandboxed `modman` API, plugin discovery,
+- `modrix-plugin`: `mlua` host, the sandboxed `modrix` API, plugin discovery,
   `api_version` gating, per-call step/time budget.
 - FOMOD engine in core (`ModuleConfig.xml`), driven from a frontend-agnostic
   wizard interface (CLI prompts for now); bounded condition tree.
@@ -84,7 +84,7 @@ Open the gates for community compatibility.
 ---
 
 ## Phase 4 - TUI
-- `modman-tui` (`ratatui`): mod list, load-order reorder, conflict view, download
+- `modrix-tui` (`ratatui`): mod list, load-order reorder, conflict view, download
   queue, profile switching, the FOMOD wizard.
 
 **Done when:** the TUI can do everything the CLI can, interactively.
@@ -92,7 +92,7 @@ Open the gates for community compatibility.
 ---
 
 ## Phase 5 - GUI
-- `modman-gui` (**Iced**, MIT): the same feature set, themed classy/macOS-like;
+- `modrix-gui` (**Iced**, MIT): the same feature set, themed classy/macOS-like;
   drag-to-reorder load order; the install wizard; settings.
 - Optional system-tray / headless-background so browser clicks work while "closed."
 
