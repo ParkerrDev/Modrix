@@ -69,8 +69,12 @@ verification; the headless pipeline is proven end-to-end against a mock.)
 
 ---
 
-## Phase 3 - Plugins + installers
-Open the gates for community compatibility.
+## Phase 3 - Plugins + installers - DONE (2026-07-15)
+Open the gates for community compatibility. Shipped: the sandboxed mlua host
+(`modrix-plugin::lua`, budgets + jailed fs + plan-only writes over core's
+`GameLogic` seam), GameDef v2 capability schema, and the community registry
+(`modrix-registry` + the `ParkerrDev/modrix-plugins` repository with search /
+install / update / gc from the GUI, CLI, and MCP).
 - `modrix-plugin`: `mlua` host, the sandboxed `modrix` API, plugin discovery,
   `api_version` gating, per-call step/time budget.
 - FOMOD engine in core (`ModuleConfig.xml`), driven from a frontend-agnostic
@@ -105,7 +109,7 @@ load order entirely in the GUI.
 - WebExtension (Firefox/Chrome) to complement the userscript; groundwork for a
   second `ModSource` (non-Nexus site).
 - Packaging: AppImage/Flatpak (Linux), MSI/portable (Windows), .app/dmg (macOS).
-- Plugin repository / discovery.
+- ~~Plugin repository / discovery.~~ Done - see Phase 3.
 
 ---
 

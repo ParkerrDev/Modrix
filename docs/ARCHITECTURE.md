@@ -66,6 +66,13 @@ modrix/  (cargo workspace)
 ├── modrix-plugin      # mlua host + the sandboxed `modrix` API given to Lua.
 │                      #   Also: FOMOD installer. (The `game.toml` loader lives in
 │                      #   core; this crate adds the Lua tier on top of it.)
+├── modrix-registry    # community plugin registry client: fetch/verify/install
+│                      #   game-support plugins (and their agent skill files)
+│                      #   from the curated modrix-plugins repository.
+├── modrix-service     # the embedded hand-off service every frontend hosts
+│                      #   (engine + downloads + IPC listener).
+├── modrix-mcp         # MCP server (stdio JSON-RPC): the full engine surface
+│                      #   as tools for AI agents, run via `modrix mcp`.
 ├── modrix-download    # segmented, resumable download engine (aria2/Motrix-style,
 │                      #   no aria2 code). Fed by the browser extension's hand-off,
 │                      #   NOT a site API. Retains the nxm:// identity parser.
@@ -144,21 +151,40 @@ Game/plugin definitions and per-game config stay as plain files (see §5); SQLit
 **Two tiers so nobody writes code they don't need to.**
 
 ### 5.1 Tier 1 - declarative `game.toml`
-Covers the ~80% case. No code. Example shape:
+Covers the ~80% case. No code. Since `api_version = 2` the definition also
+carries the game's **capabilities** - core dispatches on this data and has no
+game-specific logic of its own:
 ```toml
-api_version = 1
+api_version = 2
 id          = "skyrimse"
 name        = "Skyrim Special Edition"
 steam_appid = 489830
 install_probe = ["steam", "registry", "path-hint"]
 mod_root      = "Data"                 # relative to install path
 deploy        = "link"                 # link | copy
-load_order    = "plugins_txt"          # named strategy provided by core
-```
+content_dirs  = ["meshes", "textures", ...]  # archive-root dirs that ARE content
+base_files    = ["skyrim.esm", "cc*"]  # what the base game ships (never foreign)
 
-### 5.2 Tier 2 - `game.lua` (only when logic is required)
+[load_order]                           # omit entirely for BepInEx-style games
+strategy    = "plugins_txt"
+appdata_dir = "Skyrim Special Edition"
+
+[[external_scan]]                      # how hand-installed mods appear on disk
+kind = "file"; label = "plugin"; exts = ["esp", "esm", "esl"]; skip_base = true
+
+[health.loader]                        # game-specific health checks, data-driven
+plugins_dir = "SKSE/Plugins"; root_prefix = "skse"; message = "…"
+```
+Frontends read `Engine::capabilities(game)` from this data - a game without a
+`[load_order]` shows no Load Order UI at all. v1 definitions still parse; the
+two strategies that shipped on v1 resolve through a frozen preset table.
+
+### 5.2 Tier 2 - `game.lua` (only when logic is required) - implemented
 For custom installers, conditional deploy, special load-order formats, etc.
-Loaded via **`mlua`** (vendored **Lua 5.4** - no system Lua dependency).
+Loaded via **`mlua`** (vendored **Lua 5.4** - no system Lua dependency). Core
+defines the `GameLogic` trait + validated `StagePlan` seam (`core::logic`);
+`modrix-plugin::lua` implements it over a fresh sandboxed VM per callback with
+instruction (~5M), wall-clock (250ms), and memory (64 MiB) budgets.
 
 **Sandbox:** plugins get a curated `modrix` table and **no raw `io`/`os`/`debug`/
 `require`**. Every filesystem effect goes through the core's transactional layer
@@ -184,10 +210,25 @@ shims mismatches. Plugins live in a discovered directory (user data dir +
 bundled), one folder per game (`<id>/game.toml`, optional `<id>/game.lua`, assets).
 
 ### 5.3 FOMOD
-`ModuleConfig.xml` / `info.xml` parsing (via `quick-xml`) lives in core so all
-three frontends can drive the same install wizard; Lua plugins can override for
-bespoke installers. This is table-stakes for compatibility with existing mods.
-Bound recursion over the step/condition tree (§9.3).
+`ModuleConfig.xml` / `info.xml` parsing (via `roxmltree`) lives in
+`modrix-plugin::fomod` so every frontend drives the same install wizard (the
+GUI's wizard, the CLI's `fomod show`/`fomod apply`, MCP tools); Lua plugins can
+override for bespoke installers. Bounded iteration over the step/condition
+tree (§9.3).
+
+### 5.4 The community plugin registry
+Plugins are distributed through a curated Git repository
+(`ParkerrDev/modrix-plugins`): `plugins/<id>/{plugin.toml, game.toml,
+game.lua?, skills/}` plus a generated `index.json` (id, version, api_version,
+per-file sha256+size). `modrix-registry` fetches the index (one request,
+TTL-cached), verifies every file against its recorded hash before an atomic
+install into `<data>/plugins/<id>/` - exactly where `core::defcat` discovers
+definitions, so an installed plugin is immediately a registerable game (and
+can shadow/update a compiled-in builtin by id). Plugins are fetched on
+demand, uninstallable, and `gc` removes any no registered game references.
+PRs are gated by consistency + index-freshness CI plus
+`modrix plugin validate` (definition validity, manifest agreement, game.lua
+loads under the sandbox).
 
 ---
 
@@ -268,10 +309,16 @@ reorder, deploy, switch profile, resolve download, run installer). No business
 logic in a frontend.
 
 - **CLI (`clap`)**: the scriptable surface; built first because it proves the
-  engine headless. Everything is reachable here.
+  engine headless. Everything is reachable here, and `--json` wraps every
+  command in a stable `{"ok":true,"data":…}` envelope for agents and scripts.
 - **TUI (`ratatui`)**: mod list, load-order reorder, conflict view, download queue.
-- **GUI (`Iced`, MIT)**: the same, themed classy/macOS-like; the install wizard
-  (FOMOD) renders here.
+- **GUI (`Iced`, MIT)**: the same, themed (switchable specs: Aurora glass /
+  Gold classic, Steam library artwork); the install wizard (FOMOD) renders here.
+- **MCP (`modrix mcp`)**: the fourth frontend is an AI agent: a hand-rolled
+  stdio JSON-RPC MCP server (`modrix-mcp`) exposing the full action surface as
+  tools plus observability (downloads, progress, health) and `modrix://skill/*`
+  resources - built-in usage/plugin-authoring guides and each installed game
+  plugin's skill files - so agents learn per-game modding practice on install.
 
 Because frontends are thin, the GUI toolkit is a localized, swappable choice - which
 is exactly why the GPLv2 requirement (§11) only cost us a one-crate change.
@@ -280,8 +327,10 @@ is exactly why the GPLv2 requirement (§11) only cost us a one-crate change.
 
 ## 8. Platform integration
 
-- **Steam:** `steamlocate` finds Steam + parses `libraryfolders.vdf` and
-  `appmanifest_<appid>.acf` for install dirs.
+- **Steam:** a small bounded VDF parser (`core::detect`, no `steamlocate` dep)
+  finds Steam roots + parses `libraryfolders.vdf` and `appmanifest_<appid>.acf`
+  for install dirs; the GUI reuses the same roots for library artwork
+  (`appcache/librarycache`).
 - **Proton (Linux):** games run under Proton have a prefix at
   `steamapps/compatdata/<appid>/pfx/`. Deploy must target the right paths and, for
   some games, into the prefix (e.g. `users/steamuser/Documents`). **This is where
@@ -300,8 +349,11 @@ is exactly why the GPLv2 requirement (§11) only cost us a one-crate change.
 ## 9. Security, safety & reliability
 
 ### 9.1 Security
-- The loopback listener is **localhost-only + token-authed**; the browser can't
-  reach a user's engine without the token.
+- The loopback listener is **localhost-only**. A request is authorized by the
+  per-session token (CLI, `modrix-protocol`) **or** by a browser-extension
+  `Origin` (`chrome-extension://…`, `moz-extension://…`) - browsers stamp
+  `Origin` themselves and web pages cannot forge another scheme, so the
+  extension is zero-config while a drive-by website is still refused.
 - Lua plugins are **sandboxed** (no raw `io`/`os`/`debug`/`require`; fs/http
   mediated and budgeted).
 - **No telemetry.**

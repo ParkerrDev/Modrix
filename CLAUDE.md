@@ -18,6 +18,9 @@ cargo fmt --all -- --check
 cargo deny check                                         # license + advisory gate
 cargo run -p modrix-gui                                  # run the GUI
 cargo run -p modrix-cli -- <args>                        # binary is `modrix`
+cargo run -p modrix-cli -- --json <args>                 # machine envelope for agents
+cargo run -p modrix-cli -- mcp                           # MCP server over stdio
+MODRIX_REGISTRY=<dir-or-url> …                           # override the plugin registry
 ```
 
 Toolchain is pinned in `rust-toolchain.toml` (rustup installs it automatically). CI (`.github/workflows/ci.yml`) runs fmt + clippy `-D warnings` + tests on all three OSes, plus `cargo deny check licenses advisories bans sources`.
@@ -45,10 +48,12 @@ Cargo workspace, `crates/*`:
 - **`modrix-ipc`**: loopback HTTP listener + per-session token; binding the port **is** the single-instance guard. `POST /download` receives the extension's `HandoffJob` (URL + cookies + UA); never binds non-localhost.
 - **`modrix-service`**: the embedded hand-off service (engine + downloads + IPC listener) that every frontend hosts, so browser clicks work whichever frontend runs.
 - **`modrix-protocol`**: dormant `nxm://` OS handler; identity extraction only, not a download path.
-- **`modrix-plugin`**: Lua (mlua, vendored 5.4) plugin host + FOMOD installer. Lua is sandboxed: no raw `io`/`os`/`require`; plugins return stage plans, never write files directly.
+- **`modrix-plugin`**: Lua (mlua, vendored 5.4) plugin host + FOMOD installer. Lua is sandboxed: no raw `io`/`os`/`require`; plugins return stage plans (validated in `core::logic`), never write files directly; per-call instruction/time/memory budgets.
+- **`modrix-registry`**: community plugin registry client (curated `ParkerrDev/modrix-plugins` repo): index fetch, sha256-verified atomic install into `<data>/plugins/<id>` (where `core::defcat` looks), uninstall/gc. `MODRIX_REGISTRY` env overrides the source (local clone while the repo is private).
+- **`modrix-mcp`**: MCP server (hand-rolled stdio JSON-RPC, serde_json only) exposing the full engine surface as tools + installed skill files as resources; run via `modrix mcp`.
 - **`modrix-cli`** (`modrix`), **`modrix-tui`** (ratatui), **`modrix-gui`** (Iced 0.13; screens in `src/view/*.rs`) - thin frontends. `modrix-gui` is the only crate allowed to link a GUI toolkit.
 
-Game definitions are two-tier: declarative `games/<id>/game.toml` (parsed in core) covers most games; `game.lua` only when logic is required. Skyrim SE and Subnautica (Unity/BepInEx: mods deploy into the nested `BepInEx/plugins` mod root, no load-order file) ship built-in.
+Game definitions are two-tier: declarative `games/<id>/game.toml` (parsed in core; `api_version = 2` carries capabilities - load-order strategy, content dirs, base files, external scans, health checks - so core has NO game-specific logic) covers most games; `game.lua` only when logic is required. Frontends gate features on `Engine::capabilities(game)`. Skyrim SE and Subnautica (Unity/BepInEx: mods deploy into the nested `BepInEx/plugins` mod root, no load-order file) ship built-in.
 
 ## Conventions
 
