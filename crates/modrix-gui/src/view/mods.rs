@@ -39,7 +39,8 @@ fn toolbar<'a>(app: &'a App, enabled: &HashSet<ModId>) -> El<'a> {
         .placeholder("profile")
         .text_size(13)
         .padding([7, 10])
-        .style(theme::picker);
+        .style(theme::picker)
+        .menu_style(theme::picker_menu);
     let mut bar = row![profile, iced::widget::Space::with_width(Length::Fill)]
         .spacing(10)
         .align_y(Alignment::Center);
@@ -82,7 +83,7 @@ fn selection_bar(app: &App) -> El<'_> {
         text(format!("{n} selected"))
             .size(13)
             .font(BOLD)
-            .color(theme::ACCENT),
+            .color(theme::accent()),
         iced::widget::Space::with_width(Length::Fill),
         action(
             "Enable".to_owned(),
@@ -156,7 +157,7 @@ fn table<'a>(app: &'a App, enabled: &HashSet<ModId>) -> El<'a> {
                 Message::Scrolled(Pane::Mods, v.absolute_offset().y, v.bounds().height)
             })
             .height(Length::Fill),
-        text(summary_line(app)).size(12).color(theme::FAINT),
+        text(summary_line(app)).size(12).color(theme::faint()),
     ]
     .spacing(8);
     container(listing)
@@ -191,13 +192,13 @@ fn external_header(count: usize) -> El<'static> {
                 "EXTERNAL - {count} mod{plural} already installed, not managed by Modrix"
             ))
             .size(10)
-            .color(theme::ACCENT),
+            .color(theme::accent()),
             text(
                 "Shown so you know they are here. Modrix does not enable, order, or remove \
                  them - manage them where you installed them."
             )
             .size(10)
-            .color(theme::FAINT),
+            .color(theme::faint()),
         ]
         .spacing(2),
     )
@@ -215,16 +216,16 @@ fn external_row(m: &ExternalMod) -> El<'_> {
         if m.files == 1 { "" } else { "s" }
     );
     let inner = row![
-        container(text("-").size(13).color(theme::FAINT)).width(48),
+        container(text("-").size(13).color(theme::faint())).width(48),
         column![
-            text(&m.name).size(13).color(theme::MUTED),
-            text(files).size(10).color(theme::FAINT),
+            text(&m.name).size(13).color(theme::muted()),
+            text(files).size(10).color(theme::faint()),
         ]
         .spacing(2)
         .width(Length::Fill),
         container(text("EXTERNAL").size(10))
             .padding([2, 8])
-            .style(theme::chip(theme::FAINT)),
+            .style(theme::chip(theme::faint())),
     ]
     .spacing(10)
     .align_y(Alignment::Center);
@@ -273,9 +274,9 @@ fn added_label(created_at: Option<i64>) -> String {
 fn sort_cell<'a>(app: &App, label: &'a str, key: SortKey, width: u16) -> El<'a> {
     let (active_key, ascending) = app.mod_sort;
     let mut cell = row![text(label).size(10).color(if active_key == key {
-        theme::ACCENT
+        theme::accent()
     } else {
-        theme::FAINT
+        theme::faint()
     })]
     .spacing(4)
     .align_y(Alignment::Center);
@@ -300,7 +301,7 @@ fn mod_row(m: &Mod, index: usize, enabled: bool, selected: bool) -> El<'_> {
     let mut tail = row![
         container(text(&m.source).size(10))
             .padding([2, 8])
-            .style(theme::chip(theme::INFO)),
+            .style(theme::chip(theme::info())),
     ]
     .spacing(6)
     .align_y(Alignment::Center);
@@ -316,15 +317,19 @@ fn mod_row(m: &Mod, index: usize, enabled: bool, selected: bool) -> El<'_> {
         container(switch).width(48),
         text(&m.name)
             .size(13)
-            .color(if enabled { theme::TEXT } else { theme::MUTED })
+            .color(if enabled {
+                theme::text()
+            } else {
+                theme::muted()
+            })
             .width(Length::Fill),
         text(added_label(m.created_at))
             .size(12)
-            .color(theme::FAINT)
+            .color(theme::faint())
             .width(90),
         text(m.version.as_deref().unwrap_or("-"))
             .size(12)
-            .color(theme::MUTED)
+            .color(theme::muted())
             .width(100),
         container(tail).width(150),
     ]
@@ -351,10 +356,10 @@ fn mod_row(m: &Mod, index: usize, enabled: bool, selected: bool) -> El<'_> {
 /// Click to browse, or drop archives anywhere on the window.
 fn drop_zone() -> El<'static> {
     let inner = column![
-        text("Add mods").size(13).font(BOLD).color(theme::ACCENT),
+        text("Add mods").size(13).font(BOLD).color(theme::accent()),
         text("Drop archives here, or click to browse")
             .size(12)
-            .color(theme::MUTED),
+            .color(theme::muted()),
     ]
     .spacing(4)
     .align_x(Alignment::Center);

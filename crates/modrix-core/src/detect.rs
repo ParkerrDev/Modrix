@@ -71,8 +71,9 @@ fn detect_in_roots(roots: &[PathBuf], appid: i64) -> Option<PathBuf> {
 
 /// Existing, de-duplicated Steam root directories for this platform. Paths are
 /// canonicalized so the `~/.steam/steam` symlink and its `~/.local/share/Steam`
-/// target collapse to one entry (and are scanned once).
-fn steam_roots() -> Vec<PathBuf> {
+/// target collapse to one entry (and are scanned once). Public so frontends
+/// can locate Steam's local artwork cache (`appcache/librarycache/<appid>`).
+pub fn steam_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
         // Linux native installs (both the historical symlink names) …

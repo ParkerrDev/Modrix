@@ -34,7 +34,7 @@ pub(super) fn body(app: &App) -> El<'_> {
 fn pairing_strip(app: &App) -> El<'_> {
     let inner: El<'_> = match (&app.link, app.already_running) {
         (Some(link), _) => row![
-            icons::dot(7.0, theme::OK),
+            icons::dot(7.0, theme::ok()),
             text(format!("127.0.0.1:{}", link.port)).size(13),
             iced::widget::Space::with_width(Length::Fill),
             copy_button(link.token.clone()),
@@ -44,11 +44,11 @@ fn pairing_strip(app: &App) -> El<'_> {
         .into(),
         (None, true) => text("Another Modrix instance is receiving downloads.")
             .size(13)
-            .color(theme::INFO)
+            .color(theme::info())
             .into(),
         (None, false) => text("Hand-off listener not running.")
             .size(13)
-            .color(theme::DANGER)
+            .color(theme::danger())
             .into(),
     };
     container(inner)
@@ -74,11 +74,11 @@ fn download_row<'a>(status: &'a DownloadStatus, outcome: Option<&'a InstallOutco
     .spacing(10)
     .align_y(Alignment::Center);
     let meta = row![
-        text(size_line(status)).size(12).color(theme::MUTED),
+        text(size_line(status)).size(12).color(theme::muted()),
         iced::widget::Space::with_width(Length::Fill),
         text(fmt::percent(status.done, status.total))
             .size(12)
-            .color(theme::MUTED),
+            .color(theme::muted()),
     ];
     let mut inner = column![
         head,
@@ -89,7 +89,7 @@ fn download_row<'a>(status: &'a DownloadStatus, outcome: Option<&'a InstallOutco
     ]
     .spacing(7);
     if let Some(InstallOutcome::Failed(error)) = outcome {
-        inner = inner.push(text(error).size(12).color(theme::DANGER));
+        inner = inner.push(text(error).size(12).color(theme::danger()));
     }
     container(inner)
         .padding([10, 14])
@@ -119,15 +119,15 @@ fn size_line(status: &DownloadStatus) -> String {
 
 fn badge(state: DownloadState, outcome: Option<&InstallOutcome>) -> (Color, &'static str) {
     match state {
-        DownloadState::Queued => (theme::FAINT, "QUEUED"),
-        DownloadState::Active => (theme::ACCENT, "ACTIVE"),
-        DownloadState::Paused => (theme::INFO, "PAUSED"),
-        DownloadState::Failed => (theme::DANGER, "FAILED"),
+        DownloadState::Queued => (theme::faint(), "QUEUED"),
+        DownloadState::Active => (theme::accent(), "ACTIVE"),
+        DownloadState::Paused => (theme::info(), "PAUSED"),
+        DownloadState::Failed => (theme::danger(), "FAILED"),
         DownloadState::Complete => match outcome {
-            Some(InstallOutcome::Installed { .. }) => (theme::OK, "INSTALLED"),
-            Some(InstallOutcome::Failed(_)) => (theme::DANGER, "INSTALL FAILED"),
-            Some(InstallOutcome::NoGame) => (theme::INFO, "DOWNLOADED"),
-            None => (theme::ACCENT, "FINISHING"),
+            Some(InstallOutcome::Installed { .. }) => (theme::ok(), "INSTALLED"),
+            Some(InstallOutcome::Failed(_)) => (theme::danger(), "INSTALL FAILED"),
+            Some(InstallOutcome::NoGame) => (theme::info(), "DOWNLOADED"),
+            None => (theme::accent(), "FINISHING"),
         },
     }
 }

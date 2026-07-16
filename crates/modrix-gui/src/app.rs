@@ -370,6 +370,12 @@ pub struct App {
     pub plugin_counts: HashMap<ModId, usize>,
     /// Setup health issues, worst-first.
     pub health: Vec<modrix_core::Issue>,
+    /// What the selected game supports (drives which tabs show).
+    pub capabilities: Option<modrix_core::GameCapabilities>,
+    /// Resolved artwork per game (Steam library cache / CDN mirror).
+    pub art: HashMap<GameId, crate::artwork::ArtSet>,
+    /// Games whose artwork fetch is already underway (no duplicate tasks).
+    art_requested: HashSet<GameId>,
     /// The engine's live progress sink (shared before the engine exists so
     /// boot-time crash recovery reports too).
     pub progress: std::sync::Arc<modrix_core::Progress>,
@@ -548,6 +554,10 @@ pub enum Message {
     DupCancel,
     /// Staged plugin counts computed on a worker task.
     PluginCounts(HashMap<ModId, usize>),
+    /// Switch the visual theme (by stable id) and persist the choice.
+    ThemePicked(String),
+    /// A game's artwork finished resolving.
+    ArtResolved(GameId, crate::artwork::ArtSet),
     /// Swallow a click (keeps overlay panels from dismissing themselves).
     NoOp,
     /// Cancel a download.
@@ -632,8 +642,35 @@ fn initial_screen() -> Screen {
     }
 }
 
+/// Restore the persisted theme choice before the first frame renders.
+fn load_theme_pref() {
+    let Ok(paths) = Paths::resolve() else {
+        return;
+    };
+    let Ok(text) = std::fs::read_to_string(paths.config_dir().join("gui.toml")) else {
+        return;
+    };
+    for line in text.lines().take(64) {
+        if let Some(rest) = line.trim().strip_prefix("theme")
+            && let Some(value) = rest.trim().strip_prefix('=')
+        {
+            theme::set_theme(value.trim().trim_matches('"'));
+            return;
+        }
+    }
+}
+
+/// Persist the theme choice (best-effort - a failed write only means the
+/// next launch opens on the default).
+fn save_theme_pref(paths: &Paths, id: &str) {
+    let dir = paths.config_dir();
+    let _ = std::fs::create_dir_all(dir);
+    let _ = std::fs::write(dir.join("gui.toml"), format!("theme = \"{id}\"\n"));
+}
+
 /// Initial state + the boot task.
 pub fn boot() -> (App, Task<Message>) {
+    load_theme_pref();
     let app = App {
         service: None,
         link: None,
@@ -663,6 +700,9 @@ pub fn boot() -> (App, Task<Message>) {
         expanded_conflict: None,
         plugin_counts: HashMap::new(),
         health: Vec::new(),
+        capabilities: None,
+        art: HashMap::new(),
+        art_requested: HashSet::new(),
         progress: std::sync::Arc::new(modrix_core::Progress::default()),
         op: None,
         notes: Vec::new(),
@@ -711,7 +751,9 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     let period = if app.op.is_some() || app.service.is_none() {
         Duration::from_millis(150)
     } else {
-        Duration::from_secs(1)
+        // Idle: the per-tick refresh is SQLite-only (no filesystem walks),
+        // and 2s keeps background wakeups rare on a loaded system.
+        Duration::from_secs(2)
     };
     Subscription::batch([events, iced::time::every(period).map(|_| Message::Tick)])
 }
@@ -833,12 +875,15 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.op = app.progress.snapshot();
             app.refresh();
             app.expire_notes();
+            return app.spawn_art_fetches();
         }
         Message::GamePicked(choice) => {
             app.select_game(choice.id);
             app.mod_sel.clear();
             app.plugin_sel.clear();
             app.refresh();
+            // The new game's conflicts/health/external decide tab visibility.
+            return app.refresh_heavy();
         }
         Message::ProfilePicked(name) => app.on_profile_picked(&name),
         Message::ProfileNameChanged(name) => app.form.profile_name = name,
@@ -918,6 +963,14 @@ fn update_files(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::GcPlugins => {
             app.on_gc_plugins();
+            Task::none()
+        }
+        Message::ThemePicked(id) => {
+            app.on_theme_picked(&id);
+            Task::none()
+        }
+        Message::ArtResolved(game, art) => {
+            app.art.insert(game, art);
             Task::none()
         }
         Message::NoOp => Task::none(),
@@ -1106,6 +1159,57 @@ impl App {
         Task::none()
     }
 
+    /// Start artwork resolution for any game that has none yet (each game
+    /// once per session; results land via [`Message::ArtResolved`]).
+    fn spawn_art_fetches(&mut self) -> Task<Message> {
+        let Some(paths) = &self.paths else {
+            return Task::none();
+        };
+        let cache = paths.cache_dir().to_path_buf();
+        let mut tasks = Vec::new();
+        for game in &self.games {
+            let Some(appid) = game.steam_appid else {
+                continue;
+            };
+            if !self.art_requested.insert(game.id) {
+                continue;
+            }
+            let id = game.id;
+            let cache = cache.clone();
+            tasks.push(Task::perform(
+                crate::artwork::resolve(appid, cache),
+                move |art| Message::ArtResolved(id, art),
+            ));
+        }
+        Task::batch(tasks)
+    }
+
+    /// Whether a screen applies to the selected game. Load Order exists only
+    /// for games with a load-order strategy; Conflicts always applies to
+    /// those, and to other games only while real conflicts (or blockers)
+    /// exist. Hidden screens leave the nav entirely.
+    #[must_use]
+    pub fn screen_visible(&self, screen: Screen) -> bool {
+        match screen {
+            Screen::LoadOrder => self.capabilities.is_none_or(|c| c.load_order),
+            Screen::Conflicts => {
+                self.capabilities.is_none_or(|c| c.load_order)
+                    || !self.conflicts.is_empty()
+                    || self.health.iter().any(|i| i.blocking)
+            }
+            _ => true,
+        }
+    }
+
+    /// Switch the theme live and remember the choice for the next launch.
+    fn on_theme_picked(&mut self, id: &str) {
+        theme::set_theme(id);
+        self.theme = theme::app_theme();
+        if let Some(paths) = &self.paths {
+            save_theme_pref(paths, id);
+        }
+    }
+
     fn refresh_installed_plugins(&mut self) {
         let Some(paths) = &self.paths else {
             return;
@@ -1164,6 +1268,11 @@ impl App {
     }
 
     fn on_navigate(&mut self, screen: Screen) -> Task<Message> {
+        // Screens the selected game does not support are not navigable
+        // (their nav entries are hidden; this also blocks keyboard paths).
+        if !self.screen_visible(screen) {
+            return Task::none();
+        }
         self.screen = screen;
         self.notes_open = false;
         if matches!(screen, Screen::LoadOrder | Screen::Conflicts) {
@@ -1254,14 +1363,21 @@ impl App {
         self.profiles = engine.profiles(game).unwrap_or_default();
         self.active_profile = engine.active_profile(game).ok();
         self.mods = engine.mods(game).unwrap_or_default();
-        self.external = engine.external_mods(game).unwrap_or_default();
+        // Note: the external scan (a filesystem walk) deliberately lives in
+        // refresh_heavy, not here - this runs every tick.
         self.order = match &self.active_profile {
             Some(profile) => engine.enabled_mods(profile.id).unwrap_or_default(),
             None => Vec::new(),
         };
+        if self.capabilities.is_none() {
+            self.capabilities = engine.capabilities(game).ok();
+        }
         drop(engine);
         self.apply_mod_sort();
         self.mod_sel.retain_below(self.mods.len());
+        if !self.screen_visible(self.screen) {
+            self.screen = Screen::Dashboard;
+        }
         self.queue_unreviewed_fomods();
     }
 
@@ -1285,6 +1401,11 @@ impl App {
         self.plugins = engine.plugins(profile).unwrap_or_default();
         self.health = engine.health(profile).unwrap_or_default();
         self.conflicts = engine.mod_conflicts(profile).unwrap_or_default();
+        // The external scan walks the game directory - heavy-pass work, so a
+        // per-tick refresh never touches the disk for it.
+        if let Some(game) = self.selected_game {
+            self.external = engine.external_mods(game).unwrap_or_default();
+        }
         drop(engine);
         self.plugin_sel.retain_below(self.plugins.len());
         self.spawn_plugin_counts()
@@ -1891,6 +2012,9 @@ impl App {
     /// reopens here instead of defaulting to the first-registered game.
     fn select_game(&mut self, game: GameId) {
         self.selected_game = Some(game);
+        // The new game decides which tabs exist and what is external.
+        self.capabilities = None;
+        self.external = Vec::new();
         let _ = self.with_engine(|e| e.set_active_game(game));
     }
 

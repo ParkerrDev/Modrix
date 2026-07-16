@@ -7,6 +7,7 @@
 //! [`app::App`]; all styling in [`theme`]; all layout in [`view`].
 
 mod app;
+mod artwork;
 mod fmt;
 mod icons;
 mod theme;
@@ -25,8 +26,22 @@ fn main() -> iced::Result {
         return Ok(());
     }
     iced::application("Modrix", app::update, view::view)
+        // Explicit app id: the Wayland window class the desktop entry's
+        // StartupWMClass matches against.
+        .settings(iced::Settings {
+            id: Some("modrix-gui".to_owned()),
+            ..iced::Settings::default()
+        })
         .subscription(app::subscription)
         .theme(|state| state.theme.clone())
+        // The window clear color comes from the active theme: glass themes
+        // use alpha < 1 so the compositor shows through (transparent(true)
+        // below makes that possible; opaque themes simply ignore it).
+        .style(|_state, _theme| iced::application::Appearance {
+            background_color: theme::window_background(),
+            text_color: theme::text(),
+        })
+        .transparent(true)
         .antialiasing(true)
         .window_size(iced::Size::new(1280.0, 840.0))
         .centered()

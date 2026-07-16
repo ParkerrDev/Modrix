@@ -52,7 +52,7 @@ fn registry_row(index: usize, choice: &RegistryChoice, busy: bool) -> El<'_> {
         text(&choice.name).size(14).font(BOLD),
         text(format!("{} · v{}", choice.id, choice.version))
             .size(12)
-            .color(theme::FAINT),
+            .color(theme::faint()),
     ]
     .spacing(4)
     .width(Length::Fill);
@@ -90,7 +90,7 @@ fn detected_row(index: usize, detected: &Detected) -> El<'_> {
     }
     let info = column![
         text(&detected.def.name).size(14).font(BOLD),
-        text(meta).size(12).color(theme::FAINT),
+        text(meta).size(12).color(theme::faint()),
     ]
     .spacing(4)
     .width(Length::Fill);
@@ -119,15 +119,15 @@ fn game_card<'a>(app: &App, game: &'a Game) -> El<'a> {
         head = head.push(
             container(text("ACTIVE").size(10))
                 .padding([2, 8])
-                .style(theme::chip(theme::ACCENT)),
+                .style(theme::chip(theme::accent())),
         );
     }
     let inner = column![
         head,
-        text(meta).size(12).color(theme::MUTED),
+        text(meta).size(12).color(theme::muted()),
         text(game.install_path.display().to_string())
             .size(12)
-            .color(theme::FAINT),
+            .color(theme::faint()),
     ]
     .spacing(6)
     .width(Length::Fill);
@@ -152,7 +152,8 @@ fn register_card(app: &App) -> El<'_> {
     .text_size(13)
     .padding([8, 10])
     .width(Length::Fill)
-    .style(theme::picker);
+    .style(theme::picker)
+    .menu_style(theme::picker_menu);
     let def_path = text_input("…or a path to a custom game.toml", &app.form.def_path)
         .on_input(Message::DefPathChanged)
         .size(13)

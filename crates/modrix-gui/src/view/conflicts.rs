@@ -54,14 +54,14 @@ fn blockers_card(app: &App) -> Option<El<'_>> {
     let mut list = column![
         text("DEPLOY BLOCKED UNTIL RESOLVED")
             .size(10)
-            .color(theme::DANGER)
+            .color(theme::danger())
     ]
     .spacing(6);
     for issue in blocking.iter().take(8) {
         list = list.push(
             row![
-                icons::dot(6.0, theme::DANGER),
-                text(&issue.message).size(12).color(theme::TEXT),
+                icons::dot(6.0, theme::danger()),
+                text(&issue.message).size(12).color(theme::text()),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
@@ -85,13 +85,13 @@ fn summary(app: &App) -> El<'_> {
         format!("{total} conflicting pairs · {unresolved} need a rule")
     };
     let color = if unresolved == 0 {
-        theme::OK
+        theme::ok()
     } else {
-        theme::DANGER
+        theme::danger()
     };
     row![
         icons::dot(8.0, color),
-        text(label).size(13).color(theme::MUTED),
+        text(label).size(13).color(theme::muted()),
     ]
     .spacing(8)
     .align_y(Alignment::Center)
@@ -123,21 +123,21 @@ fn head_row(conflict: &ModConflict, name_a: &str, name_b: &str) -> El<'static> {
     let dot = icons::dot(
         8.0,
         if conflict.resolved() {
-            theme::OK
+            theme::ok()
         } else {
-            theme::DANGER
+            theme::danger()
         },
     );
     let files = conflict.files.len();
     let (state, color) = match conflict.rule {
         Some(rule) => {
             let winner = if rule.winner == a { &name_a } else { &name_b };
-            (format!("{files} files · rule: {winner} wins"), theme::OK)
+            (format!("{files} files · rule: {winner} wins"), theme::ok())
         }
-        None if conflict.resolved() => (format!("{files} files · all pinned"), theme::OK),
+        None if conflict.resolved() => (format!("{files} files · all pinned"), theme::ok()),
         None => (
             format!("{files} files · no rule · install order decides"),
-            theme::DANGER,
+            theme::danger(),
         ),
     };
     // Stacked lines, never side-by-side with the wide rule buttons: sharing
@@ -201,6 +201,42 @@ fn short(name: &str, max: usize) -> String {
     name.chars().take(max).collect()
 }
 
+/// The pin/auto controls for one contested file.
+fn file_controls<'a>(
+    file: &'a modrix_core::ConflictFile,
+    pair: (ModId, ModId),
+    names: (&str, &str),
+) -> El<'a> {
+    let (a, b) = pair;
+    let pin = |label: String, provider: ModId, active: bool| {
+        button(text(label).size(10))
+            .padding([2, 8])
+            .style(if active { theme::primary } else { theme::ghost })
+            .on_press(Message::PinFile {
+                target: file.target.clone(),
+                provider: Some(provider),
+            })
+    };
+    let mut controls = row![
+        pin(names.0.to_owned(), a, file.overridden && file.winner == a),
+        pin(names.1.to_owned(), b, file.overridden && file.winner == b),
+    ]
+    .spacing(4)
+    .align_y(Alignment::Center);
+    if file.overridden {
+        controls = controls.push(
+            button(text("auto").size(10))
+                .padding([2, 8])
+                .style(theme::ghost)
+                .on_press(Message::PinFile {
+                    target: file.target.clone(),
+                    provider: None,
+                }),
+        );
+    }
+    controls.into()
+}
+
 /// The contested files of an expanded pair, each pinnable to either side.
 fn file_list<'a>(conflict: &'a ModConflict, name_a: &str, name_b: &str) -> El<'a> {
     let (a, b) = (conflict.first, conflict.second);
@@ -208,46 +244,20 @@ fn file_list<'a>(conflict: &'a ModConflict, name_a: &str, name_b: &str) -> El<'a
     let mut list = column![].spacing(3);
     for file in conflict.files.iter().take(MAX_FILES_SHOWN) {
         let winner_name = if file.winner == a { &short_a } else { &short_b };
-        let pin = |label: String, provider: ModId, active: bool| {
-            button(text(label).size(10))
-                .padding([2, 8])
-                .style(if active { theme::primary } else { theme::ghost })
-                .on_press(Message::PinFile {
-                    target: file.target.clone(),
-                    provider: Some(provider),
-                })
-        };
-        let mut controls = row![
-            pin(short_a.clone(), a, file.overridden && file.winner == a),
-            pin(short_b.clone(), b, file.overridden && file.winner == b),
-        ]
-        .spacing(4)
-        .align_y(Alignment::Center);
-        if file.overridden {
-            controls = controls.push(
-                button(text("auto").size(10))
-                    .padding([2, 8])
-                    .style(theme::ghost)
-                    .on_press(Message::PinFile {
-                        target: file.target.clone(),
-                        provider: None,
-                    }),
-            );
-        }
         list = list.push(
             row![
                 text(&file.target)
                     .size(11)
-                    .color(theme::MUTED)
+                    .color(theme::muted())
                     .width(Length::Fill),
                 text(format!("→ {winner_name}"))
                     .size(11)
                     .color(if file.overridden {
-                        theme::ACCENT
+                        theme::accent()
                     } else {
-                        theme::FAINT
+                        theme::faint()
                     }),
-                controls,
+                file_controls(file, (a, b), (&short_a, &short_b)),
             ]
             .spacing(10)
             .align_y(Alignment::Center),
@@ -255,7 +265,11 @@ fn file_list<'a>(conflict: &'a ModConflict, name_a: &str, name_b: &str) -> El<'a
     }
     let extra = conflict.files.len().saturating_sub(MAX_FILES_SHOWN);
     if extra > 0 {
-        list = list.push(text(format!("+{extra} more")).size(10).color(theme::FAINT));
+        list = list.push(
+            text(format!("+{extra} more"))
+                .size(10)
+                .color(theme::faint()),
+        );
     }
     container(scrollable(list).height(Length::Shrink))
         .padding([8, 10])

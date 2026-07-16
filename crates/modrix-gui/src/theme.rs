@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0-only
-//! The visual identity: a restrained, modern dark palette.
+//! The visual identity: switchable theme specs behind one style API.
 //!
-//! Where Vortex leans on a loud orange, Modrix uses graphite surfaces,
-//! hairline borders, and a muted gold accent - the classy version. Every
-//! widget style lives here so the views stay purely structural.
+//! Two themes ship: **Aurora** (the default - dark glass surfaces with a
+//! cyan→indigo→violet gradient accent, translucent window) and **Gold** (the
+//! original graphite + muted-gold look, banked verbatim). Every widget style
+//! lives here so the views stay purely structural; views read colors through
+//! accessor functions (`accent()`, `muted()`, …) and never hold a palette,
+//! so switching themes restyles the whole application at once.
 
+use std::sync::RwLock;
+
+use iced::gradient::Linear;
 use iced::theme::Palette;
 use iced::widget::{button, container, pick_list, progress_bar, text_input, toggler};
-use iced::{Background, Border, Color, Shadow, Theme};
+use iced::{Background, Border, Color, Gradient, Radians, Shadow, Theme};
 
 /// Build a solid [`Color`] from a `0xRRGGBB` literal.
 #[expect(
@@ -28,43 +34,189 @@ const fn faded(color: Color, alpha: f32) -> Color {
     Color { a: alpha, ..color }
 }
 
-/// Window background.
-pub const BG: Color = hex(0x11_1216);
-/// Sidebar background.
-pub const SURFACE: Color = hex(0x16_171C);
-/// Card / table background.
-pub const CARD: Color = hex(0x1C_1E24);
-/// Slightly raised card (hover, inset fields).
-pub const CARD_HI: Color = hex(0x23_252D);
-/// Hairline borders.
-pub const HAIRLINE: Color = hex(0x2A_2D36);
-/// Primary text.
-pub const TEXT: Color = hex(0xE8_E6E1);
-/// Secondary text.
-pub const MUTED: Color = hex(0x8E_93A2);
-/// Tertiary text (labels, hints).
-pub const FAINT: Color = hex(0x5D_6373);
-/// The accent: muted gold.
-pub const ACCENT: Color = hex(0xD9_A65A);
-/// Success green.
-pub const OK: Color = hex(0x8F_B573);
-/// Danger red.
-pub const DANGER: Color = hex(0xCC_5F56);
-/// Informational blue-grey.
-pub const INFO: Color = hex(0x7F_A6C9);
+/// One complete visual identity.
+pub struct ThemeSpec {
+    /// Stable id persisted in settings (`aurora`, `gold`).
+    pub id: &'static str,
+    /// Display name for the theme picker.
+    pub name: &'static str,
+    /// Window background.
+    pub bg: Color,
+    /// Sidebar background.
+    pub surface: Color,
+    /// Card / table background.
+    pub card: Color,
+    /// Slightly raised card (hover, inset fields).
+    pub card_hi: Color,
+    /// Hairline borders.
+    pub hairline: Color,
+    /// Primary text.
+    pub text: Color,
+    /// Secondary text.
+    pub muted: Color,
+    /// Tertiary text (labels, hints).
+    pub faint: Color,
+    /// The accent color (buttons, highlights, active nav).
+    pub accent: Color,
+    /// The accent's hover shift.
+    pub accent_hot: Color,
+    /// Text on an accent-filled control.
+    pub on_accent: Color,
+    /// The accent gradient stops (primary buttons, progress, active nav).
+    pub gradient: [Color; 3],
+    /// Success green.
+    pub ok: Color,
+    /// Danger red.
+    pub danger: Color,
+    /// Informational blue.
+    pub info: Color,
+    /// Window-background alpha: < 1.0 = glassmorphism (the compositor shows
+    /// through); 1.0 = opaque.
+    pub glass: f32,
+}
 
-/// The application [`Theme`], built once at startup.
+/// Aurora: dark glass + a cyan→indigo→violet sweep. The default.
+pub const AURORA: ThemeSpec = ThemeSpec {
+    id: "aurora",
+    name: "Aurora (glass)",
+    bg: hex(0x0B_0E14),
+    surface: hex(0x0F_1420),
+    card: hex(0x13_1A28),
+    card_hi: hex(0x1A_2233),
+    hairline: hex(0x24_2C40),
+    text: hex(0xE6_EAF2),
+    muted: hex(0x8C_94A8),
+    faint: hex(0x5B_6478),
+    accent: hex(0x22_D3EE),
+    accent_hot: hex(0x7D_D3FC),
+    on_accent: hex(0x06_1B22),
+    gradient: [hex(0x22_D3EE), hex(0x63_66F1), hex(0xA8_55F7)],
+    ok: hex(0x34_D399),
+    danger: hex(0xF0_6A5E),
+    info: hex(0x7D_A7E0),
+    glass: 0.86,
+};
+
+/// Gold: the original graphite + muted-gold identity, kept selectable.
+pub const GOLD: ThemeSpec = ThemeSpec {
+    id: "gold",
+    name: "Gold (classic)",
+    bg: hex(0x11_1216),
+    surface: hex(0x16_171C),
+    card: hex(0x1C_1E24),
+    card_hi: hex(0x23_252D),
+    hairline: hex(0x2A_2D36),
+    text: hex(0xE8_E6E1),
+    muted: hex(0x8E_93A2),
+    faint: hex(0x5D_6373),
+    accent: hex(0xD9_A65A),
+    accent_hot: hex(0xE4_B36B),
+    on_accent: hex(0x1A_1408),
+    gradient: [hex(0xD9_A65A), hex(0xD9_A65A), hex(0xE4_B36B)],
+    ok: hex(0x8F_B573),
+    danger: hex(0xCC_5F56),
+    info: hex(0x7F_A6C9),
+    glass: 1.0,
+};
+
+/// Every selectable theme, in picker order.
+pub const ALL: [&ThemeSpec; 2] = [&AURORA, &GOLD];
+
+/// The live theme. A lock (not a const) so Settings can switch at runtime;
+/// contention is nil (writes happen on a click).
+static ACTIVE: RwLock<&'static ThemeSpec> = RwLock::new(&AURORA);
+
+/// The active theme spec.
+pub fn spec() -> &'static ThemeSpec {
+    ACTIVE.read().map_or(&AURORA, |guard| *guard)
+}
+
+/// Switch the active theme by id (unknown ids keep the current theme).
+pub fn set_theme(id: &str) {
+    if let Some(found) = ALL.iter().find(|s| s.id == id)
+        && let Ok(mut active) = ACTIVE.write()
+    {
+        *active = found;
+    }
+}
+
+// --- color accessors (views read these, never a palette) --------------------
+
+/// Primary text.
+pub fn text() -> Color {
+    spec().text
+}
+/// Secondary text.
+pub fn muted() -> Color {
+    spec().muted
+}
+/// Tertiary text.
+pub fn faint() -> Color {
+    spec().faint
+}
+/// Hairline borders.
+pub fn hairline_color() -> Color {
+    spec().hairline
+}
+/// The accent.
+pub fn accent() -> Color {
+    spec().accent
+}
+/// Success green.
+pub fn ok() -> Color {
+    spec().ok
+}
+/// Danger red.
+pub fn danger() -> Color {
+    spec().danger
+}
+/// Informational blue.
+pub fn info() -> Color {
+    spec().info
+}
+
+/// The accent gradient as a background (top-left → bottom-right sweep).
+fn gradient_bg() -> Background {
+    let [a, b, c] = spec().gradient;
+    Background::Gradient(Gradient::Linear(
+        Linear::new(Radians(std::f32::consts::FRAC_PI_4 * 3.0))
+            .add_stop(0.0, a)
+            .add_stop(0.5, b)
+            .add_stop(1.0, c),
+    ))
+}
+
+/// The accent gradient, faded to `alpha` (selections, active nav).
+fn gradient_bg_faded(alpha: f32) -> Background {
+    let [a, b, c] = spec().gradient;
+    Background::Gradient(Gradient::Linear(
+        Linear::new(Radians(std::f32::consts::FRAC_PI_4 * 3.0))
+            .add_stop(0.0, faded(a, alpha))
+            .add_stop(0.5, faded(b, alpha))
+            .add_stop(1.0, faded(c, alpha)),
+    ))
+}
+
+/// The application [`Theme`] for the active spec.
 pub fn app_theme() -> Theme {
+    let s = spec();
     Theme::custom(
-        "Modrix".to_owned(),
+        format!("Modrix {}", s.name),
         Palette {
-            background: BG,
-            text: TEXT,
-            primary: ACCENT,
-            success: OK,
-            danger: DANGER,
+            background: s.bg,
+            text: s.text,
+            primary: s.accent,
+            success: s.ok,
+            danger: s.danger,
         },
     )
+}
+
+/// The window clear color: translucent for glass themes (the compositor
+/// shows through), opaque otherwise.
+pub fn window_background() -> Color {
+    let s = spec();
+    faded(s.bg, s.glass)
 }
 
 fn rounded(radius: f32) -> Border {
@@ -77,18 +229,29 @@ fn rounded(radius: f32) -> Border {
 
 fn hairline(radius: f32) -> Border {
     Border {
-        color: HAIRLINE,
+        color: spec().hairline,
         width: 1.0,
         radius: radius.into(),
+    }
+}
+
+/// Surface alpha for glass themes: panels stay readable but let the
+/// blurred window backdrop breathe.
+fn glassy(color: Color) -> Color {
+    let s = spec();
+    if s.glass < 1.0 {
+        faded(color, 0.88)
+    } else {
+        color
     }
 }
 
 /// The left navigation column.
 pub fn sidebar(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(SURFACE)),
+        background: Some(Background::Color(glassy(spec().surface))),
         border: Border {
-            color: HAIRLINE,
+            color: spec().hairline,
             width: 1.0,
             radius: 0.0.into(),
         },
@@ -99,7 +262,7 @@ pub fn sidebar(_: &Theme) -> container::Style {
 /// A raised content card.
 pub fn card(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(CARD)),
+        background: Some(Background::Color(glassy(spec().card))),
         border: hairline(12.0),
         shadow: Shadow {
             color: faded(Color::BLACK, 0.25),
@@ -113,7 +276,7 @@ pub fn card(_: &Theme) -> container::Style {
 /// An inset well inside a card (token boxes, empty states).
 pub fn inset(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(BG)),
+        background: Some(Background::Color(glassy(spec().bg))),
         border: hairline(8.0),
         ..container::Style::default()
     }
@@ -122,7 +285,11 @@ pub fn inset(_: &Theme) -> container::Style {
 /// A table row; `even` rows get a faint stripe.
 pub fn table_row(even: bool) -> impl Fn(&Theme) -> container::Style {
     move |_| container::Style {
-        background: Some(Background::Color(if even { CARD } else { CARD_HI })),
+        background: Some(Background::Color(if even {
+            glassy(spec().card)
+        } else {
+            glassy(spec().card_hi)
+        })),
         border: rounded(8.0),
         ..container::Style::default()
     }
@@ -131,9 +298,9 @@ pub fn table_row(even: bool) -> impl Fn(&Theme) -> container::Style {
 /// A selected (highlighted) table row.
 pub fn table_row_selected(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(faded(ACCENT, 0.14))),
+        background: Some(gradient_bg_faded(0.14)),
         border: Border {
-            color: faded(ACCENT, 0.45),
+            color: faded(spec().accent, 0.45),
             width: 1.0,
             radius: 8.0.into(),
         },
@@ -144,9 +311,9 @@ pub fn table_row_selected(_: &Theme) -> container::Style {
 /// The row currently being dragged in the load order.
 pub fn table_row_dragging(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(faded(ACCENT, 0.20))),
+        background: Some(gradient_bg_faded(0.22)),
         border: Border {
-            color: ACCENT,
+            color: spec().accent,
             width: 1.0,
             radius: 8.0.into(),
         },
@@ -157,9 +324,9 @@ pub fn table_row_dragging(_: &Theme) -> container::Style {
 /// The click/drop target for adding mod archives.
 pub fn drop_zone(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(faded(ACCENT, 0.04))),
+        background: Some(gradient_bg_faded(0.05)),
         border: Border {
-            color: faded(ACCENT, 0.35),
+            color: faded(spec().accent, 0.35),
             width: 1.0,
             radius: 12.0.into(),
         },
@@ -167,7 +334,7 @@ pub fn drop_zone(_: &Theme) -> container::Style {
     }
 }
 
-/// The dimmed backdrop behind the wizard modal.
+/// The dimmed backdrop behind modal overlays.
 pub fn backdrop(_: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(faded(Color::BLACK, 0.6))),
@@ -178,13 +345,21 @@ pub fn backdrop(_: &Theme) -> container::Style {
 /// The notification panel.
 pub fn panel(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(CARD_HI)),
+        background: Some(Background::Color(spec().card_hi)),
         border: hairline(10.0),
         shadow: Shadow {
             color: faded(Color::BLACK, 0.4),
             offset: iced::Vector::new(0.0, 4.0),
             blur_radius: 16.0,
         },
+        ..container::Style::default()
+    }
+}
+
+/// A full-bleed hero image's dark scrim so foreground text stays readable.
+pub fn hero_scrim(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(faded(spec().bg, 0.55))),
         ..container::Style::default()
     }
 }
@@ -203,35 +378,37 @@ pub fn chip(color: Color) -> impl Fn(&Theme) -> container::Style {
     }
 }
 
-/// A sidebar navigation entry; the active one carries the accent.
+/// A sidebar navigation entry; the active one carries the accent gradient.
 pub fn nav(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, status| {
+        let s = spec();
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
             background: if active {
-                Some(Background::Color(faded(ACCENT, 0.12)))
+                Some(gradient_bg_faded(0.16))
             } else if hovered {
-                Some(Background::Color(faded(TEXT, 0.05)))
+                Some(Background::Color(faded(s.text, 0.05)))
             } else {
                 None
             },
-            text_color: if active { ACCENT } else { MUTED },
+            text_color: if active { s.accent } else { s.muted },
             border: rounded(8.0),
             ..button::Style::default()
         }
     }
 }
 
-/// The filled accent button for the primary action.
+/// The filled accent button for the primary action - the gradient sweep.
 pub fn primary(_: &Theme, status: button::Status) -> button::Style {
-    let bg = match status {
-        button::Status::Hovered | button::Status::Pressed => hex(0xE4_B36B),
-        button::Status::Disabled => faded(ACCENT, 0.3),
-        button::Status::Active => ACCENT,
+    let s = spec();
+    let background = match status {
+        button::Status::Hovered | button::Status::Pressed => Some(Background::Color(s.accent_hot)),
+        button::Status::Disabled => Some(gradient_bg_faded(0.3)),
+        button::Status::Active => Some(gradient_bg()),
     };
     button::Style {
-        background: Some(Background::Color(bg)),
-        text_color: hex(0x1A_1408),
+        background,
+        text_color: s.on_accent,
         border: rounded(8.0),
         ..button::Style::default()
     }
@@ -239,28 +416,29 @@ pub fn primary(_: &Theme, status: button::Status) -> button::Style {
 
 /// A quiet, bordered secondary button.
 pub fn ghost(_: &Theme, status: button::Status) -> button::Style {
-    outlined(TEXT, MUTED, status)
+    outlined(spec().text, spec().muted, status)
 }
 
 /// A quiet, bordered destructive button.
 pub fn danger_ghost(_: &Theme, status: button::Status) -> button::Style {
-    outlined(DANGER, faded(DANGER, 0.8), status)
+    outlined(spec().danger, faded(spec().danger, 0.8), status)
 }
 
 fn outlined(hot: Color, idle: Color, status: button::Status) -> button::Style {
+    let s = spec();
     let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
     let disabled = matches!(status, button::Status::Disabled);
     button::Style {
         background: hovered.then_some(Background::Color(faded(hot, 0.08))),
         text_color: if disabled {
-            FAINT
+            s.faint
         } else if hovered {
             hot
         } else {
             idle
         },
         border: Border {
-            color: if hovered { faded(hot, 0.5) } else { HAIRLINE },
+            color: if hovered { faded(hot, 0.5) } else { s.hairline },
             width: 1.0,
             radius: 8.0.into(),
         },
@@ -270,49 +448,79 @@ fn outlined(hot: Color, idle: Color, status: button::Status) -> button::Style {
 
 /// A tiny square icon button (reorder arrows, cancel).
 pub fn icon(_: &Theme, status: button::Status) -> button::Style {
+    let s = spec();
     let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
     button::Style {
-        background: hovered.then_some(Background::Color(faded(TEXT, 0.08))),
+        background: hovered.then_some(Background::Color(faded(s.text, 0.08))),
         text_color: match status {
-            button::Status::Disabled => faded(FAINT, 0.4),
-            _ if hovered => TEXT,
-            _ => MUTED,
+            button::Status::Disabled => faded(s.faint, 0.4),
+            _ if hovered => s.text,
+            _ => s.muted,
         },
         border: rounded(6.0),
         ..button::Style::default()
     }
 }
 
-/// The slim download progress bar.
+/// The slim progress bar - the gradient sweep as the fill.
 pub fn progress(_: &Theme) -> progress_bar::Style {
     progress_bar::Style {
-        background: Background::Color(BG),
-        bar: Background::Color(ACCENT),
+        background: Background::Color(spec().bg),
+        bar: gradient_bg(),
         border: rounded(99.0),
     }
 }
 
-/// Dark dropdown pickers (game/profile selectors).
+/// Dark dropdown pickers (game/profile selectors). When open, the field's
+/// bottom corners square off so it reads as connected to its menu.
 pub fn picker(_: &Theme, status: pick_list::Status) -> pick_list::Style {
-    let open = matches!(
-        status,
-        pick_list::Status::Hovered | pick_list::Status::Opened
-    );
+    let s = spec();
+    let opened = matches!(status, pick_list::Status::Opened);
+    let hot = opened || matches!(status, pick_list::Status::Hovered);
+    let radius = if opened {
+        iced::border::Radius::default().top_left(8).top_right(8)
+    } else {
+        8.0.into()
+    };
     pick_list::Style {
-        text_color: TEXT,
-        placeholder_color: FAINT,
-        handle_color: if open { ACCENT } else { MUTED },
-        background: Background::Color(BG),
+        text_color: s.text,
+        placeholder_color: s.faint,
+        handle_color: if hot { s.accent } else { s.muted },
+        background: Background::Color(s.bg),
         border: Border {
-            color: if open { faded(ACCENT, 0.5) } else { HAIRLINE },
+            color: if hot {
+                faded(s.accent, 0.5)
+            } else {
+                s.hairline
+            },
             width: 1.0,
-            radius: 8.0.into(),
+            radius,
         },
+    }
+}
+
+/// The dropdown menu under an open picker: squared top corners so it visually
+/// continues the field above it.
+pub fn picker_menu(_: &Theme) -> iced::overlay::menu::Style {
+    let s = spec();
+    iced::overlay::menu::Style {
+        background: Background::Color(s.card_hi),
+        border: Border {
+            color: faded(s.accent, 0.5),
+            width: 1.0,
+            radius: iced::border::Radius::default()
+                .bottom_left(8)
+                .bottom_right(8),
+        },
+        text_color: s.text,
+        selected_text_color: s.accent,
+        selected_background: Background::Color(faded(s.accent, 0.12)),
     }
 }
 
 /// The enable/disable switch on each mod row.
 pub fn toggle(_: &Theme, status: toggler::Status) -> toggler::Style {
+    let s = spec();
     let on = match status {
         toggler::Status::Active { is_toggled } | toggler::Status::Hovered { is_toggled } => {
             is_toggled
@@ -320,10 +528,10 @@ pub fn toggle(_: &Theme, status: toggler::Status) -> toggler::Style {
         toggler::Status::Disabled => false,
     };
     toggler::Style {
-        background: if on { ACCENT } else { HAIRLINE },
+        background: if on { s.accent } else { s.hairline },
         background_border_width: 0.0,
         background_border_color: Color::TRANSPARENT,
-        foreground: if on { BG } else { MUTED },
+        foreground: if on { s.bg } else { s.muted },
         foreground_border_width: 0.0,
         foreground_border_color: Color::TRANSPARENT,
     }
@@ -331,21 +539,22 @@ pub fn toggle(_: &Theme, status: toggler::Status) -> toggler::Style {
 
 /// Dark text inputs matching the inset wells.
 pub fn input(_: &Theme, status: text_input::Status) -> text_input::Style {
+    let s = spec();
     let focused = matches!(status, text_input::Status::Focused);
     text_input::Style {
-        background: Background::Color(BG),
+        background: Background::Color(s.bg),
         border: Border {
             color: if focused {
-                faded(ACCENT, 0.6)
+                faded(s.accent, 0.6)
             } else {
-                HAIRLINE
+                s.hairline
             },
             width: 1.0,
             radius: 8.0.into(),
         },
-        icon: MUTED,
-        placeholder: FAINT,
-        value: TEXT,
-        selection: faded(ACCENT, 0.35),
+        icon: s.muted,
+        placeholder: s.faint,
+        value: s.text,
+        selection: faded(s.accent, 0.35),
     }
 }

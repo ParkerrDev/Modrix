@@ -1,24 +1,58 @@
 // SPDX-License-Identifier: GPL-2.0-only
-//! The Dashboard: at-a-glance cards, or onboarding when nothing is set up.
+//! The Dashboard: the selected game's blurred hero art (Steam's own library
+//! imagery) behind at-a-glance glass cards - or onboarding when nothing is
+//! set up.
 
-use iced::Length;
-use iced::widget::{button, column, container, row, text};
+use iced::widget::{button, column, container, image, row, stack, text};
+use iced::{ContentFit, Length};
 use modrix_download::DownloadState;
 
-use super::{BOLD, El, empty_state, labeled_card};
+use super::{BOLD, El, empty_state};
 use crate::app::{App, Message, Screen};
 use crate::theme;
+
+/// Height of each dashboard card row - fixed, so cards in a row always align.
+const ROW_HEIGHT: f32 = 170.0;
 
 /// The dashboard body.
 pub(super) fn body(app: &App) -> El<'_> {
     if app.games.is_empty() {
         return onboarding(app);
     }
-    column![
-        row![game_card(app), deploy_card(app)].spacing(16),
-        row![downloads_card(app), handoff_card(app)].spacing(16),
+    let cards = column![
+        row![game_card(app), deploy_card(app)]
+            .spacing(16)
+            .height(ROW_HEIGHT),
+        row![downloads_card(app), handoff_card(app)]
+            .spacing(16)
+            .height(ROW_HEIGHT),
     ]
-    .spacing(16)
+    .spacing(16);
+    // The selected game's pre-blurred hero fills the screen behind the cards,
+    // under a scrim that keeps text readable in both themes.
+    let hero = app
+        .selected_game
+        .and_then(|id| app.art.get(&id))
+        .and_then(|art| art.hero_blur.clone());
+    let Some(hero) = hero else {
+        return cards.into();
+    };
+    stack![
+        container(
+            image(hero)
+                .content_fit(ContentFit::Cover)
+                .width(Length::Fill)
+                .height(Length::Fill)
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .clip(true),
+        container(cards)
+            .padding(16)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(theme::hero_scrim),
+    ]
     .into()
 }
 
@@ -31,7 +65,7 @@ fn game_card(app: &App) -> El<'_> {
         text(&game.name).size(17).font(BOLD),
         text(game.install_path.display().to_string())
             .size(12)
-            .color(theme::MUTED),
+            .color(theme::muted()),
         text(stats).size(13),
         button(text("Manage mods").size(13))
             .padding([8, 14])
@@ -39,7 +73,7 @@ fn game_card(app: &App) -> El<'_> {
             .on_press(Message::Navigate(Screen::Mods)),
     ]
     .spacing(10);
-    labeled_card("ACTIVE GAME", inner.into())
+    tall_card("ACTIVE GAME", inner.into())
 }
 
 fn deploy_card(app: &App) -> El<'_> {
@@ -50,7 +84,7 @@ fn deploy_card(app: &App) -> El<'_> {
     let hint = format!("{} mods will deploy · {profile}", app.order.len());
     let mut actions = row![].spacing(10);
     if app.busy {
-        actions = actions.push(text("Working…").size(13).color(theme::ACCENT));
+        actions = actions.push(text("Working…").size(13).color(theme::accent()));
     } else {
         actions = actions
             .push(
@@ -67,7 +101,7 @@ fn deploy_card(app: &App) -> El<'_> {
             );
     }
     let inner = column![text(hint).size(13), actions].spacing(14);
-    labeled_card("DEPLOYMENT", inner.into())
+    tall_card("DEPLOYMENT", inner.into())
 }
 
 fn downloads_card(app: &App) -> El<'_> {
@@ -89,7 +123,7 @@ fn downloads_card(app: &App) -> El<'_> {
             .on_press(Message::Navigate(Screen::Downloads)),
     ]
     .spacing(12);
-    labeled_card("DOWNLOADS", inner.into())
+    tall_card("DOWNLOADS", inner.into())
 }
 
 fn handoff_card(app: &App) -> El<'_> {
@@ -106,7 +140,7 @@ fn handoff_card(app: &App) -> El<'_> {
             .on_press(Message::Navigate(Screen::Settings)),
     ]
     .spacing(12);
-    labeled_card("BROWSER HAND-OFF", inner.into())
+    tall_card("BROWSER HAND-OFF", inner.into())
 }
 
 fn onboarding(app: &App) -> El<'_> {
@@ -127,7 +161,7 @@ fn onboarding(app: &App) -> El<'_> {
         text("Welcome").size(18).font(BOLD),
         text(format!("Hand-off service on port {port}. No API keys."))
             .size(13)
-            .color(theme::MUTED),
+            .color(theme::muted()),
         steps,
         button(text("Register a game").size(13))
             .padding([9, 18])
@@ -142,11 +176,23 @@ fn onboarding(app: &App) -> El<'_> {
         .into()
 }
 
+/// A dashboard card that fills its fixed-height row, so a row's cards
+/// always align whatever their content.
+fn tall_card<'a>(label: &'a str, content: El<'a>) -> El<'a> {
+    let inner = column![text(label).size(10).color(theme::faint()), content].spacing(12);
+    container(inner)
+        .padding(18)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(theme::card)
+        .into()
+}
+
 fn step<'a>(n: &'a str, title: &'a str) -> El<'a> {
     row![
-        container(text(n).size(13).font(BOLD).color(theme::ACCENT))
+        container(text(n).size(13).font(BOLD).color(theme::accent()))
             .padding([4, 11])
-            .style(theme::chip(theme::ACCENT)),
+            .style(theme::chip(theme::accent())),
         text(title).size(14),
     ]
     .spacing(14)

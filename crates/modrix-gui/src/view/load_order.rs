@@ -70,7 +70,7 @@ fn toolbar(app: &App) -> El<'_> {
             "{active} of {count} plugins active · {asset_only} enabled mods are asset-only (no plugin)"
         ))
         .size(12)
-        .color(theme::MUTED),
+        .color(theme::muted()),
         iced::widget::Space::with_width(Length::Fill),
     ]
     .spacing(10)
@@ -125,10 +125,10 @@ fn plugin_row(plugin: &GamePlugin, index: usize, len: usize, selected: bool, dro
             text(format!("{position:>3}"))
                 .size(11)
                 .font(BOLD)
-                .color(theme::ACCENT)
+                .color(theme::accent())
         )
         .padding([3, 8])
-        .style(theme::chip(theme::ACCENT)),
+        .style(theme::chip(theme::accent())),
         name_column(plugin),
         container(tier_chip(plugin)).width(44),
         arrows,
@@ -161,16 +161,16 @@ fn plugin_row(plugin: &GamePlugin, index: usize, len: usize, selected: bool, dro
 fn name_column(plugin: &GamePlugin) -> El<'_> {
     let name_color = if plugin.missing_masters.is_empty() {
         if plugin.enabled {
-            theme::TEXT
+            theme::text()
         } else {
-            theme::MUTED
+            theme::muted()
         }
     } else {
-        theme::DANGER
+        theme::danger()
     };
     let mut col = column![
         text(&plugin.name).size(13).color(name_color),
-        text(&plugin.mod_name).size(10).color(theme::FAINT),
+        text(&plugin.mod_name).size(10).color(theme::faint()),
     ]
     .spacing(1)
     .width(Length::Fill);
@@ -178,7 +178,7 @@ fn name_column(plugin: &GamePlugin) -> El<'_> {
         col = col.push(
             text(format!("missing: {}", plugin.missing_masters.join(", ")))
                 .size(10)
-                .color(theme::DANGER),
+                .color(theme::danger()),
         );
     }
     col.into()
@@ -186,9 +186,9 @@ fn name_column(plugin: &GamePlugin) -> El<'_> {
 
 fn tier_chip(plugin: &GamePlugin) -> El<'static> {
     let (label, color) = if plugin.is_light {
-        ("ESL", theme::INFO)
+        ("ESL", theme::info())
     } else if plugin.is_master {
-        ("ESM", theme::ACCENT)
+        ("ESM", theme::accent())
     } else {
         return iced::widget::Space::with_width(0).into();
     };

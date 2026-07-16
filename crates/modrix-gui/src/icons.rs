@@ -49,7 +49,7 @@ impl<Message> canvas::Program<Message> for Triangle {
 pub fn arrow<'a, M: 'a>(up: bool) -> iced::Element<'a, M> {
     canvas(Triangle {
         up,
-        color: theme::MUTED,
+        color: theme::muted(),
     })
     .width(10)
     .height(8)
@@ -61,7 +61,7 @@ pub fn grip<'a, M: 'a>() -> iced::Element<'a, M> {
     let bar = || {
         container(iced::widget::Space::new(14, 2)).style(|_: &Theme| {
             iced::widget::container::Style {
-                background: Some(iced::Background::Color(theme::FAINT)),
+                background: Some(iced::Background::Color(theme::faint())),
                 border: iced::Border {
                     color: Color::TRANSPARENT,
                     width: 0.0,

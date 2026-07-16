@@ -80,7 +80,7 @@ fn preview(wizard: &Wizard, current_step: usize) -> El<'_> {
             let description = p.description.trim();
             if !description.is_empty() {
                 pane = pane.push(
-                    scrollable(text(compact(description)).size(12).color(theme::MUTED))
+                    scrollable(text(compact(description)).size(12).color(theme::muted()))
                         .height(Length::Fill),
                 );
             }
@@ -89,7 +89,7 @@ fn preview(wizard: &Wizard, current_step: usize) -> El<'_> {
             pane = pane.push(
                 text("Hover an option to preview it")
                     .size(12)
-                    .color(theme::FAINT),
+                    .color(theme::faint()),
             );
         }
     }
@@ -141,9 +141,9 @@ fn header<'a>(wizard: &'a Wizard, step_name: &'a str, page: usize, pages: usize)
         ]
         .align_y(Alignment::Center),
         row![
-            text(step_name).size(13).color(theme::ACCENT),
+            text(step_name).size(13).color(theme::accent()),
             iced::widget::Space::with_width(Length::Fill),
-            text(progress).size(12).color(theme::FAINT),
+            text(progress).size(12).color(theme::faint()),
         ],
     ]
     .spacing(6)
@@ -179,7 +179,7 @@ fn footer(page: usize, pages: usize) -> El<'static> {
 fn finish_only(wizard: &Wizard) -> El<'_> {
     column![
         text(&wizard.mod_name).size(17).font(BOLD),
-        text("No options to choose").size(13).color(theme::MUTED),
+        text("No options to choose").size(13).color(theme::muted()),
         button(text("Install").size(13))
             .padding([8, 20])
             .style(theme::primary)
@@ -245,7 +245,7 @@ fn group_view<'a>(
     // character-per-line sliver.
     head = head
         .push(text(&group.name).size(13).font(BOLD).width(Length::Fill))
-        .push(text(rule_hint(group.kind)).size(11).color(theme::FAINT));
+        .push(text(rule_hint(group.kind)).size(11).color(theme::faint()));
     column![head, items].spacing(8).into()
 }
 
@@ -301,12 +301,12 @@ fn plugin_row(plugin: &fomod::Plugin, slot: Slot) -> El<'_> {
         .into()
 }
 
-const fn kind_chip(kind: fomod::PluginKind) -> Option<(&'static str, iced::Color)> {
+fn kind_chip(kind: fomod::PluginKind) -> Option<(&'static str, iced::Color)> {
     match kind {
-        fomod::PluginKind::Required => Some(("REQUIRED", theme::ACCENT)),
-        fomod::PluginKind::Recommended => Some(("RECOMMENDED", theme::OK)),
-        fomod::PluginKind::NotUsable => Some(("UNAVAILABLE", theme::DANGER)),
-        fomod::PluginKind::CouldBeUsable => Some(("CHECK NOTES", theme::INFO)),
+        fomod::PluginKind::Required => Some(("REQUIRED", theme::accent())),
+        fomod::PluginKind::Recommended => Some(("RECOMMENDED", theme::ok())),
+        fomod::PluginKind::NotUsable => Some(("UNAVAILABLE", theme::danger())),
+        fomod::PluginKind::CouldBeUsable => Some(("CHECK NOTES", theme::info())),
         fomod::PluginKind::Optional => None,
     }
 }

@@ -12,6 +12,7 @@ use crate::theme;
 pub(super) fn body(app: &App) -> El<'_> {
     scrollable(
         column![
+            theme_card(),
             service_card(app),
             extension_card(),
             plugins_card(app),
@@ -25,6 +26,32 @@ pub(super) fn body(app: &App) -> El<'_> {
     .into()
 }
 
+/// The theme picker: every shipped theme, the active one marked.
+fn theme_card() -> El<'static> {
+    let active = theme::spec().id;
+    let mut choices = row![].spacing(10);
+    for spec in theme::ALL {
+        let is_active = spec.id == active;
+        let label = if is_active {
+            format!("{} (active)", spec.name)
+        } else {
+            spec.name.to_owned()
+        };
+        let mut pick = button(text(label).size(13))
+            .padding([8, 16])
+            .style(if is_active {
+                theme::primary
+            } else {
+                theme::ghost
+            });
+        if !is_active {
+            pick = pick.on_press(Message::ThemePicked(spec.id.to_owned()));
+        }
+        choices = choices.push(pick);
+    }
+    labeled_card("THEME", choices.into())
+}
+
 /// Installed community plugins, with removal and cleanup.
 fn plugins_card(app: &App) -> El<'_> {
     let mut listing = column![].spacing(8);
@@ -32,7 +59,7 @@ fn plugins_card(app: &App) -> El<'_> {
         listing = listing.push(
             text("None installed - game support fetched from the registry appears here.")
                 .size(12)
-                .color(theme::FAINT),
+                .color(theme::faint()),
         );
     }
     for plugin in &app.installed_plugins {
@@ -49,8 +76,8 @@ fn plugins_card(app: &App) -> El<'_> {
                 text(&plugin.name).size(13).width(Length::Fill),
                 text(format!("v{}", plugin.version))
                     .size(12)
-                    .color(theme::MUTED),
-                text(label).size(11).color(theme::FAINT),
+                    .color(theme::muted()),
+                text(label).size(11).color(theme::faint()),
                 remove,
             ]
             .spacing(10)
@@ -69,17 +96,17 @@ fn service_card(app: &App) -> El<'_> {
         (Some(link), _) => column![
             kv_copy("Address", format!("127.0.0.1:{}", link.port)),
             kv_copy("Extension token", link.token.clone()),
-            text("Rotates each restart.").size(12).color(theme::FAINT),
+            text("Rotates each restart.").size(12).color(theme::faint()),
         ]
         .spacing(10)
         .into(),
         (None, true) => text("Another instance holds the port. Close it and restart the GUI.")
             .size(13)
-            .color(theme::INFO)
+            .color(theme::info())
             .into(),
         (None, false) => text("The hand-off listener failed to start.")
             .size(13)
-            .color(theme::DANGER)
+            .color(theme::danger())
             .into(),
     };
     labeled_card("HAND-OFF SERVICE", inner)
@@ -104,11 +131,14 @@ fn locations_card(app: &App) -> El<'_> {
             kv_copy("Cache", paths.cache_dir().display().to_string()),
             text("Extra game definitions: <config>/games/<id>/game.toml")
                 .size(12)
-                .color(theme::FAINT),
+                .color(theme::faint()),
         ]
         .spacing(10)
         .into(),
-        None => text("Still starting…").size(13).color(theme::MUTED).into(),
+        None => text("Still starting…")
+            .size(13)
+            .color(theme::muted())
+            .into(),
     };
     labeled_card("LOCATIONS", inner)
 }
@@ -119,9 +149,9 @@ fn profiles_card(app: &App) -> El<'_> {
         listing = listing.push(
             row![
                 text("•").size(15).color(if profile.is_active {
-                    theme::ACCENT
+                    theme::accent()
                 } else {
-                    theme::FAINT
+                    theme::faint()
                 }),
                 text(&profile.name).size(13),
             ]
@@ -152,13 +182,13 @@ fn about_card() -> El<'static> {
             text("Modrix").size(14).font(BOLD),
             text(concat!("v", env!("CARGO_PKG_VERSION")))
                 .size(12)
-                .color(theme::MUTED),
+                .color(theme::muted()),
         ]
         .spacing(8)
         .align_y(Alignment::Center),
         text("GPL-2.0-only · no API keys · no telemetry")
             .size(12)
-            .color(theme::FAINT),
+            .color(theme::faint()),
     ]
     .spacing(6);
     labeled_card("ABOUT", inner.into())
@@ -166,7 +196,7 @@ fn about_card() -> El<'static> {
 
 fn kv_copy(label: &str, value: String) -> El<'_> {
     row![
-        text(label).size(12).color(theme::MUTED).width(130),
+        text(label).size(12).color(theme::muted()).width(130),
         text(value.clone()).size(12).width(Length::Fill),
         copy_button(value),
     ]
@@ -177,8 +207,8 @@ fn kv_copy(label: &str, value: String) -> El<'_> {
 
 fn bullet(line: &str) -> El<'_> {
     row![
-        text("·").size(13).color(theme::ACCENT),
-        text(line).size(12).color(theme::TEXT),
+        text("·").size(13).color(theme::accent()),
+        text(line).size(12).color(theme::text()),
     ]
     .spacing(8)
     .into()

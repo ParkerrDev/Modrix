@@ -71,8 +71,8 @@ pub fn view(app: &App) -> El<'_> {
 /// the engine starts (crash recovery can take a while on big libraries).
 fn starting(app: &App) -> El<'_> {
     let mut body = column![row![
-        text("MOD").size(24).font(BOLD).color(theme::ACCENT),
-        text("RIX").size(24).font(BOLD).color(theme::TEXT),
+        text("MOD").size(24).font(BOLD).color(theme::accent()),
+        text("RIX").size(24).font(BOLD).color(theme::text()),
     ],]
     .spacing(14)
     .align_x(Alignment::Center);
@@ -91,7 +91,7 @@ fn starting(app: &App) -> El<'_> {
 /// with every update.
 fn progress_line<'a>(app: &'a App, width: f32, idle: &'a str) -> El<'a> {
     let Some(op) = &app.op else {
-        return text(idle).size(13).color(theme::MUTED).into();
+        return text(idle).size(13).color(theme::muted()).into();
     };
     let (value, pct): (f32, String) = match op.fraction() {
         Some(f) => (f, format!("{:.0}%", f64::from(f) * 100.0)),
@@ -106,7 +106,7 @@ fn progress_line<'a>(app: &'a App, width: f32, idle: &'a str) -> El<'a> {
                 .height(6)
                 .width(width)
                 .style(theme::progress),
-            text(pct).size(12).color(theme::ACCENT).width(pct_width),
+            text(pct).size(12).color(theme::accent()).width(pct_width),
         ]
         .spacing(10)
         .align_y(Alignment::Center),
@@ -114,7 +114,7 @@ fn progress_line<'a>(app: &'a App, width: f32, idle: &'a str) -> El<'a> {
         container(
             text(op.message.clone())
                 .size(12)
-                .color(theme::MUTED)
+                .color(theme::muted())
                 .width(total)
                 .align_x(Alignment::Center)
         )
@@ -129,7 +129,7 @@ fn progress_line<'a>(app: &'a App, width: f32, idle: &'a str) -> El<'a> {
 fn boot_error(error: &str) -> El<'_> {
     let body = column![
         text("Modrix could not start").size(20).font(BOLD),
-        text(error).size(14).color(theme::DANGER),
+        text(error).size(14).color(theme::danger()),
     ]
     .spacing(12)
     .align_x(Alignment::Center);
@@ -161,8 +161,8 @@ fn sidebar(app: &App) -> El<'_> {
 
 fn wordmark() -> El<'static> {
     let mark = row![
-        text("MOD").size(19).font(BOLD).color(theme::ACCENT),
-        text("RIX").size(19).font(BOLD).color(theme::TEXT),
+        text("MOD").size(19).font(BOLD).color(theme::accent()),
+        text("RIX").size(19).font(BOLD).color(theme::text()),
     ];
     container(mark).padding([8, 6]).into()
 }
@@ -185,12 +185,18 @@ fn game_picker(app: &App) -> El<'_> {
         .padding([8, 10])
         .width(Length::Fill)
         .style(theme::picker)
+        .menu_style(theme::picker_menu)
         .into()
 }
 
 fn nav_items(app: &App) -> El<'_> {
     let mut items = column![].spacing(2);
     for (screen, label) in NAV {
+        // The selected game decides which screens exist: a game with no
+        // load-order strategy shows no Load Order (or idle Conflicts) tab.
+        if !app.screen_visible(screen) {
+            continue;
+        }
         items = items.push(nav_item(app, screen, label));
     }
     items.into()
@@ -202,9 +208,9 @@ fn nav_item<'a>(app: &App, screen: Screen, label: &'a str) -> El<'a> {
         icons::dot(
             6.0,
             if active {
-                theme::ACCENT
+                theme::accent()
             } else {
-                theme::HAIRLINE
+                theme::hairline_color()
             }
         ),
         text(label)
@@ -223,14 +229,14 @@ fn nav_item<'a>(app: &App, screen: Screen, label: &'a str) -> El<'a> {
 
 fn service_dot(app: &App) -> El<'_> {
     let (color, label) = match (&app.link, app.already_running, app.service.is_some()) {
-        (Some(link), _, _) => (theme::OK, format!("Hand-off · :{}", link.port)),
-        (None, true, _) => (theme::INFO, "Another instance active".to_owned()),
-        (None, false, true) => (theme::DANGER, "Hand-off inactive".to_owned()),
-        _ => (theme::FAINT, "Starting…".to_owned()),
+        (Some(link), _, _) => (theme::ok(), format!("Hand-off · :{}", link.port)),
+        (None, true, _) => (theme::info(), "Another instance active".to_owned()),
+        (None, false, true) => (theme::danger(), "Hand-off inactive".to_owned()),
+        _ => (theme::faint(), "Starting…".to_owned()),
     };
     let inner = row![
         icons::dot(7.0, color),
-        text(label).size(11).color(theme::MUTED),
+        text(label).size(11).color(theme::muted()),
     ]
     .spacing(7)
     .align_y(Alignment::Center);
@@ -266,7 +272,7 @@ fn header(app: &App) -> El<'_> {
     let mut bar = row![
         column![
             text(title).size(22).font(BOLD),
-            text(subtitle).size(13).color(theme::MUTED),
+            text(subtitle).size(13).color(theme::muted()),
         ]
         .spacing(3),
         Space::with_width(Length::Fill),
@@ -285,12 +291,12 @@ fn header(app: &App) -> El<'_> {
 fn bell(app: &App) -> El<'_> {
     let severity = notification_severity(app);
     let dot_color = match severity {
-        Severity::Error => theme::DANGER,
-        Severity::Warning => theme::ACCENT,
-        Severity::Info => theme::INFO,
-        Severity::Clear => theme::OK,
+        Severity::Error => theme::danger(),
+        Severity::Warning => theme::accent(),
+        Severity::Info => theme::info(),
+        Severity::Clear => theme::ok(),
     };
-    let mut inner = row![icons::bell(theme::MUTED, dot_color)]
+    let mut inner = row![icons::bell(theme::muted(), dot_color)]
         .spacing(6)
         .align_y(Alignment::Center);
     // Unread events plus live issues: the number tracks what the panel shows.
@@ -360,13 +366,13 @@ fn notes_overlay(app: &App) -> El<'_> {
 fn notes_panel(app: &App) -> El<'_> {
     let mut list = column![].spacing(6);
     if app.health.is_empty() && app.notes.is_empty() {
-        list = list.push(text("All clear").size(12).color(theme::FAINT));
+        list = list.push(text("All clear").size(12).color(theme::faint()));
     }
     for issue in &app.health {
         list = list.push(issue_row(issue));
     }
     if !app.health.is_empty() && !app.notes.is_empty() {
-        list = list.push(text("RECENT").size(9).color(theme::FAINT));
+        list = list.push(text("RECENT").size(9).color(theme::faint()));
     }
     for note in app.notes.iter().take(50) {
         list = list.push(note_row(note));
@@ -397,13 +403,13 @@ fn notes_panel(app: &App) -> El<'_> {
 /// state, not history).
 fn issue_row(issue: &modrix_core::Issue) -> El<'_> {
     let color = match issue.severity {
-        modrix_core::Severity::Error => theme::DANGER,
-        modrix_core::Severity::Warning => theme::ACCENT,
-        modrix_core::Severity::Info => theme::INFO,
+        modrix_core::Severity::Error => theme::danger(),
+        modrix_core::Severity::Warning => theme::accent(),
+        modrix_core::Severity::Info => theme::info(),
     };
     row![
         icons::dot(6.0, color),
-        text(&issue.message).size(12).color(theme::TEXT),
+        text(&issue.message).size(12).color(theme::text()),
     ]
     .spacing(8)
     .align_y(Alignment::Center)
@@ -424,7 +430,7 @@ fn dup_overlay(prompt: &DupPrompt) -> El<'_> {
             prompt.existing_name
         ))
         .size(13)
-        .color(theme::MUTED),
+        .color(theme::muted()),
         row![
             Space::with_width(Length::Fill),
             button(text("Cancel").size(13))
@@ -450,13 +456,13 @@ fn dup_overlay(prompt: &DupPrompt) -> El<'_> {
 
 fn note_row(note: &Note) -> El<'_> {
     let color = match note.tone {
-        Tone::Ok => theme::OK,
-        Tone::Error => theme::DANGER,
-        Tone::Info => theme::INFO,
+        Tone::Ok => theme::ok(),
+        Tone::Error => theme::danger(),
+        Tone::Info => theme::info(),
     };
     row![
         icons::dot(6.0, color),
-        text(&note.text).size(12).color(theme::TEXT),
+        text(&note.text).size(12).color(theme::text()),
     ]
     .spacing(8)
     .align_y(Alignment::Center)
@@ -490,7 +496,7 @@ fn title_of(app: &App) -> (&'static str, String) {
 
 /// A raised card with a small uppercase label.
 fn labeled_card<'a>(label: &'a str, content: El<'a>) -> El<'a> {
-    let inner = column![text(label).size(10).color(theme::FAINT), content].spacing(12);
+    let inner = column![text(label).size(10).color(theme::faint()), content].spacing(12);
     container(inner)
         .padding(18)
         .width(Length::Fill)
@@ -500,7 +506,7 @@ fn labeled_card<'a>(label: &'a str, content: El<'a>) -> El<'a> {
 
 /// A quiet inset panel for empty lists.
 fn empty_state(message: &str) -> El<'_> {
-    container(text(message).size(13).color(theme::MUTED))
+    container(text(message).size(13).color(theme::muted()))
         .padding(24)
         .width(Length::Fill)
         .style(theme::inset)
