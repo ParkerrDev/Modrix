@@ -2,17 +2,18 @@
 //! Game artwork: Steam's own library images, turned into the UI's identity.
 //!
 //! Steam keeps every installed game's storefront art under
-//! `<steam>/appcache/librarycache/<appid>/` (the wide `header.jpg`, the
-//! cinematic `library_hero.jpg`) - no network, no API keys. From that art we
-//! derive three things per game:
+//! `<steam>/appcache/librarycache/<appid>/` - no network, no API keys. Each
+//! asset has a distinct job, and we use the right one in the right place:
 //!
-//! * a **backdrop** - a baked PNG that is sharp and bright at the top (it sits
-//!   behind the header of every tab), progressively blurs downward, and fades
-//!   its alpha to nothing near the bottom, so the image dissipates into the
-//!   window rather than fighting the content;
-//! * the **accent palette** - the vibrant swatches of the art, which become
-//!   the whole app's accent color for that game;
-//! * the **header** image itself, shown in the sidebar and the dashboard card.
+//! * `library_hero.jpg` - the wide, **text-free** cinematic background. We
+//!   bake it into the **backdrop** (sharp + bright at the top behind the
+//!   header, blurring and fading to nothing toward the bottom) and pull the
+//!   **accent palette** from it, so the UI's color harmonizes with what fills
+//!   the screen behind it.
+//! * `library_600x900.jpg` - the **portrait cover** (key art + title). Shown
+//!   as the "game card" in the sidebar.
+//! * `logo.png` - the **transparent themed logo** (the title as art). Shown
+//!   on the dashboard's active-game card.
 //!
 //! A missing local file is fetched once from Steam's public CDN. All decoding,
 //! blurring, and color work is bounded and cached to disk, and runs off the UI
@@ -26,11 +27,13 @@ use image::{GenericImageView, RgbaImage, imageops::FilterType};
 /// Everything the UI needs to dress itself in a game's identity.
 #[derive(Debug, Clone, Default)]
 pub struct ArtSet {
-    /// The wide header image (sidebar banner + dashboard card).
-    pub header: Option<PathBuf>,
-    /// The baked full-bleed backdrop (blur ramp + bottom fade).
+    /// Portrait cover (key art + title) - the sidebar "game card".
+    pub cover: Option<PathBuf>,
+    /// Transparent themed logo - the dashboard active-game card.
+    pub logo: Option<PathBuf>,
+    /// The baked full-bleed backdrop (blur ramp + bottom fade), from the hero.
     pub backdrop: Option<PathBuf>,
-    /// Vibrant swatches of the art, most representative first; the theme
+    /// Vibrant swatches of the hero art, most representative first; the theme
     /// derives the accent palette from these.
     pub swatches: Vec<Color>,
 }
@@ -41,68 +44,51 @@ const BACKDROP_W: u32 = 900;
 /// Largest artwork file we will download from the CDN.
 const MAX_ART_BYTES: usize = 4 * 1024 * 1024;
 
-/// Resolve a game's artwork: locate (or fetch once) its source images, then
+/// Resolve a game's artwork: locate (or fetch once) each Steam asset, then
 /// bake the backdrop and extract the accent swatches off the UI thread.
 pub async fn resolve(appid: i64, cache_dir: PathBuf) -> ArtSet {
     let dir = cache_dir.join("artwork").join(appid.to_string());
     let _ = std::fs::create_dir_all(&dir);
-    let mut sources = steam_sources(appid);
-    if sources.hero.is_none() {
-        sources.hero = fetch_cdn(appid, "library_hero.jpg", &dir).await;
-    }
-    if sources.header.is_none() {
-        sources.header = fetch_cdn(appid, "header.jpg", &dir).await;
-    }
+    let hero = asset(appid, "library_hero.jpg", &dir).await;
+    let cover = asset(appid, "library_600x900.jpg", &dir).await;
+    let logo = asset(appid, "logo.png", &dir).await;
     // Decode/blur/color work is CPU-bound - never run it on the UI executor.
-    let backdrop_dest = dir.join("backdrop.png");
-    let (backdrop, swatches) =
-        tokio::task::spawn_blocking(move || process(&sources, &backdrop_dest))
-            .await
+    // The `-v2` suffix invalidates any backdrop baked by an older recipe.
+    let backdrop_dest = dir.join("backdrop-v2.png");
+    let hero_cpu = hero.clone();
+    let (backdrop, swatches) = tokio::task::spawn_blocking(move || {
+        let backdrop = hero_cpu
+            .as_deref()
+            .and_then(|h| bake_backdrop(h, &backdrop_dest));
+        let swatches = hero_cpu
+            .as_deref()
+            .map(compute_swatches)
             .unwrap_or_default();
+        (backdrop, swatches)
+    })
+    .await
+    .unwrap_or_default();
     ArtSet {
-        header: header_for(appid, &dir),
+        cover,
+        logo,
         backdrop,
         swatches,
     }
 }
 
-/// The header path (Steam cache first, then the CDN mirror this maintains).
-fn header_for(appid: i64, dir: &Path) -> Option<PathBuf> {
-    steam_sources(appid)
-        .header
-        .or_else(|| existing(dir.join("header.jpg")))
-}
-
-/// The source images of a game, from Steam's local cache.
-#[derive(Default)]
-struct Sources {
-    hero: Option<PathBuf>,
-    header: Option<PathBuf>,
-}
-
-fn steam_sources(appid: i64) -> Sources {
+/// Locate one asset: Steam's local cache first, else the public CDN (fetched
+/// once and mirrored under the cache dir).
+async fn asset(appid: i64, file: &str, dir: &Path) -> Option<PathBuf> {
     for root in modrix_core::detect::steam_roots() {
-        let dir = root.join("appcache/librarycache").join(appid.to_string());
-        if dir.is_dir() {
-            return Sources {
-                hero: existing(dir.join("library_hero.jpg")),
-                header: existing(dir.join("header.jpg")),
-            };
+        let p = root
+            .join("appcache/librarycache")
+            .join(appid.to_string())
+            .join(file);
+        if p.is_file() {
+            return Some(p);
         }
     }
-    Sources::default()
-}
-
-/// CPU stage: bake the backdrop from the hero and pull swatches from the
-/// header (falling back to the hero). Returns `(backdrop, swatches)`.
-fn process(sources: &Sources, backdrop_dest: &Path) -> (Option<PathBuf>, Vec<Color>) {
-    let backdrop = sources
-        .hero
-        .as_deref()
-        .and_then(|hero| bake_backdrop(hero, backdrop_dest));
-    let swatch_src = sources.header.as_deref().or(sources.hero.as_deref());
-    let swatches = swatch_src.map(compute_swatches).unwrap_or_default();
-    (backdrop, swatches)
+    fetch_cdn(appid, file, dir).await
 }
 
 /// Bake the tab backdrop: sharp at the top, blurring downward, alpha fading to
@@ -130,8 +116,13 @@ fn bake_backdrop(hero: &Path, dest: &Path) -> Option<PathBuf> {
     let sharp = img
         .resize_exact(BACKDROP_W, h, FilterType::Triangle)
         .to_rgba8();
-    // A cheap heavy blur: downscale hard, then upscale back.
-    let small = img.resize_exact(BACKDROP_W / 14, h / 14, FilterType::Triangle);
+    // A cheap heavy blur: downscale hard, then upscale back. A smaller
+    // intermediate = softer, so content sits on frosted glass, not detail.
+    let small = img.resize_exact(
+        (BACKDROP_W / 22).max(1),
+        (h / 22).max(1),
+        FilterType::Triangle,
+    );
     let blurred = small
         .resize_exact(BACKDROP_W, h, FilterType::Triangle)
         .to_rgba8();
@@ -140,9 +131,13 @@ fn bake_backdrop(hero: &Path, dest: &Path) -> Option<PathBuf> {
     for y in 0..h {
         #[expect(clippy::cast_precision_loss, reason = "row index is small")]
         let t = y as f32 / h as f32;
-        let blur_mix = smoothstep(0.0, 0.55, t); // 0 = sharp (top) → 1 = blurred
-        let alpha = 1.0 - smoothstep(0.30, 0.94, t); // fade out toward the bottom
-        let dim = 0.66; // darken so light UI text stays readable over it
+        // Sharp only in the top band (behind the header); fully blurred by the
+        // time the content cards begin, so translucent glass stays readable.
+        let blur_mix = smoothstep(0.04, 0.26, t);
+        let alpha = 1.0 - smoothstep(0.34, 0.96, t); // fade out toward the bottom
+        // A vignette: the crisp top stays bright, the soft body dims down so
+        // frosted cards have quiet, low-contrast glass behind them.
+        let dim = 0.80 - 0.42 * smoothstep(0.08, 0.62, t);
         for x in 0..BACKDROP_W {
             let s = sharp.get_pixel(x, y).0;
             let b = blurred.get_pixel(x, y).0;
@@ -241,10 +236,6 @@ async fn fetch_cdn(appid: i64, file: &str, dir: &Path) -> Option<PathBuf> {
     let bytes = response.bytes(MAX_ART_BYTES).await.ok()?;
     std::fs::write(&dest, &bytes).ok()?;
     Some(dest)
-}
-
-fn existing(path: PathBuf) -> Option<PathBuf> {
-    path.is_file().then_some(path)
 }
 
 /// RGB (0..1) → HSL (h in 0..1, s in 0..1, l in 0..1).

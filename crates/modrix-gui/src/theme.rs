@@ -84,9 +84,9 @@ pub const AURORA: ThemeSpec = ThemeSpec {
     card: hex(0x13_1A28),
     card_hi: hex(0x1A_2233),
     hairline: hex(0x24_2C40),
-    text: hex(0xE6_EAF2),
-    muted: hex(0x8C_94A8),
-    faint: hex(0x5B_6478),
+    text: hex(0xF0_F3F9),
+    muted: hex(0xAF_B7CB),
+    faint: hex(0x78_8098),
     accent: hex(0x22_D3EE),
     accent_hot: hex(0x7D_D3FC),
     on_accent: hex(0x06_1B22),
@@ -329,29 +329,37 @@ fn rounded(radius: f32) -> Border {
     }
 }
 
-fn hairline(radius: f32) -> Border {
-    Border {
-        color: spec().hairline,
-        width: 1.0,
-        radius: radius.into(),
-    }
-}
-
-/// Surface alpha for glass themes: panels stay readable but let the
-/// blurred window backdrop breathe.
-fn glassy(color: Color) -> Color {
-    let s = spec();
-    if s.glass < 1.0 {
-        faded(color, 0.88)
+/// Translucent surface tint for glass themes; opaque for solid themes, so the
+/// banked Gold look is unaffected.
+fn glass(color: Color, alpha: f32) -> Color {
+    if spec().glass < 1.0 {
+        faded(color, alpha)
     } else {
         color
     }
 }
 
-/// The left navigation column.
+/// A frosted-glass rim: a faint light edge for glass themes (the highlight on
+/// a glass panel), a dark hairline for solid themes.
+fn glass_border(radius: f32) -> Border {
+    let s = spec();
+    let color = if s.glass < 1.0 {
+        faded(s.text, 0.14)
+    } else {
+        s.hairline
+    };
+    Border {
+        color,
+        width: 1.0,
+        radius: radius.into(),
+    }
+}
+
+/// The left navigation column - a solid-ish glass so the nav stays legible
+/// against the (transparent) window edge.
 pub fn sidebar(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(glassy(spec().surface))),
+        background: Some(Background::Color(glass(spec().surface, 0.80))),
         border: Border {
             color: spec().hairline,
             width: 1.0,
@@ -361,37 +369,36 @@ pub fn sidebar(_: &Theme) -> container::Style {
     }
 }
 
-/// A raised content card.
+/// A raised content card - frosted glass: translucent, with a light rim and a
+/// soft shadow. It reads clearly because the baked backdrop behind it is
+/// blurred and dimmed.
 pub fn card(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(glassy(spec().card))),
-        border: hairline(12.0),
+        background: Some(Background::Color(glass(spec().card, 0.60))),
+        border: glass_border(14.0),
         shadow: Shadow {
-            color: faded(Color::BLACK, 0.25),
-            offset: iced::Vector::new(0.0, 2.0),
-            blur_radius: 8.0,
+            color: faded(Color::BLACK, 0.38),
+            offset: iced::Vector::new(0.0, 5.0),
+            blur_radius: 20.0,
         },
         ..container::Style::default()
     }
 }
 
-/// An inset well inside a card (token boxes, empty states).
+/// An inset well inside a card (image frames, token boxes, empty states).
 pub fn inset(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(glassy(spec().bg))),
-        border: hairline(8.0),
+        background: Some(Background::Color(glass(spec().bg, 0.38))),
+        border: glass_border(10.0),
         ..container::Style::default()
     }
 }
 
-/// A table row; `even` rows get a faint stripe.
+/// A table row; `even` rows get a faint stripe. Rows are near-transparent so
+/// the card's own glass shows through as one continuous surface.
 pub fn table_row(even: bool) -> impl Fn(&Theme) -> container::Style {
     move |_| container::Style {
-        background: Some(Background::Color(if even {
-            glassy(spec().card)
-        } else {
-            glassy(spec().card_hi)
-        })),
+        background: even.then(|| Background::Color(glass(spec().card_hi, 0.35))),
         border: rounded(8.0),
         ..container::Style::default()
     }
@@ -400,9 +407,9 @@ pub fn table_row(even: bool) -> impl Fn(&Theme) -> container::Style {
 /// A selected (highlighted) table row.
 pub fn table_row_selected(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(gradient_bg_faded(0.14)),
+        background: Some(gradient_bg_faded(0.24)),
         border: Border {
-            color: faded(eff_accent(), 0.45),
+            color: faded(eff_accent(), 0.6),
             width: 1.0,
             radius: 8.0.into(),
         },
@@ -444,15 +451,16 @@ pub fn backdrop(_: &Theme) -> container::Style {
     }
 }
 
-/// The notification panel.
+/// The notification popup - translucent frosted glass so the app shows softly
+/// through it, with a light rim and a deep shadow to float it off the page.
 pub fn panel(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(spec().card_hi)),
-        border: hairline(10.0),
+        background: Some(Background::Color(glass(spec().card_hi, 0.72))),
+        border: glass_border(12.0),
         shadow: Shadow {
-            color: faded(Color::BLACK, 0.4),
-            offset: iced::Vector::new(0.0, 4.0),
-            blur_radius: 16.0,
+            color: faded(Color::BLACK, 0.45),
+            offset: iced::Vector::new(0.0, 6.0),
+            blur_radius: 24.0,
         },
         ..container::Style::default()
     }
@@ -521,10 +529,22 @@ pub fn danger_ghost(_: &Theme, status: button::Status) -> button::Style {
 
 fn outlined(hot: Color, idle: Color, status: button::Status) -> button::Style {
     let s = spec();
+    let glassy = s.glass < 1.0;
     let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
     let disabled = matches!(status, button::Status::Disabled);
+    // A subtle frosted fill at rest (glass themes) so buttons read as glass
+    // chips rather than bare outlines; brighter on hover.
+    let background = if disabled {
+        None
+    } else if hovered {
+        Some(Background::Color(faded(hot, 0.16)))
+    } else if glassy {
+        Some(Background::Color(faded(s.text, 0.07)))
+    } else {
+        None
+    };
     button::Style {
-        background: hovered.then_some(Background::Color(faded(hot, 0.08))),
+        background,
         text_color: if disabled {
             s.faint
         } else if hovered {
@@ -533,7 +553,13 @@ fn outlined(hot: Color, idle: Color, status: button::Status) -> button::Style {
             idle
         },
         border: Border {
-            color: if hovered { faded(hot, 0.5) } else { s.hairline },
+            color: if hovered {
+                faded(hot, 0.6)
+            } else if glassy {
+                faded(s.text, 0.16)
+            } else {
+                s.hairline
+            },
             width: 1.0,
             radius: 8.0.into(),
         },

@@ -37,30 +37,23 @@ fn game_card(app: &App) -> El<'_> {
     };
     let stats = format!("{} mods · {} enabled", app.mods.len(), app.order.len());
     let mut inner = column![].spacing(10);
-    // The game's own header art, when resolved.
-    if let Some(header) = app.art.get(&game.id).and_then(|art| art.header.clone()) {
+    // The game's transparent themed logo (the title as art); falls back to
+    // the plain name until the art resolves.
+    if let Some(logo) = app.art.get(&game.id).and_then(|art| art.logo.clone()) {
         inner = inner.push(
-            container(
-                image(header)
-                    .content_fit(ContentFit::Cover)
-                    .width(Length::Fill)
-                    .height(72),
-            )
-            .width(Length::Fill)
-            .height(72)
-            .clip(true)
-            .style(theme::inset),
+            container(image(logo).content_fit(ContentFit::Contain).height(56))
+                .width(Length::Fill)
+                .height(60),
         );
+    } else {
+        inner = inner.push(text(&game.name).size(16).font(BOLD));
     }
-    inner = inner
-        .push(text(&game.name).size(16).font(BOLD))
-        .push(text(stats).size(13).color(theme::muted()))
-        .push(
-            button(text("Manage mods").size(13))
-                .padding([8, 14])
-                .style(theme::ghost)
-                .on_press(Message::Navigate(Screen::Mods)),
-        );
+    inner = inner.push(text(stats).size(13).color(theme::muted())).push(
+        button(text("Manage mods").size(13))
+            .padding([8, 14])
+            .style(theme::ghost)
+            .on_press(Message::Navigate(Screen::Mods)),
+    );
     tall_card("ACTIVE GAME", inner.into())
 }
 

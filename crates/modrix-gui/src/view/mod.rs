@@ -159,20 +159,20 @@ fn sidebar(app: &App) -> El<'_> {
         .into()
 }
 
-/// The selected game's header art as a sidebar banner (the "game card" on the
-/// left). `None` until the art resolves (or when no game is selected).
+/// The selected game's portrait cover as the sidebar "game card". `None`
+/// until the art resolves (or when no game is selected).
 fn game_banner(app: &App) -> Option<El<'_>> {
     let id = app.selected_game?;
-    let header = app.art.get(&id).and_then(|art| art.header.clone())?;
+    let cover = app.art.get(&id).and_then(|art| art.cover.clone())?;
     Some(
         container(
-            iced::widget::image(header)
+            iced::widget::image(cover)
                 .content_fit(iced::ContentFit::Cover)
                 .width(Length::Fill)
-                .height(88),
+                .height(236),
         )
         .width(Length::Fill)
-        .height(88)
+        .height(236)
         .clip(true)
         .style(theme::inset)
         .into(),
