@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0-only
 //! The visual identity: switchable theme specs behind one style API.
 //!
-//! Two themes ship: **Aurora** (the default - dark glass surfaces with a
-//! cyan→indigo→violet gradient accent, translucent window) and **Gold** (the
-//! original graphite + muted-gold look, banked verbatim). Every widget style
+//! Two themes ship: **Aurora** (the default - dark glass surfaces with a flat
+//! blue accent, translucent window) and **Gold** (the original graphite +
+//! muted-gold look, banked verbatim). The accent is a single flat color (no
+//! gradient); when a game is selected it is derived from that game's artwork.
+//! Every widget style
 //! lives here so the views stay purely structural; views read colors through
 //! accessor functions (`accent()`, `muted()`, …) and never hold a palette,
 //! so switching themes restyles the whole application at once.
 
 use std::sync::RwLock;
 
-use iced::gradient::Linear;
 use iced::theme::Palette;
 use iced::widget::{button, container, pick_list, progress_bar, text_input, toggler};
-use iced::{Background, Border, Color, Gradient, Radians, Shadow, Theme};
+use iced::{Background, Border, Color, Shadow, Theme};
 
 /// Build a solid [`Color`] from a `0xRRGGBB` literal.
 #[expect(
@@ -62,8 +63,6 @@ pub struct ThemeSpec {
     pub accent_hot: Color,
     /// Text on an accent-filled control.
     pub on_accent: Color,
-    /// The accent gradient stops (primary buttons, progress, active nav).
-    pub gradient: [Color; 3],
     /// Success green.
     pub ok: Color,
     /// Danger red.
@@ -75,7 +74,7 @@ pub struct ThemeSpec {
     pub glass: f32,
 }
 
-/// Aurora: dark glass + a cyan→indigo→violet sweep. The default.
+/// Aurora: dark glass + a clean flat blue accent. The default.
 pub const AURORA: ThemeSpec = ThemeSpec {
     id: "aurora",
     name: "Aurora (glass)",
@@ -87,10 +86,9 @@ pub const AURORA: ThemeSpec = ThemeSpec {
     text: hex(0xF0_F3F9),
     muted: hex(0xAF_B7CB),
     faint: hex(0x78_8098),
-    accent: hex(0x22_D3EE),
-    accent_hot: hex(0x7D_D3FC),
-    on_accent: hex(0x06_1B22),
-    gradient: [hex(0x22_D3EE), hex(0x63_66F1), hex(0xA8_55F7)],
+    accent: hex(0x3B_82F6),
+    accent_hot: hex(0x60_A5FA),
+    on_accent: hex(0xF2_F7FF),
     ok: hex(0x34_D399),
     danger: hex(0xF0_6A5E),
     info: hex(0x7D_A7E0),
@@ -112,7 +110,6 @@ pub const GOLD: ThemeSpec = ThemeSpec {
     accent: hex(0xD9_A65A),
     accent_hot: hex(0xE4_B36B),
     on_accent: hex(0x1A_1408),
-    gradient: [hex(0xD9_A65A), hex(0xD9_A65A), hex(0xE4_B36B)],
     ok: hex(0x8F_B573),
     danger: hex(0xCC_5F56),
     info: hex(0x7F_A6C9),
@@ -147,20 +144,19 @@ pub fn set_theme(id: &str) {
 /// colors of the game being modded.
 #[derive(Debug, Clone, Copy)]
 pub struct GameAccent {
-    /// The primary accent.
+    /// The primary accent (a single flat color from the art).
     accent: Color,
     /// Its hover shift.
     accent_hot: Color,
     /// Text drawn on an accent fill.
     on_accent: Color,
-    /// Three stops for accent gradients (a gentle same-family sheen).
-    gradient: [Color; 3],
 }
 
 impl GameAccent {
-    /// Build a palette from an image's swatches (most representative first),
-    /// tuned so it always reads as a vivid accent on a dark surface. `None`
-    /// when the art had no usable color (the theme keeps its own accent).
+    /// Build a flat accent from an image's swatches (most representative
+    /// first), tuned so it always reads as a vivid accent on a dark surface.
+    /// `None` when the art had no usable color (the theme keeps its own
+    /// accent).
     #[must_use]
     pub fn from_swatches(swatches: &[Color]) -> Option<Self> {
         let accent = fit_for_dark(*swatches.first()?);
@@ -170,18 +166,10 @@ impl GameAccent {
         } else {
             Color::from_rgb(0.97, 0.98, 1.0)
         };
-        // A subtle sheen, not a rainbow: accent → a second art swatch (or a
-        // small hue shift of the accent) → the hover tint.
-        let second = swatches
-            .get(1)
-            .copied()
-            .map_or_else(|| shift_hue(accent, 0.05), fit_for_dark);
-        let gradient = [accent, mix(accent, second, 0.6), accent_hot];
         Some(Self {
             accent,
             accent_hot,
             on_accent,
-            gradient,
         })
     }
 }
@@ -210,19 +198,11 @@ fn eff_accent_hot() -> Color {
 fn eff_on_accent() -> Color {
     game_accent().map_or_else(|| spec().on_accent, |g| g.on_accent)
 }
-fn eff_gradient() -> [Color; 3] {
-    game_accent().map_or_else(|| spec().gradient, |g| g.gradient)
-}
 
 /// Nudge a color into the vivid-but-readable range for a dark surface.
 fn fit_for_dark(c: Color) -> Color {
     let (h, s, l) = crate::artwork::rgb_to_hsl(c.r, c.g, c.b);
     crate::artwork::hsl_to_rgb(h, s.clamp(0.45, 0.92), l.clamp(0.52, 0.68))
-}
-
-fn shift_hue(c: Color, delta: f32) -> Color {
-    let (h, s, l) = crate::artwork::rgb_to_hsl(c.r, c.g, c.b);
-    crate::artwork::hsl_to_rgb((h + delta).rem_euclid(1.0), s, l)
 }
 
 fn lighten(c: Color, amount: f32) -> Color {
@@ -277,26 +257,15 @@ pub fn info() -> Color {
     spec().info
 }
 
-/// The accent gradient as a background (top-left → bottom-right sweep).
-fn gradient_bg() -> Background {
-    let [a, b, c] = eff_gradient();
-    Background::Gradient(Gradient::Linear(
-        Linear::new(Radians(std::f32::consts::FRAC_PI_4 * 3.0))
-            .add_stop(0.0, a)
-            .add_stop(0.5, b)
-            .add_stop(1.0, c),
-    ))
+/// A flat accent fill (primary buttons, progress bar). No gradient - a single
+/// solid accent color.
+fn accent_bg() -> Background {
+    Background::Color(eff_accent())
 }
 
-/// The accent gradient, faded to `alpha` (selections, active nav).
-fn gradient_bg_faded(alpha: f32) -> Background {
-    let [a, b, c] = eff_gradient();
-    Background::Gradient(Gradient::Linear(
-        Linear::new(Radians(std::f32::consts::FRAC_PI_4 * 3.0))
-            .add_stop(0.0, faded(a, alpha))
-            .add_stop(0.5, faded(b, alpha))
-            .add_stop(1.0, faded(c, alpha)),
-    ))
+/// The accent at `alpha` (selections, active nav, drop zone).
+fn accent_bg_faded(alpha: f32) -> Background {
+    Background::Color(faded(eff_accent(), alpha))
 }
 
 /// The application [`Theme`] for the active spec.
@@ -428,7 +397,7 @@ pub fn table_row(even: bool) -> impl Fn(&Theme) -> container::Style {
 /// A selected (highlighted) table row.
 pub fn table_row_selected(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(gradient_bg_faded(0.24)),
+        background: Some(accent_bg_faded(0.24)),
         border: Border {
             color: faded(eff_accent(), 0.6),
             width: 1.0,
@@ -441,7 +410,7 @@ pub fn table_row_selected(_: &Theme) -> container::Style {
 /// The row currently being dragged in the load order.
 pub fn table_row_dragging(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(gradient_bg_faded(0.22)),
+        background: Some(accent_bg_faded(0.22)),
         border: Border {
             color: eff_accent(),
             width: 1.0,
@@ -454,7 +423,7 @@ pub fn table_row_dragging(_: &Theme) -> container::Style {
 /// The click/drop target for adding mod archives.
 pub fn drop_zone(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(gradient_bg_faded(0.05)),
+        background: Some(accent_bg_faded(0.05)),
         border: Border {
             color: faded(eff_accent(), 0.35),
             width: 1.0,
@@ -512,7 +481,7 @@ pub fn nav(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
             background: if active {
-                Some(gradient_bg_faded(0.16))
+                Some(accent_bg_faded(0.16))
             } else if hovered {
                 Some(Background::Color(faded(s.text, 0.05)))
             } else {
@@ -556,14 +525,14 @@ pub fn list_card(selected: bool) -> impl Fn(&Theme, button::Status) -> button::S
     }
 }
 
-/// The filled accent button for the primary action - the gradient sweep.
+/// The filled accent button for the primary action - a flat accent fill.
 pub fn primary(_: &Theme, status: button::Status) -> button::Style {
     let background = match status {
         button::Status::Hovered | button::Status::Pressed => {
             Some(Background::Color(eff_accent_hot()))
         }
-        button::Status::Disabled => Some(gradient_bg_faded(0.3)),
-        button::Status::Active => Some(gradient_bg()),
+        button::Status::Disabled => Some(accent_bg_faded(0.3)),
+        button::Status::Active => Some(accent_bg()),
     };
     button::Style {
         background,
@@ -588,16 +557,19 @@ fn outlined(hot: Color, idle: Color, status: button::Status) -> button::Style {
     let glassy = s.glass < 1.0;
     let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
     let disabled = matches!(status, button::Status::Disabled);
-    // A subtle frosted fill at rest (glass themes) so buttons read as glass
-    // chips rather than bare outlines; brighter on hover.
+    // On glass themes, secondary buttons are the SAME frosted well chip as
+    // inputs/insets (solid, not a faint tint over the backdrop), so Verify,
+    // Purge, and the notification button all read as one consistent material;
+    // hover tints toward the button's own color. Solid themes keep the classic
+    // bare outline.
     let background = if disabled {
         None
+    } else if !glassy {
+        hovered.then_some(Background::Color(faded(hot, 0.10)))
     } else if hovered {
-        Some(Background::Color(faded(hot, 0.16)))
-    } else if glassy {
-        Some(Background::Color(faded(s.text, 0.07)))
+        Some(Background::Color(glass(mix(well(), hot, 0.18), 0.92)))
     } else {
-        None
+        Some(Background::Color(glass(well(), 0.85)))
     };
     button::Style {
         background,
@@ -612,7 +584,7 @@ fn outlined(hot: Color, idle: Color, status: button::Status) -> button::Style {
             color: if hovered {
                 faded(hot, 0.6)
             } else if glassy {
-                faded(s.text, 0.16)
+                rim()
             } else {
                 s.hairline
             },
@@ -639,11 +611,11 @@ pub fn icon(_: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-/// The slim progress bar - the gradient sweep as the fill.
+/// The slim progress bar - a flat accent fill.
 pub fn progress(_: &Theme) -> progress_bar::Style {
     progress_bar::Style {
         background: Background::Color(spec().bg),
-        bar: gradient_bg(),
+        bar: accent_bg(),
         border: rounded(99.0),
     }
 }
