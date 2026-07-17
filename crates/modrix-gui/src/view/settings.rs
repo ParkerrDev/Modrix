@@ -5,7 +5,7 @@ use iced::widget::{button, column, row, scrollable, text, text_input};
 use iced::{Alignment, Length};
 
 use super::{BOLD, El, copy_button, labeled_card};
-use crate::app::{App, Message};
+use crate::app::{App, Message, UpdateState};
 use crate::theme;
 
 /// The settings body.
@@ -13,6 +13,7 @@ pub(super) fn body(app: &App) -> El<'_> {
     scrollable(
         column![
             theme_card(),
+            updates_card(app),
             service_card(app),
             extension_card(),
             plugins_card(app),
@@ -24,6 +25,85 @@ pub(super) fn body(app: &App) -> El<'_> {
     )
     .height(Length::Fill)
     .into()
+}
+
+/// Update status: the installed version, and - when GitHub reports a newer
+/// release - its notes plus a one-click install (Windows) or a manual link.
+fn updates_card(app: &App) -> El<'_> {
+    let current = row![
+        text("Installed").size(12).color(theme::muted()).width(130),
+        text(concat!("v", env!("CARGO_PKG_VERSION")))
+            .size(12)
+            .width(Length::Fill),
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center);
+    let inner: El<'_> = match &app.update {
+        UpdateState::Available(info) => update_available(false, info),
+        UpdateState::Installing(info) => update_available(true, info),
+        UpdateState::Idle => row![
+            text("You're on the latest version.")
+                .size(12)
+                .color(theme::muted())
+                .width(Length::Fill),
+            button(text("Check for updates").size(12))
+                .padding([6, 12])
+                .style(theme::ghost)
+                .on_press(Message::CheckUpdates),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center)
+        .into(),
+    };
+    labeled_card("UPDATES", column![current, inner].spacing(12).into())
+}
+
+/// The "an update is available" body: version, a notes excerpt, and the action
+/// (a self-install button on Windows, else a link to the release page).
+fn update_available(updating: bool, info: &modrix_update::UpdateInfo) -> El<'static> {
+    let mut col = column![
+        text(format!("Update available: v{}", info.version))
+            .size(13)
+            .font(BOLD)
+            .color(theme::accent()),
+    ]
+    .spacing(8);
+    if !info.notes.is_empty() {
+        col = col.push(
+            text(notes_excerpt(&info.notes))
+                .size(12)
+                .color(theme::faint()),
+        );
+    }
+    if info.can_self_install() {
+        let label = if updating {
+            "Installing…"
+        } else {
+            "Download & install"
+        };
+        let mut install = button(text(label).size(13))
+            .padding([8, 16])
+            .style(theme::primary);
+        if !updating {
+            install = install.on_press(Message::StartUpdate);
+        }
+        col.push(install).into()
+    } else {
+        col.push(kv_copy("Release", info.release_url.clone()))
+            .into()
+    }
+}
+
+/// The first line of the release notes, trimmed to one short line.
+fn notes_excerpt(notes: &str) -> String {
+    const MAX: usize = 160;
+    let first = notes.lines().next().unwrap_or("").trim();
+    if first.chars().count() > MAX {
+        let head: String = first.chars().take(MAX).collect();
+        format!("{head}…")
+    } else {
+        first.to_owned()
+    }
 }
 
 /// The theme picker: every shipped theme, the active one marked.

@@ -2939,6 +2939,7 @@ dependencies = [
  "modrix-plugin",
  "modrix-registry",
  "modrix-service",
+ "modrix-update",
  "rfd",
  "tempfile",
  "tokio",
@@ -3029,6 +3030,18 @@ dependencies = [
 [[package]]
 name = "modrix-tui"
 version = "0.0.0"
+
+[[package]]
+name = "modrix-update"
+version = "0.0.0"
+dependencies = [
+ "modrix-download",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+]
 
 [[package]]
 name = "mutate_once"

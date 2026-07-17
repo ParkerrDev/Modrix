@@ -24,6 +24,7 @@ tracing-subscriber.workspace = true
 rfd.workspace = true
 modrix-plugin.workspace = true
 modrix-registry.workspace = true
+modrix-update.workspace = true
 image.workspace = true
 
 [lints]

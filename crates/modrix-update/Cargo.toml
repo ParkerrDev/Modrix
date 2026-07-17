@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[package]
+name = "modrix-update"
+description = "Modrix in-app updater: check GitHub Releases and apply the platform installer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+modrix-download.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+semver.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

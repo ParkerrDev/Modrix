@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: GPL-2.0-only
+name: Release
+
+# Publishes a GitHub Release (which the in-app updater checks) whenever a
+# `v*` tag is pushed. Can also be run manually with an explicit version.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 0.1.0 (creates tag v<version>)"
+        required: true
+
+permissions:
+  contents: write # create releases + tags
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - id: v
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            v="${{ github.event.inputs.version }}"
+          else
+            v="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      # Stamp the release version into the workspace so the built binary reports
+      # it via CARGO_PKG_VERSION (this is what the updater compares against).
+      - name: Stamp version
+        shell: bash
+        run: sed -i 's/^version = "0.0.0"/version = "${{ needs.prepare.outputs.version }}"/' Cargo.toml
+      - name: Build release binaries
+        run: cargo build --release --all-features --bins
+      - name: Build installer (NSIS)
+        run: makensis -DVERSION=${{ needs.prepare.outputs.version }} -DBINDIR=target\release installer\windows\modrix.nsi
+      - name: Portable zip
+        shell: pwsh
+        run: Compress-Archive -Path target/release/modrix-gui.exe, target/release/modrix.exe, target/release/modrix-tui.exe -DestinationPath Modrix-windows-x86_64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            Modrix-Setup-*.exe
+            Modrix-windows-x86_64.zip
+
+  linux:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Stamp version
+        run: sed -i 's/^version = "0.0.0"/version = "${{ needs.prepare.outputs.version }}"/' Cargo.toml
+      - name: Build release binaries
+        run: cargo build --release --all-features --bins
+      - name: Tarball
+        run: tar -C target/release -czf Modrix-linux-x86_64.tar.gz modrix-gui modrix modrix-tui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: Modrix-linux-x86_64.tar.gz
+
+  release:
+    needs: [prepare, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Modrix ${{ needs.prepare.outputs.version }}
+          generate_release_notes: true
+          files: dist/**/*

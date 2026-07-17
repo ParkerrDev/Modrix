@@ -19,6 +19,7 @@ modrix-ipc = { path = "crates/modrix-ipc" }
 modrix-mcp = { path = "crates/modrix-mcp" }
 modrix-registry = { path = "crates/modrix-registry" }
 modrix-service = { path = "crates/modrix-service" }
+modrix-update = { path = "crates/modrix-update" }
 # --- external (pinned; further deps added per phase as they are used) ---
 anyhow = "1"
 thiserror = "2"
@@ -58,6 +59,8 @@ rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "t
 serde = { version = "1", features = ["derive"] }
 wiremock = "0.6"
 serde_json = "1"
+# Semantic-version comparison for the in-app updater (MIT arm of MIT/Apache dual).
+semver = "1"
 toml = "0.8"
 sha2 = "0.10"
 md-5 = "0.10"      # Nexus publishes file MD5s; RustCrypto, MIT/Apache

@@ -311,6 +311,19 @@ pub struct Forms {
     pub profile_name: String,
 }
 
+/// The in-app updater's state machine (a newer GitHub release, if any, and
+/// whether its installer is currently being fetched/launched).
+#[derive(Debug, Clone, Default)]
+pub enum UpdateState {
+    /// No newer release known (up to date, offline, or not yet checked).
+    #[default]
+    Idle,
+    /// A newer release is available and offered to the user.
+    Available(modrix_update::UpdateInfo),
+    /// The update's installer is downloading / launching.
+    Installing(modrix_update::UpdateInfo),
+}
+
 /// The whole GUI state.
 pub struct App {
     /// The embedded hand-off service (None until boot finishes).
@@ -389,6 +402,8 @@ pub struct App {
     pub unread: usize,
     /// Whether the notification panel is open.
     pub notes_open: bool,
+    /// The in-app update state (a newer release, and whether it is installing).
+    pub update: UpdateState,
     /// Pending duplicate-install prompts (the first is the open modal).
     pub dup_queue: Vec<DupPrompt>,
     /// The FOMOD wizard, when open.
@@ -528,6 +543,14 @@ pub enum Message {
     AddDetected(usize),
     /// The registry index finished loading (at boot, or after a change).
     RegistryLoaded(Result<Vec<RegistryChoice>, String>),
+    /// The GitHub update check finished (at boot, or when re-checked manually).
+    UpdateChecked(Result<Option<modrix_update::UpdateInfo>, String>),
+    /// Re-run the update check on demand (Settings button).
+    CheckUpdates,
+    /// Download and launch the installer for the pending update.
+    StartUpdate,
+    /// The update installer was launched (Ok) or failed to (Err).
+    UpdateApplied(Result<(), String>),
     /// Install game support from the registry (index into `registry`).
     InstallSupport(usize),
     /// A registry plugin finished installing.
@@ -711,6 +734,7 @@ pub fn boot() -> (App, Task<Message>) {
         notes: Vec::new(),
         unread: 0,
         notes_open: false,
+        update: UpdateState::Idle,
         dup_queue: Vec::new(),
         wizard: None,
         wizard_queue: Vec::new(),
@@ -869,6 +893,27 @@ async fn fetch_registry(paths: Paths) -> Result<Vec<RegistryChoice>, String> {
         .collect())
 }
 
+/// Check GitHub Releases for a newer build (offline / private repo / up to date
+/// all resolve to "no update", so this never disrupts startup).
+fn spawn_update_check() -> Task<Message> {
+    Task::perform(
+        async { modrix_update::check(env!("CARGO_PKG_VERSION")).await },
+        |result| Message::UpdateChecked(result.map_err(|e| e.to_string())),
+    )
+}
+
+/// Download the pending update's installer and launch it. On success the caller
+/// quits so the installer can replace the running executable.
+async fn run_update(
+    info: modrix_update::UpdateInfo,
+    dir: std::path::PathBuf,
+) -> Result<(), String> {
+    let installer = modrix_update::download(&info, &dir)
+        .await
+        .map_err(|e| e.to_string())?;
+    modrix_update::apply(&installer).map_err(|e| e.to_string())
+}
+
 /// The update loop: route each message to its handler.
 pub fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
@@ -958,6 +1003,13 @@ fn update_files(app: &mut App, message: Message) -> Task<Message> {
             app.on_registry_loaded(result);
             Task::none()
         }
+        Message::UpdateChecked(result) => {
+            app.on_update_checked(result);
+            Task::none()
+        }
+        Message::CheckUpdates => spawn_update_check(),
+        Message::StartUpdate => app.on_start_update(),
+        Message::UpdateApplied(result) => app.on_update_applied(result),
         Message::InstallSupport(index) => app.on_install_support(index),
         Message::SupportInstalled(result) => app.on_support_installed(result),
         Message::UninstallPlugin(id) => {
@@ -1072,7 +1124,11 @@ impl App {
                 self.service = Some(booted.service);
                 self.refresh_installed_plugins();
                 self.refresh();
-                Task::batch([self.refresh_heavy(), self.spawn_registry_fetch()])
+                Task::batch([
+                    self.refresh_heavy(),
+                    self.spawn_registry_fetch(),
+                    spawn_update_check(),
+                ])
             }
             Err(error) => {
                 self.boot_error = Some(error);
@@ -1096,6 +1152,57 @@ impl App {
             // Offline or private registry without an override: not an error
             // worth a notification, the section just stays empty.
             Err(error) => tracing::debug!(%error, "registry index unavailable"),
+        }
+    }
+
+    fn on_update_checked(&mut self, result: Result<Option<modrix_update::UpdateInfo>, String>) {
+        match result {
+            Ok(Some(info)) => {
+                let version = info.version.clone();
+                self.update = UpdateState::Available(info);
+                self.note(
+                    Tone::Info,
+                    format!("Update available: v{version} - install it in Settings"),
+                );
+            }
+            Ok(None) => tracing::debug!("no update available"),
+            Err(error) => tracing::debug!(%error, "update check failed"),
+        }
+    }
+
+    fn on_start_update(&mut self) -> Task<Message> {
+        let UpdateState::Available(info) = &self.update else {
+            return Task::none();
+        };
+        let info = info.clone();
+        let Some(paths) = self.paths.clone() else {
+            return Task::none();
+        };
+        if !info.can_self_install() {
+            self.note(
+                Tone::Info,
+                "This platform installs updates manually - see the release page.".to_owned(),
+            );
+            return Task::none();
+        }
+        self.note(Tone::Info, format!("Downloading v{}…", info.version));
+        let dir = paths.cache_dir().join("updates");
+        self.update = UpdateState::Installing(info.clone());
+        Task::perform(run_update(info, dir), Message::UpdateApplied)
+    }
+
+    fn on_update_applied(&mut self, result: Result<(), String>) -> Task<Message> {
+        match result {
+            // The installer is running; quit so it can replace this executable.
+            Ok(()) => iced::exit(),
+            Err(error) => {
+                // Roll back to "available" so the user can retry.
+                if let UpdateState::Installing(info) = &self.update {
+                    self.update = UpdateState::Available(info.clone());
+                }
+                self.note(Tone::Error, format!("Update failed: {error}"));
+                Task::none()
+            }
         }
     }
 
