@@ -441,22 +441,41 @@ pub fn backdrop(_: &Theme) -> container::Style {
     }
 }
 
-/// The notification popup - a frosted glass panel. It floats top-right over
-/// the blurred part of the backdrop, so its translucency reads as real
-/// frosted glass (the softness comes from the already-blurred art behind it),
-/// finished with a bright glass rim and a deep shadow. (iced 0.13 cannot blur
-/// arbitrary content behind a widget, so over solid UI it is simply
-/// translucent, not a true backdrop-blur.)
+/// The notification popup's fallback style, used when the game art has not
+/// resolved: a translucent tint (so the blurred backdrop still shows through), a
+/// bright glass rim, a deep shadow, and bright text. When art IS present the
+/// view uses [`panel_frame`] over the baked frosted-glass tile instead.
+/// (iced 0.13 cannot blur live content behind a widget, so the frost is baked.)
 pub fn panel(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(glass(spec().card_hi, 0.82))),
-        border: glass_border(12.0),
+        // Translucent so the already-blurred backdrop behind the popup shows
+        // through and reads as frosted glass, while staying dark enough for
+        // legible white text. Solid (Gold) themes ignore the alpha.
+        background: Some(Background::Color(glass(spec().card_hi, 0.72))),
+        text_color: Some(spec().text),
+        border: glass_border(14.0),
         shadow: Shadow {
-            color: faded(Color::BLACK, 0.5),
+            color: faded(Color::BLACK, 0.55),
             offset: iced::Vector::new(0.0, 8.0),
-            blur_radius: 28.0,
+            blur_radius: 30.0,
         },
-        ..container::Style::default()
+    }
+}
+
+/// The notification popup frame when the frosted-glass tile IS present: rim and
+/// shadow only, no fill (the translucent tile is the surface - a fill here would
+/// double up and kill the see-through). The rounded rim matches the tile's baked
+/// corner radius so the corner triangles read as a clean glass edge.
+pub fn panel_frame(_: &Theme) -> container::Style {
+    container::Style {
+        background: None,
+        text_color: Some(spec().text),
+        border: glass_border(14.0),
+        shadow: Shadow {
+            color: faded(Color::BLACK, 0.55),
+            offset: iced::Vector::new(0.0, 8.0),
+            blur_radius: 30.0,
+        },
     }
 }
 

@@ -12,7 +12,7 @@ mod settings;
 mod wizard;
 
 use iced::widget::{
-    Space, button, column, container, mouse_area, opaque, pick_list, row, scrollable, stack, text,
+    Space, button, column, container, mouse_area, opaque, pick_list, row, stack, text,
 };
 use iced::{Alignment, Font, Length};
 
@@ -144,6 +144,10 @@ fn boot_error(error: &str) -> El<'_> {
 /// Height of the full-width cover banner (2:3 at the 240px sidebar width, so
 /// the cover fills it with no cropping).
 const BANNER_H: f32 = 360.0;
+
+/// Notification popup width, and the height cap past which it stops growing.
+const GLASS_W: f32 = 360.0;
+const GLASS_MAX_H: f32 = 480.0;
 
 fn sidebar(app: &App) -> El<'_> {
     // The banner is edge-to-edge (no sidebar padding); everything below it is
@@ -411,8 +415,14 @@ fn notification_severity(app: &App) -> Severity {
 /// clicks so interacting with it does not close it. Not `opaque`: the rest of
 /// the UI stays visible and interactive-looking beneath.
 fn notes_overlay(app: &App) -> El<'_> {
-    let panel =
-        mouse_area(container(notes_panel(app)).width(380).max_height(480)).on_press(Message::NoOp);
+    // Fixed width, but the height hugs the content (see notes_panel), capped so
+    // a very long history cannot run off the screen.
+    let panel = mouse_area(
+        container(notes_panel(app))
+            .width(Length::Fixed(GLASS_W))
+            .max_height(GLASS_MAX_H),
+    )
+    .on_press(Message::NoOp);
     let positioned = container(panel)
         .width(Length::Fill)
         .height(Length::Fill)
@@ -422,18 +432,18 @@ fn notes_overlay(app: &App) -> El<'_> {
     mouse_area(positioned).on_press(Message::ToggleNotes).into()
 }
 
-/// Panel contents: live issues first (rendered straight from `app.health`,
-/// so a resolved issue vanishes on the next health pass), then recent events.
-fn notes_panel(app: &App) -> El<'_> {
+/// The notification list + header, content-sized (no fixed height) - the piece
+/// that dictates how large the popup is.
+fn notes_body(app: &App) -> El<'_> {
     let mut list = column![].spacing(6);
     if app.health.is_empty() && app.notes.is_empty() {
-        list = list.push(text("All clear").size(12).color(theme::faint()));
+        list = list.push(text("All clear").size(12).color(theme::muted()));
     }
     for issue in &app.health {
         list = list.push(issue_row(issue));
     }
     if !app.health.is_empty() && !app.notes.is_empty() {
-        list = list.push(text("RECENT").size(9).color(theme::faint()));
+        list = list.push(text("RECENT").size(9).color(theme::muted()));
     }
     for note in app.notes.iter().take(50) {
         list = list.push(note_row(note));
@@ -453,11 +463,49 @@ fn notes_panel(app: &App) -> El<'_> {
                 .on_press(Message::ClearNotes),
         );
     }
-    container(column![head, scrollable(list).height(Length::Shrink)].spacing(10))
+    container(column![head, list].spacing(10))
         .padding(14)
         .width(Length::Fill)
-        .style(theme::panel)
         .into()
+}
+
+/// Panel contents: live issues first (rendered straight from `app.health`, so a
+/// resolved issue vanishes on the next health pass), then recent events.
+///
+/// The popup hugs its content: a `Stack` takes its size from its FIRST child, so
+/// a first copy of the body sets the panel's height, the frosted-glass tile
+/// fills that (an image needs a defined size - this is how it gets one without a
+/// fixed height), and a second copy of the body is drawn on top, visible. iced
+/// 0.13 cannot blur live content behind a widget, so the frost is baked (a
+/// translucent, desaturated, rounded tile of the game art); when art has not
+/// resolved we fall back to a plain translucent panel.
+fn notes_panel(app: &App) -> El<'_> {
+    let glass = app
+        .selected_game
+        .and_then(|id| app.art.get(&id))
+        .and_then(|art| art.glass.clone());
+    match glass {
+        Some(path) => container(stack![
+            notes_body(app),
+            container(
+                iced::widget::image(path)
+                    .content_fit(iced::ContentFit::Fill)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .clip(true),
+            notes_body(app),
+        ])
+        .width(Length::Fill)
+        .style(theme::panel_frame)
+        .into(),
+        None => container(notes_body(app))
+            .width(Length::Fill)
+            .style(theme::panel)
+            .into(),
+    }
 }
 
 /// A live health issue: colored by severity, no timestamp (it is current

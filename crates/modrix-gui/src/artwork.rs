@@ -35,6 +35,11 @@ pub struct ArtSet {
     pub logo: Option<PathBuf>,
     /// The baked full-bleed backdrop (blur ramp + bottom fade), from the hero.
     pub backdrop: Option<PathBuf>,
+    /// A frosted-glass tile for the notification popup: the hero heavily
+    /// blurred, desaturated, low-contrast and translucent (so it reads as
+    /// frosted glass, not a screenshot), with rounded corners baked in. iced
+    /// cannot blur live content behind a widget, so the frost is baked.
+    pub glass: Option<PathBuf>,
     /// Vibrant swatches of the hero art, most representative first; the theme
     /// derives the accent palette from these.
     pub swatches: Vec<Color>,
@@ -58,15 +63,17 @@ pub async fn resolve(appid: i64, cache_dir: PathBuf) -> ArtSet {
     // The `-vN` suffix invalidates any bake made by an older recipe.
     let backdrop_dest = dir.join("backdrop-v3.png");
     let cover_dest = dir.join("cover-v1.png");
-    let (backdrop, swatches, cover) = tokio::task::spawn_blocking(move || {
+    let glass_dest = dir.join("glass-v4.png");
+    let (backdrop, swatches, cover, glass) = tokio::task::spawn_blocking(move || {
         let backdrop = hero
             .as_deref()
             .and_then(|h| bake_backdrop(h, &backdrop_dest));
         let swatches = hero.as_deref().map(compute_swatches).unwrap_or_default();
+        let glass = hero.as_deref().and_then(|h| bake_glass(h, &glass_dest));
         let cover = cover_raw
             .as_deref()
             .and_then(|c| bake_cover(c, &cover_dest));
-        (backdrop, swatches, cover)
+        (backdrop, swatches, cover, glass)
     })
     .await
     .unwrap_or_default();
@@ -74,6 +81,7 @@ pub async fn resolve(appid: i64, cache_dir: PathBuf) -> ArtSet {
         cover,
         logo,
         backdrop,
+        glass,
         swatches,
     }
 }
@@ -199,6 +207,83 @@ fn bake_cover(cover: &Path, dest: &Path) -> Option<PathBuf> {
         }
     }
     out.save(dest).ok().map(|()| dest.to_path_buf())
+}
+
+/// Bake the notification-popup frosted glass: the hero heavily blurred,
+/// desaturated and compressed to a low-contrast dark tint, then made
+/// translucent with rounded corners - so it reads as frosted glass (a soft
+/// milky haze carrying only a faint hint of the game's color) rather than a
+/// recognizable screenshot. The tile is stretched to the content-sized panel in
+/// the view, so the corner radius may go slightly oval on very short/tall
+/// panels; the blur hides it. Cached.
+fn bake_glass(hero: &Path, dest: &Path) -> Option<PathBuf> {
+    if dest.is_file() {
+        return Some(dest.to_path_buf());
+    }
+    let img = image::open(hero).ok()?;
+    let (w0, h0) = img.dimensions();
+    if w0 == 0 || h0 == 0 {
+        return None;
+    }
+    let (gw, gh) = (720_u32, 480_u32);
+    let radius = 28.0_f32;
+    // Very heavy blur (tiny intermediate) so no detail survives.
+    let down = img.resize_exact((gw / 8).max(1), (gh / 8).max(1), FilterType::Lanczos3);
+    let blurred_small = imageops::blur(&down.to_rgba8(), 4.0);
+    let blurred = imageops::resize(&blurred_small, gw, gh, FilterType::Lanczos3);
+    let mut out = RgbaImage::new(gw, gh);
+    for (x, y, px) in blurred.enumerate_pixels() {
+        let [r, g, b, _] = px.0;
+        let (fr, fg, fb) = frost(r, g, b);
+        // Mostly opaque tint (a sliver of the live backdrop still bleeds
+        // through); the corner mask carves the rounded rectangle.
+        let alpha = glass_alpha(corner_alpha(x, y, gw, gh, radius));
+        out.put_pixel(x, y, image::Rgba([fr, fg, fb, alpha]));
+    }
+    out.save(dest).ok().map(|()| dest.to_path_buf())
+}
+
+/// Scale a rounded-corner mask factor (0..1) to the glass alpha (~0.90 - a
+/// strong tint that still lets a sliver of the live backdrop through).
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the product is in [0, 230] before the cast"
+)]
+fn glass_alpha(mask: f32) -> u8 {
+    (mask * 230.0) as u8
+}
+
+/// Map a blurred pixel to a desaturated, low-contrast, dark "frost" tint:
+/// keep ~38% of the saturation and compress the range around a dark midpoint,
+/// so the tile is a soft milky haze with a faint game hue.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "channel math is clamped to [0,255] before the cast"
+)]
+fn frost(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
+    let (rf, gf, bf) = (f32::from(r), f32::from(g), f32::from(b));
+    let lum = 0.299 * rf + 0.587 * gf + 0.114 * bf;
+    let shade = |c: f32| {
+        let desaturated = lum + (c - lum) * 0.38;
+        (60.0 + (desaturated - 128.0) * 0.42).clamp(0.0, 255.0) as u8
+    };
+    (shade(rf), shade(gf), shade(bf))
+}
+
+/// Rounded-rectangle mask factor in `[0, 1]`: 1 inside, a 1px anti-aliased
+/// edge, 0 past the corner radius `r`.
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::many_single_char_names,
+    reason = "coordinates are small pixel indices"
+)]
+fn corner_alpha(x: u32, y: u32, w: u32, h: u32, r: f32) -> f32 {
+    let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
+    let dx = (r - fx).max(fx - (w as f32 - r)).max(0.0);
+    let dy = (r - fy).max(fy - (h as f32 - r)).max(0.0);
+    (r + 0.5 - dx.hypot(dy)).clamp(0.0, 1.0)
 }
 
 /// Lerp two channels by `mix`, then scale by `dim`, back to a byte.
