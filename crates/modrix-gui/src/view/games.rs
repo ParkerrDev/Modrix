@@ -134,7 +134,7 @@ fn game_card<'a>(app: &App, game: &'a Game) -> El<'a> {
     button(inner)
         .padding(16)
         .width(Length::Fill)
-        .style(theme::nav(selected))
+        .style(theme::list_card(selected))
         .on_press(Message::GamePicked(GameChoice {
             id: game.id,
             name: game.name.clone(),

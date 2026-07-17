@@ -22,7 +22,8 @@
 use std::path::{Path, PathBuf};
 
 use iced::Color;
-use image::{GenericImageView, RgbaImage, imageops::FilterType};
+use image::imageops::{self, FilterType};
+use image::{GenericImageView, RgbaImage};
 
 /// Everything the UI needs to dress itself in a game's identity.
 #[derive(Debug, Clone, Default)]
@@ -53,8 +54,8 @@ pub async fn resolve(appid: i64, cache_dir: PathBuf) -> ArtSet {
     let cover = asset(appid, "library_600x900.jpg", &dir).await;
     let logo = asset(appid, "logo.png", &dir).await;
     // Decode/blur/color work is CPU-bound - never run it on the UI executor.
-    // The `-v2` suffix invalidates any backdrop baked by an older recipe.
-    let backdrop_dest = dir.join("backdrop-v2.png");
+    // The `-vN` suffix invalidates any backdrop baked by an older recipe.
+    let backdrop_dest = dir.join("backdrop-v3.png");
     let hero_cpu = hero.clone();
     let (backdrop, swatches) = tokio::task::spawn_blocking(move || {
         let backdrop = hero_cpu
@@ -114,30 +115,29 @@ fn bake_backdrop(hero: &Path, dest: &Path) -> Option<PathBuf> {
         .unwrap_or(BACKDROP_W)
         .max(1);
     let sharp = img
-        .resize_exact(BACKDROP_W, h, FilterType::Triangle)
+        .resize_exact(BACKDROP_W, h, FilterType::Lanczos3)
         .to_rgba8();
-    // A cheap heavy blur: downscale hard, then upscale back. A smaller
-    // intermediate = softer, so content sits on frosted glass, not detail.
-    let small = img.resize_exact(
-        (BACKDROP_W / 22).max(1),
-        (h / 22).max(1),
-        FilterType::Triangle,
-    );
-    let blurred = small
-        .resize_exact(BACKDROP_W, h, FilterType::Triangle)
-        .to_rgba8();
+    // A smooth Gaussian blur: blur at reduced resolution (fast) then upscale
+    // with Lanczos3 - no blocky downscale-upscale artifacts.
+    let bw = (BACKDROP_W / 3).max(1);
+    let bh = (h / 3).max(1);
+    let down = img.resize_exact(bw, bh, FilterType::Lanczos3).to_rgba8();
+    let blurred_small = imageops::blur(&down, 5.0);
+    let blurred = imageops::resize(&blurred_small, BACKDROP_W, h, FilterType::Lanczos3);
 
     let mut out = RgbaImage::new(BACKDROP_W, h);
     for y in 0..h {
         #[expect(clippy::cast_precision_loss, reason = "row index is small")]
         let t = y as f32 / h as f32;
-        // Sharp only in the top band (behind the header); fully blurred by the
-        // time the content cards begin, so translucent glass stays readable.
-        let blur_mix = smoothstep(0.04, 0.26, t);
+        // Sharp only in the thin top strip behind the header; fully blurred
+        // above where any content card begins, so a card never straddles the
+        // sharp→blur transition (which would look like a gradient through it).
+        let blur_mix = smoothstep(0.0, 0.11, t);
         let alpha = 1.0 - smoothstep(0.34, 0.96, t); // fade out toward the bottom
-        // A vignette: the crisp top stays bright, the soft body dims down so
-        // frosted cards have quiet, low-contrast glass behind them.
-        let dim = 0.80 - 0.42 * smoothstep(0.08, 0.62, t);
+        // A vignette on the *background*: crisp top stays bright, the body dims
+        // down. Content cards are frosted-opaque, so this fade shows only in
+        // the background itself, not through the cards.
+        let dim = 0.82 - 0.44 * smoothstep(0.10, 0.66, t);
         for x in 0..BACKDROP_W {
             let s = sharp.get_pixel(x, y).0;
             let b = blurred.get_pixel(x, y).0;

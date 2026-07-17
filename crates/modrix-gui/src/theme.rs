@@ -339,12 +339,12 @@ fn glass(color: Color, alpha: f32) -> Color {
     }
 }
 
-/// A frosted-glass rim: a faint light edge for glass themes (the highlight on
-/// a glass panel), a dark hairline for solid themes.
+/// A frosted-glass rim: a light top-edge highlight for glass themes (the
+/// specular line on a pane of glass), a dark hairline for solid themes.
 fn glass_border(radius: f32) -> Border {
     let s = spec();
     let color = if s.glass < 1.0 {
-        faded(s.text, 0.14)
+        faded(s.text, 0.20)
     } else {
         s.hairline
     };
@@ -369,17 +369,18 @@ pub fn sidebar(_: &Theme) -> container::Style {
     }
 }
 
-/// A raised content card - frosted glass: translucent, with a light rim and a
-/// soft shadow. It reads clearly because the baked backdrop behind it is
-/// blurred and dimmed.
+/// A raised content card - a **frosted** panel: a single flat tint (only
+/// lightly translucent, so the background's top-to-bottom fade does NOT bleed
+/// through and appear as a gradient on the card), a bright glass rim, and a
+/// soft shadow for depth.
 pub fn card(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(glass(spec().card, 0.60))),
+        background: Some(Background::Color(glass(spec().card, 0.90))),
         border: glass_border(14.0),
         shadow: Shadow {
-            color: faded(Color::BLACK, 0.38),
-            offset: iced::Vector::new(0.0, 5.0),
-            blur_radius: 20.0,
+            color: faded(Color::BLACK, 0.40),
+            offset: iced::Vector::new(0.0, 6.0),
+            blur_radius: 22.0,
         },
         ..container::Style::default()
     }
@@ -388,7 +389,7 @@ pub fn card(_: &Theme) -> container::Style {
 /// An inset well inside a card (image frames, token boxes, empty states).
 pub fn inset(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(glass(spec().bg, 0.38))),
+        background: Some(Background::Color(glass(spec().bg, 0.72))),
         border: glass_border(10.0),
         ..container::Style::default()
     }
@@ -451,16 +452,20 @@ pub fn backdrop(_: &Theme) -> container::Style {
     }
 }
 
-/// The notification popup - translucent frosted glass so the app shows softly
-/// through it, with a light rim and a deep shadow to float it off the page.
+/// The notification popup - a frosted glass panel. It floats top-right over
+/// the blurred part of the backdrop, so its translucency reads as real
+/// frosted glass (the softness comes from the already-blurred art behind it),
+/// finished with a bright glass rim and a deep shadow. (iced 0.13 cannot blur
+/// arbitrary content behind a widget, so over solid UI it is simply
+/// translucent, not a true backdrop-blur.)
 pub fn panel(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(glass(spec().card_hi, 0.72))),
+        background: Some(Background::Color(glass(spec().card_hi, 0.82))),
         border: glass_border(12.0),
         shadow: Shadow {
-            color: faded(Color::BLACK, 0.45),
-            offset: iced::Vector::new(0.0, 6.0),
-            blur_radius: 24.0,
+            color: faded(Color::BLACK, 0.5),
+            offset: iced::Vector::new(0.0, 8.0),
+            blur_radius: 28.0,
         },
         ..container::Style::default()
     }
@@ -495,6 +500,37 @@ pub fn nav(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
             },
             text_color: if active { eff_accent() } else { s.muted },
             border: rounded(8.0),
+            ..button::Style::default()
+        }
+    }
+}
+
+/// A selectable list card that stands on its own over the backdrop (the game
+/// rows on the Games screen) - a frosted-opaque panel so the background never
+/// bleeds through, marked when selected by an accent rim and tint.
+pub fn list_card(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_, status| {
+        let s = spec();
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let base = if selected {
+            mix(s.card, eff_accent(), 0.12)
+        } else if hovered {
+            s.card_hi
+        } else {
+            s.card
+        };
+        button::Style {
+            background: Some(Background::Color(glass(base, 0.92))),
+            text_color: s.text,
+            border: if selected {
+                Border {
+                    color: faded(eff_accent(), 0.6),
+                    width: 1.0,
+                    radius: 12.0.into(),
+                }
+            } else {
+                glass_border(12.0)
+            },
             ..button::Style::default()
         }
     }
