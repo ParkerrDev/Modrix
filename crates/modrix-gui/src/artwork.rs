@@ -28,7 +28,8 @@ use image::{GenericImageView, RgbaImage};
 /// Everything the UI needs to dress itself in a game's identity.
 #[derive(Debug, Clone, Default)]
 pub struct ArtSet {
-    /// Portrait cover (key art + title) - the sidebar "game card".
+    /// Baked portrait cover (2:3, top strip blurred/darkened) - the full-width
+    /// sidebar banner behind the wordmark.
     pub cover: Option<PathBuf>,
     /// Transparent themed logo - the dashboard active-game card.
     pub logo: Option<PathBuf>,
@@ -51,21 +52,21 @@ pub async fn resolve(appid: i64, cache_dir: PathBuf) -> ArtSet {
     let dir = cache_dir.join("artwork").join(appid.to_string());
     let _ = std::fs::create_dir_all(&dir);
     let hero = asset(appid, "library_hero.jpg", &dir).await;
-    let cover = asset(appid, "library_600x900.jpg", &dir).await;
+    let cover_raw = asset(appid, "library_600x900.jpg", &dir).await;
     let logo = asset(appid, "logo.png", &dir).await;
     // Decode/blur/color work is CPU-bound - never run it on the UI executor.
-    // The `-vN` suffix invalidates any backdrop baked by an older recipe.
+    // The `-vN` suffix invalidates any bake made by an older recipe.
     let backdrop_dest = dir.join("backdrop-v3.png");
-    let hero_cpu = hero.clone();
-    let (backdrop, swatches) = tokio::task::spawn_blocking(move || {
-        let backdrop = hero_cpu
+    let cover_dest = dir.join("cover-v1.png");
+    let (backdrop, swatches, cover) = tokio::task::spawn_blocking(move || {
+        let backdrop = hero
             .as_deref()
             .and_then(|h| bake_backdrop(h, &backdrop_dest));
-        let swatches = hero_cpu
+        let swatches = hero.as_deref().map(compute_swatches).unwrap_or_default();
+        let cover = cover_raw
             .as_deref()
-            .map(compute_swatches)
-            .unwrap_or_default();
-        (backdrop, swatches)
+            .and_then(|c| bake_cover(c, &cover_dest));
+        (backdrop, swatches, cover)
     })
     .await
     .unwrap_or_default();
@@ -148,6 +149,53 @@ fn bake_backdrop(hero: &Path, dest: &Path) -> Option<PathBuf> {
                 (255.0 * alpha) as u8,
             ];
             out.put_pixel(x, y, image::Rgba(px));
+        }
+    }
+    out.save(dest).ok().map(|()| dest.to_path_buf())
+}
+
+/// Bake the sidebar cover: the portrait cover at a fixed 2:3 (so it fills the
+/// full-width sidebar banner with no cropping), with its top strip blurred and
+/// darkened so the wordmark overlaid there stays legible while the rest stays
+/// sharp. Cached - an existing bake is reused.
+#[expect(
+    clippy::many_single_char_names,
+    reason = "w/h dimensions and s/b pixels are conventional short names"
+)]
+fn bake_cover(cover: &Path, dest: &Path) -> Option<PathBuf> {
+    if dest.is_file() {
+        return Some(dest.to_path_buf());
+    }
+    let img = image::open(cover).ok()?;
+    let (w, h) = (480_u32, 720_u32); // 2:3, matching library_600x900
+    let sharp = img.resize_exact(w, h, FilterType::Lanczos3).to_rgba8();
+    let down = img
+        .resize_exact(w / 3, h / 3, FilterType::Lanczos3)
+        .to_rgba8();
+    let blurred_small = imageops::blur(&down, 5.0);
+    let blurred = imageops::resize(&blurred_small, w, h, FilterType::Lanczos3);
+
+    let mut out = RgbaImage::new(w, h);
+    for y in 0..h {
+        #[expect(clippy::cast_precision_loss, reason = "row index is small")]
+        let t = y as f32 / h as f32;
+        // Blurred and darkened at the very top (behind the wordmark), snapping
+        // to a sharp, full-brightness cover below.
+        let blur_mix = 1.0 - smoothstep(0.08, 0.28, t);
+        let dim = 0.42 + 0.58 * smoothstep(0.06, 0.26, t);
+        for x in 0..w {
+            let s = sharp.get_pixel(x, y).0;
+            let b = blurred.get_pixel(x, y).0;
+            out.put_pixel(
+                x,
+                y,
+                image::Rgba([
+                    mix_u8(s[0], b[0], blur_mix, dim),
+                    mix_u8(s[1], b[1], blur_mix, dim),
+                    mix_u8(s[2], b[2], blur_mix, dim),
+                    255,
+                ]),
+            );
         }
     }
     out.save(dest).ok().map(|()| dest.to_path_buf())

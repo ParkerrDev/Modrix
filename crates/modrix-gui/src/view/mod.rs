@@ -141,50 +141,64 @@ fn boot_error(error: &str) -> El<'_> {
 
 // --- sidebar -----------------------------------------------------------------
 
+/// Height of the full-width cover banner (2:3 at the 240px sidebar width, so
+/// the cover fills it with no cropping).
+const BANNER_H: f32 = 360.0;
+
 fn sidebar(app: &App) -> El<'_> {
-    let mut column = column![wordmark()].spacing(10).padding(16);
-    if let Some(banner) = game_banner(app) {
-        column = column.push(banner);
-    }
-    column = column
-        .push(game_picker(app))
-        .push(nav_items(app))
-        .push(Space::with_height(Length::Fill))
-        .push(service_dot(app))
-        .push(nav_item(app, Screen::Settings, "Settings"));
-    container(column)
+    // The banner is edge-to-edge (no sidebar padding); everything below it is
+    // padded normally.
+    let top: El<'_> = match sidebar_banner(app) {
+        Some(banner) => banner,
+        None => container(wordmark()).padding([16, 16]).into(),
+    };
+    let lower = column![
+        game_picker(app),
+        nav_items(app),
+        Space::with_height(Length::Fill),
+        service_dot(app),
+        nav_item(app, Screen::Settings, "Settings"),
+    ]
+    .spacing(10)
+    .padding(16);
+    container(column![top, lower])
         .width(240)
         .height(Length::Fill)
         .style(theme::sidebar)
         .into()
 }
 
-/// The selected game's portrait cover as the sidebar "game card". `None`
-/// until the art resolves (or when no game is selected).
-fn game_banner(app: &App) -> Option<El<'_>> {
+/// The selected game's cover as a full-width banner with the wordmark over its
+/// blurred top. `None` until the art resolves (or when no game is selected) -
+/// the plain wordmark is shown instead.
+fn sidebar_banner(app: &App) -> Option<El<'_>> {
     let id = app.selected_game?;
     let cover = app.art.get(&id).and_then(|art| art.cover.clone())?;
-    Some(
-        container(
-            iced::widget::image(cover)
-                .content_fit(iced::ContentFit::Cover)
-                .width(Length::Fill)
-                .height(236),
-        )
-        .width(Length::Fill)
-        .height(236)
-        .clip(true)
-        .style(theme::inset)
-        .into(),
+    let image = container(
+        iced::widget::image(cover)
+            .content_fit(iced::ContentFit::Cover)
+            .width(Length::Fill)
+            .height(Length::Fill),
     )
+    .width(Length::Fill)
+    .height(Length::Fixed(BANNER_H))
+    .clip(true);
+    // The wordmark, pinned to the top-left over the blurred strip.
+    let mark = container(wordmark())
+        .width(Length::Fill)
+        .height(Length::Fixed(BANNER_H))
+        .padding([16, 16])
+        .align_x(iced::alignment::Horizontal::Left)
+        .align_y(iced::alignment::Vertical::Top);
+    Some(stack![image, mark].into())
 }
 
 fn wordmark() -> El<'static> {
-    let mark = row![
-        text("MOD").size(19).font(BOLD).color(theme::accent()),
-        text("RIX").size(19).font(BOLD).color(theme::text()),
-    ];
-    container(mark).padding([8, 6]).into()
+    row![
+        text("MOD").size(20).font(BOLD).color(theme::accent()),
+        text("RIX").size(20).font(BOLD).color(theme::text()),
+    ]
+    .into()
 }
 
 fn game_picker(app: &App) -> El<'_> {
