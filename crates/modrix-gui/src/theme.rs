@@ -339,6 +339,25 @@ fn glass(color: Color, alpha: f32) -> Color {
     }
 }
 
+/// The one recessed "well" tint used by every inset, text input, and dropdown:
+/// a single step below the raised card, in the *same* hue, never pure black.
+/// This keeps those surfaces consistent instead of some reading as black.
+fn well() -> Color {
+    mix(spec().bg, spec().card, 0.55)
+}
+
+/// The rest-state edge for a surface: the light glass rim on glass themes, a
+/// dark hairline on solid themes. Shared so cards, wells, inputs, and pickers
+/// all draw the same edge.
+fn rim() -> Color {
+    let s = spec();
+    if s.glass < 1.0 {
+        faded(s.text, 0.16)
+    } else {
+        s.hairline
+    }
+}
+
 /// A frosted-glass rim: a light top-edge highlight for glass themes (the
 /// specular line on a pane of glass), a dark hairline for solid themes.
 fn glass_border(radius: f32) -> Border {
@@ -386,10 +405,11 @@ pub fn card(_: &Theme) -> container::Style {
     }
 }
 
-/// An inset well inside a card (image frames, token boxes, empty states).
+/// An inset well inside a card (image frames, token boxes, empty states) - the
+/// shared recessed [`well`] tint, so it matches inputs and dropdowns.
 pub fn inset(_: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(glass(spec().bg, 0.72))),
+        background: Some(Background::Color(glass(well(), 0.85))),
         border: glass_border(10.0),
         ..container::Style::default()
     }
@@ -643,13 +663,9 @@ pub fn picker(_: &Theme, status: pick_list::Status) -> pick_list::Style {
         text_color: s.text,
         placeholder_color: s.faint,
         handle_color: if hot { eff_accent() } else { s.muted },
-        background: Background::Color(s.bg),
+        background: Background::Color(glass(well(), 0.92)),
         border: Border {
-            color: if hot {
-                faded(eff_accent(), 0.5)
-            } else {
-                s.hairline
-            },
+            color: if hot { faded(eff_accent(), 0.5) } else { rim() },
             width: 1.0,
             radius,
         },
@@ -694,17 +710,18 @@ pub fn toggle(_: &Theme, status: toggler::Status) -> toggler::Style {
     }
 }
 
-/// Dark text inputs matching the inset wells.
+/// Text inputs - the same recessed [`well`] tint and rim as insets and
+/// dropdowns, so every field reads as one material.
 pub fn input(_: &Theme, status: text_input::Status) -> text_input::Style {
     let s = spec();
     let focused = matches!(status, text_input::Status::Focused);
     text_input::Style {
-        background: Background::Color(s.bg),
+        background: Background::Color(glass(well(), 0.92)),
         border: Border {
             color: if focused {
                 faded(eff_accent(), 0.6)
             } else {
-                s.hairline
+                rim()
             },
             width: 1.0,
             radius: 8.0.into(),
