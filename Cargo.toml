@@ -48,6 +48,9 @@ getrandom = "0.3"
 iced = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "auto-detect-theme", "canvas", "image"] }
 # FOMOD installer config parsing (read-only XML DOM; MIT arm of MIT/Apache dual).
 roxmltree = "0.20"
+# Decode Steam artwork + bake the per-game backdrop / extract accent colors
+# (GUI only; MIT arm of MIT/Apache dual; the same 0.24 iced already resolves).
+image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
 # Sandboxed Lua host for Tier-2 game plugins (MIT; vendors Lua 5.4, also MIT).
 mlua = { version = "0.10", default-features = false, features = ["lua54", "vendored"] }
 # Native file-open dialogs via the XDG portal (MIT; no GTK linkage).

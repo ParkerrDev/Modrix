@@ -140,6 +140,108 @@ pub fn set_theme(id: &str) {
     }
 }
 
+// --- per-game accent (derived from the selected game's artwork) -------------
+
+/// An accent palette derived from a game's artwork. When one is set it
+/// overrides the theme's own accent everywhere, so the whole UI takes on the
+/// colors of the game being modded.
+#[derive(Debug, Clone, Copy)]
+pub struct GameAccent {
+    /// The primary accent.
+    accent: Color,
+    /// Its hover shift.
+    accent_hot: Color,
+    /// Text drawn on an accent fill.
+    on_accent: Color,
+    /// Three stops for accent gradients (a gentle same-family sheen).
+    gradient: [Color; 3],
+}
+
+impl GameAccent {
+    /// Build a palette from an image's swatches (most representative first),
+    /// tuned so it always reads as a vivid accent on a dark surface. `None`
+    /// when the art had no usable color (the theme keeps its own accent).
+    #[must_use]
+    pub fn from_swatches(swatches: &[Color]) -> Option<Self> {
+        let accent = fit_for_dark(*swatches.first()?);
+        let accent_hot = lighten(accent, 0.14);
+        let on_accent = if luminance(accent) > 0.55 {
+            Color::from_rgb(0.05, 0.06, 0.08)
+        } else {
+            Color::from_rgb(0.97, 0.98, 1.0)
+        };
+        // A subtle sheen, not a rainbow: accent → a second art swatch (or a
+        // small hue shift of the accent) → the hover tint.
+        let second = swatches
+            .get(1)
+            .copied()
+            .map_or_else(|| shift_hue(accent, 0.05), fit_for_dark);
+        let gradient = [accent, mix(accent, second, 0.6), accent_hot];
+        Some(Self {
+            accent,
+            accent_hot,
+            on_accent,
+            gradient,
+        })
+    }
+}
+
+/// The active per-game accent, if any.
+static GAME_ACCENT: RwLock<Option<GameAccent>> = RwLock::new(None);
+
+/// Set (or clear) the per-game accent. Cleared = the theme's own accent.
+pub fn set_game_accent(accent: Option<GameAccent>) {
+    if let Ok(mut guard) = GAME_ACCENT.write() {
+        *guard = accent;
+    }
+}
+
+fn game_accent() -> Option<GameAccent> {
+    GAME_ACCENT.read().ok().and_then(|g| *g)
+}
+
+/// The effective accent: the game's, else the theme's.
+fn eff_accent() -> Color {
+    game_accent().map_or_else(|| spec().accent, |g| g.accent)
+}
+fn eff_accent_hot() -> Color {
+    game_accent().map_or_else(|| spec().accent_hot, |g| g.accent_hot)
+}
+fn eff_on_accent() -> Color {
+    game_accent().map_or_else(|| spec().on_accent, |g| g.on_accent)
+}
+fn eff_gradient() -> [Color; 3] {
+    game_accent().map_or_else(|| spec().gradient, |g| g.gradient)
+}
+
+/// Nudge a color into the vivid-but-readable range for a dark surface.
+fn fit_for_dark(c: Color) -> Color {
+    let (h, s, l) = crate::artwork::rgb_to_hsl(c.r, c.g, c.b);
+    crate::artwork::hsl_to_rgb(h, s.clamp(0.45, 0.92), l.clamp(0.52, 0.68))
+}
+
+fn shift_hue(c: Color, delta: f32) -> Color {
+    let (h, s, l) = crate::artwork::rgb_to_hsl(c.r, c.g, c.b);
+    crate::artwork::hsl_to_rgb((h + delta).rem_euclid(1.0), s, l)
+}
+
+fn lighten(c: Color, amount: f32) -> Color {
+    let (h, s, l) = crate::artwork::rgb_to_hsl(c.r, c.g, c.b);
+    crate::artwork::hsl_to_rgb(h, s, (l + amount).min(0.92))
+}
+
+fn mix(a: Color, b: Color, t: f32) -> Color {
+    Color::from_rgb(
+        a.r + (b.r - a.r) * t,
+        a.g + (b.g - a.g) * t,
+        a.b + (b.b - a.b) * t,
+    )
+}
+
+fn luminance(c: Color) -> f32 {
+    0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+}
+
 // --- color accessors (views read these, never a palette) --------------------
 
 /// Primary text.
@@ -160,7 +262,7 @@ pub fn hairline_color() -> Color {
 }
 /// The accent.
 pub fn accent() -> Color {
-    spec().accent
+    eff_accent()
 }
 /// Success green.
 pub fn ok() -> Color {
@@ -177,7 +279,7 @@ pub fn info() -> Color {
 
 /// The accent gradient as a background (top-left → bottom-right sweep).
 fn gradient_bg() -> Background {
-    let [a, b, c] = spec().gradient;
+    let [a, b, c] = eff_gradient();
     Background::Gradient(Gradient::Linear(
         Linear::new(Radians(std::f32::consts::FRAC_PI_4 * 3.0))
             .add_stop(0.0, a)
@@ -188,7 +290,7 @@ fn gradient_bg() -> Background {
 
 /// The accent gradient, faded to `alpha` (selections, active nav).
 fn gradient_bg_faded(alpha: f32) -> Background {
-    let [a, b, c] = spec().gradient;
+    let [a, b, c] = eff_gradient();
     Background::Gradient(Gradient::Linear(
         Linear::new(Radians(std::f32::consts::FRAC_PI_4 * 3.0))
             .add_stop(0.0, faded(a, alpha))
@@ -205,7 +307,7 @@ pub fn app_theme() -> Theme {
         Palette {
             background: s.bg,
             text: s.text,
-            primary: s.accent,
+            primary: eff_accent(),
             success: s.ok,
             danger: s.danger,
         },
@@ -300,7 +402,7 @@ pub fn table_row_selected(_: &Theme) -> container::Style {
     container::Style {
         background: Some(gradient_bg_faded(0.14)),
         border: Border {
-            color: faded(spec().accent, 0.45),
+            color: faded(eff_accent(), 0.45),
             width: 1.0,
             radius: 8.0.into(),
         },
@@ -313,7 +415,7 @@ pub fn table_row_dragging(_: &Theme) -> container::Style {
     container::Style {
         background: Some(gradient_bg_faded(0.22)),
         border: Border {
-            color: spec().accent,
+            color: eff_accent(),
             width: 1.0,
             radius: 8.0.into(),
         },
@@ -326,7 +428,7 @@ pub fn drop_zone(_: &Theme) -> container::Style {
     container::Style {
         background: Some(gradient_bg_faded(0.05)),
         border: Border {
-            color: faded(spec().accent, 0.35),
+            color: faded(eff_accent(), 0.35),
             width: 1.0,
             radius: 12.0.into(),
         },
@@ -352,14 +454,6 @@ pub fn panel(_: &Theme) -> container::Style {
             offset: iced::Vector::new(0.0, 4.0),
             blur_radius: 16.0,
         },
-        ..container::Style::default()
-    }
-}
-
-/// A full-bleed hero image's dark scrim so foreground text stays readable.
-pub fn hero_scrim(_: &Theme) -> container::Style {
-    container::Style {
-        background: Some(Background::Color(faded(spec().bg, 0.55))),
         ..container::Style::default()
     }
 }
@@ -391,7 +485,7 @@ pub fn nav(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
             } else {
                 None
             },
-            text_color: if active { s.accent } else { s.muted },
+            text_color: if active { eff_accent() } else { s.muted },
             border: rounded(8.0),
             ..button::Style::default()
         }
@@ -400,15 +494,16 @@ pub fn nav(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
 
 /// The filled accent button for the primary action - the gradient sweep.
 pub fn primary(_: &Theme, status: button::Status) -> button::Style {
-    let s = spec();
     let background = match status {
-        button::Status::Hovered | button::Status::Pressed => Some(Background::Color(s.accent_hot)),
+        button::Status::Hovered | button::Status::Pressed => {
+            Some(Background::Color(eff_accent_hot()))
+        }
         button::Status::Disabled => Some(gradient_bg_faded(0.3)),
         button::Status::Active => Some(gradient_bg()),
     };
     button::Style {
         background,
-        text_color: s.on_accent,
+        text_color: eff_on_accent(),
         border: rounded(8.0),
         ..button::Style::default()
     }
@@ -485,11 +580,11 @@ pub fn picker(_: &Theme, status: pick_list::Status) -> pick_list::Style {
     pick_list::Style {
         text_color: s.text,
         placeholder_color: s.faint,
-        handle_color: if hot { s.accent } else { s.muted },
+        handle_color: if hot { eff_accent() } else { s.muted },
         background: Background::Color(s.bg),
         border: Border {
             color: if hot {
-                faded(s.accent, 0.5)
+                faded(eff_accent(), 0.5)
             } else {
                 s.hairline
             },
@@ -506,15 +601,15 @@ pub fn picker_menu(_: &Theme) -> iced::overlay::menu::Style {
     iced::overlay::menu::Style {
         background: Background::Color(s.card_hi),
         border: Border {
-            color: faded(s.accent, 0.5),
+            color: faded(eff_accent(), 0.5),
             width: 1.0,
             radius: iced::border::Radius::default()
                 .bottom_left(8)
                 .bottom_right(8),
         },
         text_color: s.text,
-        selected_text_color: s.accent,
-        selected_background: Background::Color(faded(s.accent, 0.12)),
+        selected_text_color: eff_accent(),
+        selected_background: Background::Color(faded(eff_accent(), 0.12)),
     }
 }
 
@@ -528,7 +623,7 @@ pub fn toggle(_: &Theme, status: toggler::Status) -> toggler::Style {
         toggler::Status::Disabled => false,
     };
     toggler::Style {
-        background: if on { s.accent } else { s.hairline },
+        background: if on { eff_accent() } else { s.hairline },
         background_border_width: 0.0,
         background_border_color: Color::TRANSPARENT,
         foreground: if on { s.bg } else { s.muted },
@@ -545,7 +640,7 @@ pub fn input(_: &Theme, status: text_input::Status) -> text_input::Style {
         background: Background::Color(s.bg),
         border: Border {
             color: if focused {
-                faded(s.accent, 0.6)
+                faded(eff_accent(), 0.6)
             } else {
                 s.hairline
             },
@@ -555,6 +650,6 @@ pub fn input(_: &Theme, status: text_input::Status) -> text_input::Style {
         icon: s.muted,
         placeholder: s.faint,
         value: s.text,
-        selection: faded(s.accent, 0.35),
+        selection: faded(eff_accent(), 0.35),
     }
 }

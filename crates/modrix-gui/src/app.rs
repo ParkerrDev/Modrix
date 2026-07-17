@@ -376,6 +376,8 @@ pub struct App {
     pub art: HashMap<GameId, crate::artwork::ArtSet>,
     /// Games whose artwork fetch is already underway (no duplicate tasks).
     art_requested: HashSet<GameId>,
+    /// The game whose art currently drives the accent (so a switch re-derives).
+    accent_for: Option<GameId>,
     /// The engine's live progress sink (shared before the engine exists so
     /// boot-time crash recovery reports too).
     pub progress: std::sync::Arc<modrix_core::Progress>,
@@ -703,6 +705,7 @@ pub fn boot() -> (App, Task<Message>) {
         capabilities: None,
         art: HashMap::new(),
         art_requested: HashSet::new(),
+        accent_for: None,
         progress: std::sync::Arc::new(modrix_core::Progress::default()),
         op: None,
         notes: Vec::new(),
@@ -971,6 +974,10 @@ fn update_files(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::ArtResolved(game, art) => {
             app.art.insert(game, art);
+            // The selected game's art just landed - derive its accent now.
+            if app.selected_game == Some(game) {
+                app.apply_accent();
+            }
             Task::none()
         }
         Message::NoOp => Task::none(),
@@ -1296,6 +1303,29 @@ impl App {
             self.notify_new_outcomes();
         }
         self.refresh_engine();
+        self.sync_accent();
+    }
+
+    /// Keep the accent in step with the selected game: when the selection
+    /// changes, re-derive from that game's art (falling back to the theme's
+    /// own accent until the art resolves).
+    fn sync_accent(&mut self) {
+        if self.accent_for == self.selected_game {
+            return;
+        }
+        self.accent_for = self.selected_game;
+        self.apply_accent();
+    }
+
+    /// Set the accent from the selected game's swatches (or clear it).
+    fn apply_accent(&mut self) {
+        let accent = self
+            .selected_game
+            .and_then(|id| self.art.get(&id))
+            .and_then(|art| theme::GameAccent::from_swatches(&art.swatches));
+        theme::set_game_accent(accent);
+        // Rebuild the iced palette so its built-in widgets track the accent.
+        self.theme = theme::app_theme();
     }
 
     /// Turn newly finished installs into notifications.

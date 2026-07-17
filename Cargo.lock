@@ -2932,6 +2932,7 @@ name = "modrix-gui"
 version = "0.0.0"
 dependencies = [
  "iced",
+ "image",
  "modrix-core",
  "modrix-download",
  "modrix-ipc",
@@ -2939,6 +2940,7 @@ dependencies = [
  "modrix-registry",
  "modrix-service",
  "rfd",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

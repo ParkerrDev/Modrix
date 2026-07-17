@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
-//! The Dashboard: the selected game's blurred hero art (Steam's own library
-//! imagery) behind at-a-glance glass cards - or onboarding when nothing is
-//! set up.
+//! The Dashboard: at-a-glance glass cards over the game's backdrop (rendered
+//! globally behind every tab) - or onboarding when nothing is set up. The
+//! ACTIVE GAME card shows the game's own header art.
 
-use iced::widget::{button, column, container, image, row, stack, text};
+use iced::widget::{button, column, container, image, row, text};
 use iced::{ContentFit, Length};
 use modrix_download::DownloadState;
 
@@ -12,14 +12,14 @@ use crate::app::{App, Message, Screen};
 use crate::theme;
 
 /// Height of each dashboard card row - fixed, so cards in a row always align.
-const ROW_HEIGHT: f32 = 170.0;
+const ROW_HEIGHT: f32 = 188.0;
 
 /// The dashboard body.
 pub(super) fn body(app: &App) -> El<'_> {
     if app.games.is_empty() {
         return onboarding(app);
     }
-    let cards = column![
+    column![
         row![game_card(app), deploy_card(app)]
             .spacing(16)
             .height(ROW_HEIGHT),
@@ -27,32 +27,7 @@ pub(super) fn body(app: &App) -> El<'_> {
             .spacing(16)
             .height(ROW_HEIGHT),
     ]
-    .spacing(16);
-    // The selected game's pre-blurred hero fills the screen behind the cards,
-    // under a scrim that keeps text readable in both themes.
-    let hero = app
-        .selected_game
-        .and_then(|id| app.art.get(&id))
-        .and_then(|art| art.hero_blur.clone());
-    let Some(hero) = hero else {
-        return cards.into();
-    };
-    stack![
-        container(
-            image(hero)
-                .content_fit(ContentFit::Cover)
-                .width(Length::Fill)
-                .height(Length::Fill)
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .clip(true),
-        container(cards)
-            .padding(16)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(theme::hero_scrim),
-    ]
+    .spacing(16)
     .into()
 }
 
@@ -61,18 +36,31 @@ fn game_card(app: &App) -> El<'_> {
         return empty_state("Select a game.");
     };
     let stats = format!("{} mods · {} enabled", app.mods.len(), app.order.len());
-    let inner = column![
-        text(&game.name).size(17).font(BOLD),
-        text(game.install_path.display().to_string())
-            .size(12)
-            .color(theme::muted()),
-        text(stats).size(13),
-        button(text("Manage mods").size(13))
-            .padding([8, 14])
-            .style(theme::ghost)
-            .on_press(Message::Navigate(Screen::Mods)),
-    ]
-    .spacing(10);
+    let mut inner = column![].spacing(10);
+    // The game's own header art, when resolved.
+    if let Some(header) = app.art.get(&game.id).and_then(|art| art.header.clone()) {
+        inner = inner.push(
+            container(
+                image(header)
+                    .content_fit(ContentFit::Cover)
+                    .width(Length::Fill)
+                    .height(72),
+            )
+            .width(Length::Fill)
+            .height(72)
+            .clip(true)
+            .style(theme::inset),
+        );
+    }
+    inner = inner
+        .push(text(&game.name).size(16).font(BOLD))
+        .push(text(stats).size(13).color(theme::muted()))
+        .push(
+            button(text("Manage mods").size(13))
+                .padding([8, 14])
+                .style(theme::ghost)
+                .on_press(Message::Navigate(Screen::Mods)),
+        );
     tall_card("ACTIVE GAME", inner.into())
 }
 

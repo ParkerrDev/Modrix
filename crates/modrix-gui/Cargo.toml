@@ -24,6 +24,10 @@ tracing-subscriber.workspace = true
 rfd.workspace = true
 modrix-plugin.workspace = true
 modrix-registry.workspace = true
+image.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

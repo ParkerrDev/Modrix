@@ -12,7 +12,7 @@ mod settings;
 mod wizard;
 
 use iced::widget::{
-    Space, button, column, container, mouse_area, opaque, pick_list, row, scrollable, text,
+    Space, button, column, container, mouse_area, opaque, pick_list, row, scrollable, stack, text,
 };
 use iced::{Alignment, Font, Length};
 
@@ -142,21 +142,41 @@ fn boot_error(error: &str) -> El<'_> {
 // --- sidebar -----------------------------------------------------------------
 
 fn sidebar(app: &App) -> El<'_> {
-    let column = column![
-        wordmark(),
-        game_picker(app),
-        nav_items(app),
-        Space::with_height(Length::Fill),
-        service_dot(app),
-        nav_item(app, Screen::Settings, "Settings"),
-    ]
-    .spacing(10)
-    .padding(16);
+    let mut column = column![wordmark()].spacing(10).padding(16);
+    if let Some(banner) = game_banner(app) {
+        column = column.push(banner);
+    }
+    column = column
+        .push(game_picker(app))
+        .push(nav_items(app))
+        .push(Space::with_height(Length::Fill))
+        .push(service_dot(app))
+        .push(nav_item(app, Screen::Settings, "Settings"));
     container(column)
         .width(240)
         .height(Length::Fill)
         .style(theme::sidebar)
         .into()
+}
+
+/// The selected game's header art as a sidebar banner (the "game card" on the
+/// left). `None` until the art resolves (or when no game is selected).
+fn game_banner(app: &App) -> Option<El<'_>> {
+    let id = app.selected_game?;
+    let header = app.art.get(&id).and_then(|art| art.header.clone())?;
+    Some(
+        container(
+            iced::widget::image(header)
+                .content_fit(iced::ContentFit::Cover)
+                .width(Length::Fill)
+                .height(88),
+        )
+        .width(Length::Fill)
+        .height(88)
+        .clip(true)
+        .style(theme::inset)
+        .into(),
+    )
 }
 
 fn wordmark() -> El<'static> {
@@ -261,10 +281,37 @@ fn content(app: &App) -> El<'_> {
         .spacing(16)
         .padding(28)
         .height(Length::Fill);
-    container(shell.push(body))
+    let foreground = container(shell.push(body))
         .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        .height(Length::Fill);
+    // Every tab sits over the selected game's backdrop - sharp behind the
+    // header, blurring and fading to nothing toward the bottom (baked into
+    // the image, so it costs one draw).
+    match backdrop_path(app) {
+        Some(path) => stack![tab_backdrop(path), foreground].into(),
+        None => foreground.into(),
+    }
+}
+
+/// The selected game's baked backdrop image, when resolved.
+fn backdrop_path(app: &App) -> Option<std::path::PathBuf> {
+    app.selected_game
+        .and_then(|id| app.art.get(&id))
+        .and_then(|art| art.backdrop.clone())
+}
+
+/// The full-bleed backdrop layer (its own top-to-bottom fade is baked in).
+fn tab_backdrop(path: std::path::PathBuf) -> El<'static> {
+    container(
+        iced::widget::image(path)
+            .content_fit(iced::ContentFit::Cover)
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .clip(true)
+    .into()
 }
 
 fn header(app: &App) -> El<'_> {
