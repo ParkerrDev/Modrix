@@ -1465,7 +1465,13 @@ mod tests {
         std::fs::create_dir_all(&install2).unwrap();
         let g2 = engine.add_game(&profile_def, &install2, "steam").unwrap();
         assert_eq!(g2.mod_base, "documents");
+        // Resolution is platform-specific: on Linux/macOS a profile base needs an
+        // initialized Proton prefix (absent here -> None); on Windows the real
+        // Documents folder exists for the user, so it resolves.
+        #[cfg(not(windows))]
         assert_eq!(crate::roots::deploy_root(&g2), None);
+        #[cfg(windows)]
+        assert!(crate::roots::deploy_root(&g2).is_some());
     }
 
     #[test]
