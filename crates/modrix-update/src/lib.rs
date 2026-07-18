@@ -188,8 +188,9 @@ fn parse_version(tag: &str) -> Option<semver::Version> {
 /// Whether a release asset is the installer for the current platform.
 #[cfg(windows)]
 fn is_platform_asset(name: &str) -> bool {
-    let name = name.to_ascii_lowercase();
-    name.ends_with(".exe") || name.ends_with(".msi")
+    std::path::Path::new(name)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("exe") || ext.eq_ignore_ascii_case("msi"))
 }
 
 /// In-app apply targets Windows; other platforms link to a manual download.
