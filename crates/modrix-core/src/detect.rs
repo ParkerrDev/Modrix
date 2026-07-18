@@ -222,6 +222,13 @@ mod tests {
         std::fs::write(path, body).unwrap();
     }
 
+    /// A filesystem path as Steam writes it into a VDF: backslashes escaped
+    /// (`\` -> `\\`). On Unix this is a no-op; on Windows it produces the same
+    /// escaped form the real parser round-trips through.
+    fn vdf_path(path: &Path) -> String {
+        path.display().to_string().replace('\\', "\\\\")
+    }
+
     #[test]
     fn vdf_values_pulls_scalar_pairs_and_skips_block_headers() {
         let text = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"/games/lib\"\n\t\t\"apps\"\n\t\t{\n\t\t\t\"264710\"\t\t\"7\"\n\t\t}\n\t}\n}\n";
@@ -247,7 +254,7 @@ mod tests {
             &root.join("steamapps/libraryfolders.vdf"),
             &format!(
                 "\"libraryfolders\"\n{{\n\t\"0\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t}}\n}}\n",
-                root.display()
+                vdf_path(&root)
             ),
         );
         write(
@@ -270,8 +277,8 @@ mod tests {
             &root.join("steamapps/libraryfolders.vdf"),
             &format!(
                 "\"libraryfolders\"\n{{\n\t\"0\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t}}\n\t\"1\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t}}\n}}\n",
-                root.display(),
-                lib.display()
+                vdf_path(&root),
+                vdf_path(&lib)
             ),
         );
         // The manifest lives only in the secondary library.
@@ -296,7 +303,7 @@ mod tests {
             &root.join("steamapps/libraryfolders.vdf"),
             &format!(
                 "\"libraryfolders\"\n{{\n\t\"0\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t}}\n}}\n",
-                root.display()
+                vdf_path(&root)
             ),
         );
         assert_eq!(detect_in_roots(&[root], 999_999), None);

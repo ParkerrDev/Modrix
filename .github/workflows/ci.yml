@@ -9,10 +9,26 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # CI does clean builds, so incremental just wastes time and cache space.
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
 
 jobs:
-  build:
-    name: build & test (${{ matrix.os }})
+  # Formatting is platform-independent - run it once, fast.
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --all -- --check
+
+  # clippy and test each compile the whole tree (in different profiles, so they
+  # cannot share artifacts). Running them as separate jobs lets them build in
+  # parallel on their own runners, roughly halving the wall-clock per OS vs. one
+  # sequential job. Both stay on the full OS matrix so platform- and cfg-gated
+  # code (e.g. the Windows-only updater paths) is still linted and tested.
+  clippy:
+    name: clippy (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -21,12 +37,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - name: rustfmt
-        run: cargo fmt --all -- --check
-      - name: clippy (-D warnings)
-        run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: test
-        run: cargo test --all --all-features
+        with:
+          key: clippy
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test
+      - run: cargo test --all --all-features
 
   deny:
     name: cargo-deny (license + advisories)

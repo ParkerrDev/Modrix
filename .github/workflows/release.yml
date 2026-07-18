@@ -49,8 +49,15 @@ jobs:
         run: sed -i 's/^version = "0.0.0"/version = "${{ needs.prepare.outputs.version }}"/' Cargo.toml
       - name: Build release binaries
         run: cargo build --release --all-features --bins
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
       - name: Build installer (NSIS)
-        run: makensis -DVERSION=${{ needs.prepare.outputs.version }} -DBINDIR=target\release installer\windows\modrix.nsi
+        shell: pwsh
+        run: |
+          # NSIS is not on PATH on the runner; call makensis by its install path.
+          $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          & $makensis "-DVERSION=${{ needs.prepare.outputs.version }}" "-DBINDIR=target\release" installer\windows\modrix.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed with exit code $LASTEXITCODE" }
       - name: Portable zip
         shell: pwsh
         run: Compress-Archive -Path target/release/modrix-gui.exe, target/release/modrix.exe, target/release/modrix-tui.exe -DestinationPath Modrix-windows-x86_64.zip
