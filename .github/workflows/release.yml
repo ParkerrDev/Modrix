@@ -55,9 +55,15 @@ jobs:
         shell: pwsh
         run: |
           # NSIS is not on PATH on the runner; call makensis by its install path.
+          # File/OutFile relative paths resolve against the .nsi's directory, so
+          # pass BINDIR and OUTFILE as absolute paths.
           $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
-          & $makensis "-DVERSION=${{ needs.prepare.outputs.version }}" "-DBINDIR=target\release" installer\windows\modrix.nsi
+          $bindir = (Resolve-Path "target\release").Path
+          $outfile = Join-Path (Get-Location).Path "Modrix-Setup-${{ needs.prepare.outputs.version }}.exe"
+          Get-ChildItem "$bindir\*.exe" | Select-Object Name
+          & $makensis "-DVERSION=${{ needs.prepare.outputs.version }}" "-DBINDIR=$bindir" "-DOUTFILE=$outfile" installer\windows\modrix.nsi
           if ($LASTEXITCODE -ne 0) { throw "makensis failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path $outfile)) { throw "installer not produced at $outfile" }
       - name: Portable zip
         shell: pwsh
         run: Compress-Archive -Path target/release/modrix-gui.exe, target/release/modrix.exe, target/release/modrix-tui.exe -DestinationPath Modrix-windows-x86_64.zip

@@ -24,8 +24,14 @@ Unicode true
 !define GUIEXE "modrix-gui.exe"
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
 
+; Relative File/OutFile paths resolve against THIS script's directory, so CI
+; passes absolute paths for BINDIR and OUTFILE to avoid surprises.
+!ifndef OUTFILE
+  !define OUTFILE "Modrix-Setup-${VERSION}.exe"
+!endif
+
 Name "${APPNAME} ${VERSION}"
-OutFile "Modrix-Setup-${VERSION}.exe"
+OutFile "${OUTFILE}"
 InstallDir "$LOCALAPPDATA\Programs\${APPNAME}"
 InstallDirRegKey HKCU "Software\${APPNAME}" "InstallDir"
 RequestExecutionLevel user
