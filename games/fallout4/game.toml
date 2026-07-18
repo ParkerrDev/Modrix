@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Fallout 4 - Bethesda/Gamebryo (Creation Engine). Ported from Vortex's
+# game-fallout4. Mods deploy into Data/, load order lives in Plugins.txt under
+# local app data, and F4SE is the script extender.
+api_version    = 2
+id             = "fallout4"
+name           = "Fallout 4"
+steam_appid    = 377160
+gog_id         = "1998527297"
+epic_id        = "61d52ce4d09d41e48800c22784d13ae8"
+xbox_id        = "BethesdaSoftworks.Fallout4-PC"
+nexus_domain   = "fallout4"
+mod_root       = "Data"
+deploy         = "link"
+install_probe  = ["steam", "gog", "epic", "xbox", "registry"]
+required_files = ["Fallout4.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Fallout4"
+value = "Installed Path"
+
+content_dirs = [
+  "meshes", "textures", "scripts", "interface", "sound", "music", "video",
+  "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
+  "facegen", "distantlod", "trees", "mcm", "skse", "f4se", "nvse", "obse",
+  "fose", "sfse", "vis", "fomod",
+]
+
+base_files = [
+  "fallout4.esm", "dlcrobot.esm", "dlcworkshop01.esm", "dlccoast.esm",
+  "dlcworkshop02.esm", "dlcworkshop03.esm", "dlcnukaworld.esm", "cc*",
+]
+
+[load_order]
+strategy    = "plugins_txt"
+appdata_dir = "Fallout4"
+
+[[external_scan]]
+kind      = "file"
+label     = "plugin"
+exts      = ["esp", "esm", "esl"]
+skip_base = true
+
+[[external_scan]]
+kind  = "file"
+label = "F4SE plugin"
+dir   = "F4SE/Plugins"
+exts  = ["dll"]
+
+[health.loader]
+plugins_dir = "F4SE/Plugins"
+root_prefix = "f4se"
+message     = "F4SE plugins are installed but the F4SE loader is missing - install Fallout 4 Script Extender"

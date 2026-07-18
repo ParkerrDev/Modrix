@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Star Wars: Knights of the Old Republic - ported from Vortex's game-sw-kotor.
+# The Vortex extension registers TWO games from this one folder (kotor and
+# kotor2); this definition models KOTOR 1, since a Modrix game id must equal its
+# folder name. KOTOR II (kotor2, Steam 208580 / GOG 1421404581) would be a
+# separate definition.
+#
+# Mods extract into the game's override/ folder (Vortex queryModPath). Some mods
+# ship a full game-root layout (data/, modules/, movies/, ...) or require the
+# external TSLPatcher tool; those advanced layouts are not modeled here.
+api_version    = 2
+id             = "sw-kotor"
+name           = "Star Wars: Knights of the Old Republic"
+steam_appid    = 32370
+gog_id         = "1207666283"
+nexus_domain   = "kotor"
+mod_root       = "override"
+deploy         = "link"
+install_probe  = ["steam", "gog"]
+required_files = ["swkotor.exe"]

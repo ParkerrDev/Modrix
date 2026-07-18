@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Kingdom Come: Deliverance - Warhorse Studios. Ported from Vortex's
+# game-kingdomcome-deliverance (Vortex game id "kingdomcomedeliverance"). Mods
+# are folders under Mods/, each holding .pak/.cfg/.manifest files. Vortex tracks
+# load order in Mods/mod_order.txt (folder-name based, not a Bethesda
+# Plugins.txt), which has no declarative equivalent here, so load_order is
+# omitted.
+api_version    = 2
+id             = "kingdomcome-deliverance"
+name           = "Kingdom Come: Deliverance"
+steam_appid    = 379430
+epic_id        = "Eel"
+xbox_id        = "DeepSilver.KingdomComeDeliverance"
+nexus_domain   = "kingdomcomedeliverance"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["steam", "epic", "xbox"]
+required_files = ["Data/Levels/rataje/level.pak"]
+
+# Hand-installed mods appear as subfolders of Mods/.
+[[external_scan]]
+kind  = "folder"
+label = "mod"
+dir   = ""

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Pathfinder: Wrath of the Righteous - a Unity title modded through Unity Mod
+# Manager (UMM). Ported from Vortex's game-pathfinderwrathoftherighteous. Mods
+# deploy as folders into the "Mods" directory; UMM (a manual prerequisite that
+# Vortex could auto-download) loads them. No load-order file.
+api_version    = 2
+id             = "pathfinderwrathoftherighteous"
+name           = "Pathfinder: Wrath of the Righteous"
+steam_appid    = 1184370
+gog_id         = "1207187357"
+nexus_domain   = "pathfinderwrathoftherighteous"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["steam", "gog"]
+required_files = ["Wrath.exe"]
+
+# Hand-installed UMM mods are folders (each ships an Info.json) in the Mods dir.
+[[external_scan]]
+kind  = "folder"
+label = "UMM mod"
+dir   = ""

@@ -58,8 +58,14 @@ pub struct Game {
     pub name: String,
     /// Absolute path to the game's install directory.
     pub install_path: PathBuf,
-    /// Where mods deploy, relative to `install_path` (e.g. `Data`; may be empty).
+    /// Where mods deploy, relative to the [`mod_base`](Self::mod_base) anchor
+    /// (e.g. `Data`; may be empty).
     pub mod_root: String,
+    /// What `mod_root` is anchored to: `install` (the game directory, default),
+    /// `documents`, `local_appdata`, or `roaming_appdata` (the user profile).
+    /// Denormalized from the definition; resolved to an absolute deploy root by
+    /// [`crate::roots::deploy_root`].
+    pub mod_base: String,
     /// The store this install came from (`steam`, `manual`, …).
     pub store: String,
     /// Steam AppID, when known.
@@ -68,19 +74,6 @@ pub struct Game {
     pub nexus_domain: Option<String>,
     /// Root under which this game's mods are staged.
     pub staging_root: PathBuf,
-}
-
-impl Game {
-    /// The absolute directory files deploy into: `install_path` joined with
-    /// `mod_root` (which may be empty, in which case it is `install_path`).
-    #[must_use]
-    pub fn deploy_target_root(&self) -> PathBuf {
-        if self.mod_root.is_empty() {
-            self.install_path.clone()
-        } else {
-            self.install_path.join(&self.mod_root)
-        }
-    }
 }
 
 /// A named, switchable set of enabled mods + load order for one game.

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Torchlight II - Runic Games engine. Ported from Vortex's game-torchlight2.
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+# Each .mod file is also expected inside its own folder named after the file.
+api_version    = 2
+id             = "torchlight2"
+name           = "Torchlight II"
+steam_appid    = 200710
+gog_id         = "1958228073"
+nexus_domain   = "torchlight2"
+mod_root       = "My Games/Runic Games/Torchlight 2/mods"
+mod_base       = "documents"
+deploy         = "link"
+install_probe  = ["registry", "steam", "gog"]
+required_files = ["Torchlight2.exe", "ModLauncher.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\runic games\\torchlight ii"
+value = "instdir"

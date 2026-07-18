@@ -46,7 +46,7 @@ jobs:
       # it via CARGO_PKG_VERSION (this is what the updater compares against).
       - name: Stamp version
         shell: bash
-        run: sed -i 's/^version = "0.0.0"/version = "${{ needs.prepare.outputs.version }}"/' Cargo.toml
+        run: sed -i 's/^version = "[^"]*"/version = "${{ needs.prepare.outputs.version }}"/' Cargo.toml
       - name: Build release binaries
         run: cargo build --release --all-features --bins
       - name: Install NSIS
@@ -81,7 +81,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - name: Stamp version
-        run: sed -i 's/^version = "0.0.0"/version = "${{ needs.prepare.outputs.version }}"/' Cargo.toml
+        run: sed -i 's/^version = "[^"]*"/version = "${{ needs.prepare.outputs.version }}"/' Cargo.toml
       - name: Build release binaries
         run: cargo build --release --all-features --bins
       - name: Tarball

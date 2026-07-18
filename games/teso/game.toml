@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# The Elder Scrolls Online - ported from Vortex's game-teso.
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+#
+# The registry key below locates the game install (the launcher lives in a
+# "Launcher" subdir); it does not affect the add-on deploy path above.
+api_version   = 2
+id            = "teso"
+name          = "The Elder Scrolls Online"
+steam_appid   = 306130
+nexus_domain  = "elderscrollsonline"
+mod_root      = "Elder Scrolls Online/live/AddOns"
+mod_base      = "documents"
+deploy        = "link"
+install_probe = ["steam", "registry"]
+
+[[registry_keys]]
+hive   = "HKLM"
+key    = "SOFTWARE\\WOW6432Node\\Zenimax_Online\\Launcher"
+value  = "InstallPath"
+subdir = "Launcher"

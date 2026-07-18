@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Breaking Wheel - mods drop into the ModdingTools directory. Ported from
+# Vortex's game-breakingwheel. No load-order file.
+api_version    = 2
+id             = "breakingwheel"
+name           = "Breaking Wheel"
+steam_appid    = 545890
+nexus_domain   = "breakingwheel"
+mod_root       = "ModdingTools"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["Ellie_Ball_Project.exe"]

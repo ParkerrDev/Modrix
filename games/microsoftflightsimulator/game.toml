@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Microsoft Flight Simulator - Asobo/Microsoft. Ported from Vortex's
+# game-microsoftflightsimulator (Windows-only in Vortex).
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+api_version    = 2
+id             = "microsoftflightsimulator"
+name           = "Microsoft Flight Simulator"
+steam_appid    = 1250410
+xbox_id        = "Microsoft.FlightSimulator"
+nexus_domain   = "microsoftflightsimulator"
+mod_root       = "Packages/Community"
+mod_base       = "local_appdata"
+deploy         = "link"
+install_probe  = ["steam", "xbox"]
+required_files = ["FlightSimulator.exe"]

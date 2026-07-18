@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# The Witcher 3: Wild Hunt - mods deploy into the Mods/ folder (each mod is a
+# mod<name>/ folder). Ported from Vortex's game-witcher3. Vortex additionally
+# ships a script merger, a mods.settings load order and DLC/menu-mod handling
+# that are beyond this declarative port; the common case (drop a mod folder into
+# Mods/) is covered here.
+#
+# gog_id is the GOTY edition (1495134320); other CDPR GOG ids for this game are
+# 1207664663 and 1207664643 (Wild Hunt) and 1640424747 (Wild Hunt GOTY).
+api_version    = 2
+id             = "witcher3"
+name           = "The Witcher 3"
+steam_appid    = 292030
+gog_id         = "1495134320"
+epic_id        = "725a22e15ed74735bb0d6a19f3cc82d0"
+nexus_domain   = "witcher3"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["registry", "gog", "steam", "epic"]
+required_files = ["bin/x64/witcher3.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "Software\\CD Project Red\\The Witcher 3"
+value = "InstallFolder"
+
+# Hand-installed mods are mod<name>/ folders in the Mods/ directory.
+[[external_scan]]
+kind  = "folder"
+label = "mod"
+dir   = ""

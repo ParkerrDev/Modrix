@@ -158,9 +158,11 @@ game-specific logic of its own:
 api_version = 2
 id          = "skyrimse"
 name        = "Skyrim Special Edition"
-steam_appid = 489830
-install_probe = ["steam", "registry", "path-hint"]
-mod_root      = "Data"                 # relative to install path
+steam_appid = 489830                   # + gog_id / epic_id / xbox_id / origin_id / uplay_id
+install_probe = ["steam", "gog", "registry", "path-hint"]
+required_files = ["SkyrimSE.exe"]      # a resolved/entered dir must hold these to be accepted
+mod_base      = "install"              # install | documents | local_appdata | roaming_appdata
+mod_root      = "Data"                 # relative to mod_base (here, the install dir)
 deploy        = "link"                 # link | copy
 content_dirs  = ["meshes", "textures", ...]  # archive-root dirs that ARE content
 base_files    = ["skyrim.esm", "cc*"]  # what the base game ships (never foreign)
@@ -174,6 +176,9 @@ kind = "file"; label = "plugin"; exts = ["esp", "esm", "esl"]; skip_base = true
 
 [health.loader]                        # game-specific health checks, data-driven
 plugins_dir = "SKSE/Plugins"; root_prefix = "skse"; message = "…"
+
+[[registry_keys]]                      # Windows vendor keys drive the `registry` probe
+hive = "HKLM"; key = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Skyrim Special Edition"; value = "Installed Path"
 ```
 Frontends read `Engine::capabilities(game)` from this data - a game without a
 `[load_order]` shows no Load Order UI at all. v1 definitions still parse; the
@@ -208,6 +213,10 @@ modrix.install.choose(step)     -- present a wizard step to the active frontend
 **API versioning:** every plugin declares `api_version`; the host refuses or
 shims mismatches. Plugins live in a discovered directory (user data dir +
 bundled), one folder per game (`<id>/game.toml`, optional `<id>/game.lua`, assets).
+The **86 bundled games** (ported from Vortex) live under `games/<id>/` and are
+embedded into the binary by `crates/modrix-core/build.rs`, which scans the tree
+at build time - adding a `game.toml` ships it with no code change. An installed
+plugin or user definition with the same id shadows a built-in.
 
 ### 5.3 FOMOD
 `ModuleConfig.xml` / `info.xml` parsing (via `roxmltree`) lives in
@@ -330,12 +339,24 @@ is exactly why the GPLv2 requirement (§11) only cost us a one-crate change.
 - **Steam:** a small bounded VDF parser (`core::detect`, no `steamlocate` dep)
   finds Steam roots + parses `libraryfolders.vdf` and `appmanifest_<appid>.acf`
   for install dirs; the GUI reuses the same roots for library artwork
-  (`appcache/librarycache`).
+  (`appcache/librarycache`). Cross-platform.
+- **Other stores (Windows only):** the same `core::detect` module resolves GOG,
+  Xbox and Uplay from the registry (via `winreg`) and Epic / Origin from the
+  launchers' on-disk manifests (JSON / query-string). A generic `registry`
+  probe reads the vendor keys a `game.toml` declares in `registry_keys`
+  (Bethesda, CD Projekt, Maxis, …). No store APIs, no network; each store id is
+  declared per game. On non-Windows these resolve to `None` (only Steam is
+  cross-platform), and `winreg` is a target-gated dependency.
 - **Proton (Linux):** games run under Proton have a prefix at
   `steamapps/compatdata/<appid>/pfx/`. Deploy must target the right paths and, for
   some games, into the prefix (e.g. `users/steamuser/Documents`). **This is where
   we can beat Vortex**, which barely handles Linux - Steam Deck is a headline
-  use case. Isolate all Proton path-mapping in one module.
+  use case. Proton path-mapping is isolated: `loadorder.rs` resolves the
+  prefix's `AppData/Local` for `Plugins.txt`, and `roots.rs` resolves a game's
+  deploy target for the `documents`/`local_appdata`/`roaming_appdata`
+  [`mod_base`](#51-tier-1--declarative-gametoml) values (The Sims, Baldur's
+  Gate 3, Factorio, …), gated on the prefix existing so a never-launched game is
+  never fabricated.
 - **Config/data dirs:** `directories` (XDG on Linux, Known Folders on Windows,
   Application Support on macOS).
 - **Archives:** `zip` + `sevenz-rust` (pure-Rust 7z) for the common cases. **RAR:**

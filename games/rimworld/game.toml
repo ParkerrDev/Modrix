@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# RimWorld - a Unity title. Ported from Vortex's game-rimworld. Each mod is its
+# own folder under "Mods" (identified by an About/About.xml with a packageId);
+# the game discovers folders there and orders them in its own in-game mod list,
+# so there is no external load-order file for Modrix to manage.
+api_version    = 2
+id             = "rimworld"
+name           = "RimWorld"
+steam_appid    = 294100
+nexus_domain   = "rimworld"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["RimWorldWin64.exe"]
+
+# Hand-installed mods are folders (each ships About/About.xml) under Mods/.
+[[external_scan]]
+kind  = "folder"
+label = "mod"
+dir   = ""

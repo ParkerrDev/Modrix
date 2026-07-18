@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# War Thunder - user skins deploy into the UserSkins/ folder. Ported from
+# Vortex's game-warthunder (Steam-only discovery by store name).
+api_version    = 2
+id             = "warthunder"
+name           = "War Thunder"
+steam_appid    = 236390
+nexus_domain   = "warthunder"
+mod_root       = "UserSkins"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["win64/aces.exe"]

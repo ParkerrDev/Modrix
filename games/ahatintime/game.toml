@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# A Hat in Time - Unreal Engine 3 title. Mods are folders (each carrying a
+# modinfo.ini) that drop into HatInTimeGame/Mods. Ported from Vortex's
+# game-ahatintime. No load-order file; mods are self-contained folders.
+api_version    = 2
+id             = "ahatintime"
+name           = "A Hat in Time"
+steam_appid    = 253230
+nexus_domain   = "ahatintime"
+mod_root       = "HatInTimeGame/Mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["Binaries/Win64/HatInTimeGame.exe"]
+
+# Hand-installed mods are folders in the Mods directory.
+[[external_scan]]
+kind  = "folder"
+label = "mod"
+dir   = ""

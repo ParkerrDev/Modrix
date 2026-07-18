@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Surviving Mars - ported from Vortex's game-survivingmars.
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+api_version    = 2
+id             = "survivingmars"
+name           = "Surviving Mars"
+steam_appid    = 464920
+gog_id         = "2129244347"
+epic_id        = "Ovenbird"
+nexus_domain   = "survivingmars"
+mod_root       = "Surviving Mars/Mods"
+mod_base       = "roaming_appdata"
+deploy         = "link"
+install_probe  = ["steam", "gog", "epic"]
+required_files = ["Packs/Cubemaps.hpk"]

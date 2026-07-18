@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Legend of Grimrock - Almost Human. Ported from Vortex's game-grimrock.
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+api_version    = 2
+id             = "grimrock"
+name           = "Legend of Grimrock"
+steam_appid    = 207170
+nexus_domain   = "grimrock"
+mod_root       = "Almost Human/Legend of Grimrock/Dungeons"
+mod_base       = "documents"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["grimrock.exe"]

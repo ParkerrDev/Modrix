@@ -54,6 +54,20 @@ pub enum Error {
         path: PathBuf,
     },
 
+    /// A game's non-install deploy target could not be resolved: its user
+    /// profile folder (Documents / `AppData`, inside the Proton prefix on Linux)
+    /// does not exist yet because the game has never run.
+    #[error(
+        "{game}: mods deploy to this game's {base} profile folder, which does not exist yet - \
+         launch the game once so its profile is created, then deploy"
+    )]
+    DeployTargetUnavailable {
+        /// The game name.
+        game: String,
+        /// The `mod_base` kind (`documents` / `local_appdata` / `roaming_appdata`).
+        base: String,
+    },
+
     /// The deployment journal could not be read, written, or parsed.
     #[error("deployment journal: {0}")]
     Journal(String),

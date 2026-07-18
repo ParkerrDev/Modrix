@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Wolcen: Lords of Mayhem - mods deploy into the Game/ folder. Ported from
+# Vortex's game-wolcen (Vortex game id "wolcenlordsofmayhem").
+api_version    = 2
+id             = "wolcen"
+name           = "Wolcen: Lords of Mayhem"
+steam_appid    = 424370
+nexus_domain   = "wolcenlordsofmayhem"
+mod_root       = "Game"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["win_x64/Wolcen.exe"]
+
+# Vortex stop patterns - directory names that mark a mod's root inside an
+# archive, so they are content, never a packaging wrapper to hoist away.
+content_dirs = ["levels", "lib", "loot", "objects", "umbra"]

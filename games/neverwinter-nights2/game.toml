@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Neverwinter Nights 2 - Aurora engine. Ported from Vortex's
+# game-neverwinter-nights2 (Windows-only; discovered via an Obsidian registry
+# key). No load-order file.
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+api_version    = 2
+id             = "neverwinter-nights2"
+name           = "Neverwinter Nights 2"
+nexus_domain   = "neverwinter2"
+mod_root       = "Neverwinter Nights 2/override"
+mod_base       = "documents"
+deploy         = "link"
+install_probe  = ["registry"]
+required_files = ["nwn2.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\obsidian\\nwn 2\\neverwinter"
+value = "Location"

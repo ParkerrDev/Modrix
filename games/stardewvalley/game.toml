@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Stardew Valley - modded through SMAPI. Ported from Vortex's game-stardewvalley.
+# SMAPI mods are folders (each with a manifest.json) dropped into the Mods/
+# folder at the game root. SMAPI itself is the loader/prerequisite (installed
+# separately, like a script extender).
+api_version    = 2
+id             = "stardewvalley"
+name           = "Stardew Valley"
+steam_appid    = 413150
+gog_id         = "1453375253"
+xbox_id        = "ConcernedApe.StardewValleyPC"
+nexus_domain   = "stardewvalley"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["steam", "gog", "xbox"]
+required_files = ["Stardew Valley.exe"]
+
+# Hand-installed SMAPI mods appear as folders in Mods/ (the deploy root itself).
+[[external_scan]]
+kind  = "folder"
+label = "SMAPI mod"
+dir   = ""

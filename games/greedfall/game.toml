@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# GreedFall - Spiders' action RPG. Ported from Vortex's game-greedfall.
+# Mods deploy into datalocal/. A redundant top-level datalocal/ wrapper inside
+# an archive is stripped by the applier's normalization, matching Vortex's
+# installer (which drops everything up to and including datalocal). Vortex also
+# refreshes the mtime of deployed .spk files after each deploy so the game
+# reloads them - a post-deploy nicety with no declarative equivalent here.
+api_version    = 2
+id             = "greedfall"
+name           = "GreedFall"
+steam_appid    = 606880
+nexus_domain   = "greedfall"
+mod_root       = "datalocal"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["GreedFall.exe"]

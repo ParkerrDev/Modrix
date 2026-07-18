@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Dragon Age 2 - BioWare (Eclipse engine). Ported from Vortex's game-dragonage2.
+# Vortex also uses the .dazip mod type (not modelled here).
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+#
+# Vortex reads the install dir from one of two registry subkeys ("Dragon Age 2"
+# or "Dragon Age II"); the first is used here.
+api_version    = 2
+id             = "dragonage2"
+name           = "Dragon Age 2"
+steam_appid    = 15543
+nexus_domain   = "dragonage2"
+mod_root       = "BioWare/Dragon Age 2/packages/core/override"
+mod_base       = "documents"
+deploy         = "link"
+install_probe  = ["steam", "registry"]
+required_files = ["bin_ship/dragonage2.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\BioWare\\Dragon Age 2"
+value = "Install Dir"
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\BioWare\\Dragon Age II"
+value = "Install Dir"

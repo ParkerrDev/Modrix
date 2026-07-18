@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Factorio - Wube's engine. Ported from Vortex's game-factorio. Mods are .zip
+# packages that Factorio loads from a per-user mods folder.
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+api_version    = 2
+id             = "factorio"
+name           = "Factorio"
+steam_appid    = 427520
+nexus_domain   = "factorio"
+mod_root       = "Factorio/mods"
+mod_base       = "roaming_appdata"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["data/core/graphics/factorio.ico"]

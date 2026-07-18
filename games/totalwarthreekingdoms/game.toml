@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Total War: Three Kingdoms - mods are .pack files that live in the data/ folder.
+# Ported from Vortex's game-totalwarthreekingdoms.
+api_version    = 2
+id             = "totalwarthreekingdoms"
+name           = "Total War: Three Kingdoms"
+steam_appid    = 779340
+gog_id         = "1717887914"
+epic_id        = "769f2fee68e9477180da900ccccbbcf0"
+nexus_domain   = "totalwarthreekingdoms"
+mod_root       = "data"
+deploy         = "link"
+install_probe  = ["steam", "epic", "gog"]
+required_files = ["Three_Kingdoms.exe"]
+
+# Hand-installed mods are loose .pack archives dropped into data/.
+[[external_scan]]
+kind  = "file"
+label = "pack"
+dir   = ""
+exts  = ["pack"]

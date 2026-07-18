@@ -4,7 +4,11 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.0.0"
+# The in-repo version. Every frontend reports it via CARGO_PKG_VERSION (the GUI
+# About card, `modrix --version`), and the in-app updater compares it to the
+# latest GitHub release tag. The Release workflow re-stamps this from the pushed
+# `v*` tag, so a tag is always authoritative and code/About/release stay in sync.
+version = "0.1.0-beta.2"
 edition = "2024"
 rust-version = "1.96"
 license = "GPL-2.0-only"
@@ -62,6 +66,10 @@ serde_json = "1"
 # Semantic-version comparison for the in-app updater (MIT arm of MIT/Apache dual).
 semver = "1"
 toml = "0.8"
+# Windows registry reads for non-Steam store detection (GOG / Xbox / Uplay /
+# vendor keys like Bethesda Softworks). MIT; target-gated to cfg(windows). Its
+# FFI `unsafe` lives inside the crate, not ours (workspace forbids unsafe).
+winreg = "0.52"
 sha2 = "0.10"
 md-5 = "0.10"      # Nexus publishes file MD5s; RustCrypto, MIT/Apache
 # zip for reading mod archives. We DECOMPRESS only, so we take the pure-Rust

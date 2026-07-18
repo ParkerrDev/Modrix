@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Pillars of Eternity II: Deadfire - a Unity title. Ported from Vortex's
+# game-pillarsofeternity2. Mods are folders under the game data folder's
+# `override/` directory (Vortex does not merge them).
+#
+# The mod directory depends on the store variant: the Steam/GOG build ships a
+# `PillarsOfEternityII_Data` folder, while the Xbox Game Pass build ships
+# `PillarsOfEternity2_Data`. This constant is the Steam/GOG default; game.lua
+# probes for the Xbox folder and overrides mod_root when it is present, matching
+# Vortex's queryModPath, which chose the path by inspecting the install.
+api_version   = 2
+id            = "pillarsofeternity2"
+name          = "Pillars of Eternity II: Deadfire"
+steam_appid   = 560130
+xbox_id       = "VersusEvil.PillarsofEternity2-PC"
+nexus_domain  = "pillarsofeternity2"
+mod_root      = "PillarsOfEternityII_Data/override"
+deploy        = "link"
+install_probe = ["steam", "xbox"]
+
+# Hand-installed mods are folders (each ships a manifest.json) under override/.
+[[external_scan]]
+kind  = "folder"
+label = "mod"
+dir   = ""

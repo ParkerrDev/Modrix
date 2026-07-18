@@ -111,14 +111,15 @@ impl Engine {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "INSERT INTO games \
-                 (plugin_id, name, install_path, mod_root, store, steam_appid, nexus_domain, \
-                  staging_root, def_json) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 (plugin_id, name, install_path, mod_root, mod_base, store, steam_appid, \
+                  nexus_domain, staging_root, def_json) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 def.id,
                 def.name,
                 install_path.to_string_lossy(),
                 def.mod_root,
+                def.mod_base.as_deref().unwrap_or("install"),
                 store_kind,
                 def.steam_appid,
                 def.nexus_domain,
@@ -274,9 +275,17 @@ fn synthesize_def(game: &Game) -> GameDef {
         name: game.name.clone(),
         steam_appid: game.steam_appid,
         nexus_domain: game.nexus_domain.clone(),
+        gog_id: None,
+        epic_id: None,
+        xbox_id: None,
+        origin_id: None,
+        uplay_id: None,
         mod_root: game.mod_root.clone(),
+        mod_base: Some(game.mod_base.clone()),
         deploy: None,
         install_probe: Vec::new(),
+        registry_keys: Vec::new(),
+        required_files: Vec::new(),
         load_order: None,
         content_dirs: Vec::new(),
         base_files: Vec::new(),
@@ -559,7 +568,9 @@ impl Engine {
         let Ok(game) = self.game(m.game_id) else {
             return Ok(());
         };
-        let root = game.deploy_target_root();
+        let Some(root) = crate::roots::deploy_root(&game) else {
+            return Ok(()); // Profile base unresolvable => nothing was deployed.
+        };
         let mut stmt = self
             .conn
             .prepare("SELECT target_path, backup_path FROM deployed_files WHERE mod_id = ?1")?;
@@ -625,8 +636,11 @@ impl Engine {
             .iter()
             .map(|row| row.target_rel.to_ascii_lowercase())
             .collect();
+        let Some(root) = crate::roots::deploy_root(&g) else {
+            return Ok(Vec::new()); // No resolvable deploy root => nothing to scan.
+        };
         Ok(crate::external::scan(
-            &g.deploy_target_root(),
+            &root,
             &owned,
             &external_scans_of(&def),
             &def.base_files,
@@ -880,7 +894,10 @@ impl Engine {
             .iter()
             .map(|d| d.name.to_ascii_lowercase())
             .collect();
-        let vanilla = crate::plugins::vanilla_plugins(&game.deploy_target_root(), &managed);
+        let vanilla = match crate::roots::deploy_root(&game) {
+            Some(root) => crate::plugins::vanilla_plugins(&root, &managed),
+            None => std::collections::HashSet::new(),
+        };
         let saved = self.saved_plugin_order(profile)?;
         Ok(crate::plugins::assemble(&discovered, &vanilla, &saved))
     }
@@ -1122,12 +1139,13 @@ impl Engine {
     /// Returns any apply error; on failure the game directory is recoverable.
     pub fn undeploy(&self, profile: ProfileId) -> Result<DeployReport> {
         let game = self.game(self.game_of_profile(profile)?)?;
+        let target = crate::roots::deploy_root(&game).ok_or_else(|| deploy_unavailable(&game))?;
         let current = self.current_rows(game.id)?;
         let empty: Vec<(ModId, Vec<ResolvedFile>)> = Vec::new();
         let plan = plan(
             game.id,
             Roots {
-                target: game.deploy_target_root(),
+                target,
                 backup: self.paths.backup_root(),
             },
             &empty,
@@ -1156,7 +1174,8 @@ impl Engine {
     /// Returns [`Error::NotFound`] or an I/O error while hashing files.
     pub fn verify(&self, profile: ProfileId) -> Result<VerifyReport> {
         let game = self.game(self.game_of_profile(profile)?)?;
-        verify::verify(&self.conn, game.id, &game.deploy_target_root())
+        let root = crate::roots::deploy_root(&game).ok_or_else(|| deploy_unavailable(&game))?;
+        verify::verify(&self.conn, game.id, &root)
     }
 }
 
@@ -1177,7 +1196,8 @@ impl Engine {
             .collect();
         ordered.sort_by_key(|(id, _)| rank.get(id).copied().unwrap_or(usize::MAX));
         let overrides = self.override_map(profile)?;
-        let target_root = game.deploy_target_root();
+        let target_root =
+            crate::roots::deploy_root(&game).ok_or_else(|| deploy_unavailable(&game))?;
         // Self-heal: a manifest row whose target vanished from disk (the
         // game's Creations menu deletes files it deems foreign) is dropped
         // from `current` so the planner re-adds it. Rows carrying a
@@ -1322,11 +1342,21 @@ fn extract_into(
 // --- row mapping -----------------------------------------------------------
 
 const GAME_COLUMNS: &str = "SELECT id, plugin_id, name, install_path, mod_root, store, \
-                            steam_appid, nexus_domain, staging_root FROM games";
+                            steam_appid, nexus_domain, staging_root, mod_base FROM games";
 const PROFILE_COLUMNS: &str = "SELECT id, game_id, name, is_active FROM profiles";
 const MOD_COLUMNS: &str = "SELECT id, game_id, name, version, source, staged_path, \
                            install_state, archive_path, nexus_mod_id, created_at, \
                            archive_sha256 FROM mods";
+
+/// The error a deploy/undeploy/verify raises when a game's profile-relative
+/// deploy target cannot be resolved yet (the game has never created its
+/// profile folder).
+fn deploy_unavailable(game: &Game) -> Error {
+    Error::DeployTargetUnavailable {
+        game: game.name.clone(),
+        base: game.mod_base.clone(),
+    }
+}
 
 fn game_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Game> {
     Ok(Game {
@@ -1339,6 +1369,10 @@ fn game_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Game> {
         steam_appid: row.get(6)?,
         nexus_domain: row.get(7)?,
         staging_root: row.get::<_, String>(8)?.into(),
+        // NULL (legacy rows) = the default install base.
+        mod_base: row
+            .get::<_, Option<String>>(9)?
+            .unwrap_or_else(|| "install".to_owned()),
     })
 }
 
@@ -1404,6 +1438,34 @@ mod tests {
         assert_eq!(game.plugin_id, "testgame");
         let active = engine.active_profile(game.id).unwrap();
         assert_eq!(active.name, "default");
+    }
+
+    #[test]
+    fn mod_base_persists_and_drives_deploy_root_resolution() {
+        let (tmp, engine) = engine();
+        // A v1/legacy def declares no mod_base -> stored as the install default,
+        // and the deploy root is the install dir joined with mod_root (unchanged
+        // behavior).
+        let install = tmp.path().join("game");
+        std::fs::create_dir_all(install.join("Data")).unwrap();
+        let g1 = engine.add_game(&sample_def(), &install, "manual").unwrap();
+        assert_eq!(g1.mod_base, "install");
+        assert_eq!(crate::roots::deploy_root(&g1), Some(install.join("Data")));
+
+        // A profile-base def persists its base and resolves only once the user
+        // profile exists (no Proton prefix here -> unresolved, so deploy would
+        // raise DeployTargetUnavailable rather than fabricate a path).
+        let profile_def = GameDef::from_toml_str(
+            "api_version = 2\nid = \"sims\"\nname = \"Sims\"\nsteam_appid = 1\n\
+             mod_root = \"EA/Sims/Mods\"\nmod_base = \"documents\"\n",
+            Path::new("<test>"),
+        )
+        .unwrap();
+        let install2 = tmp.path().join("game2");
+        std::fs::create_dir_all(&install2).unwrap();
+        let g2 = engine.add_game(&profile_def, &install2, "steam").unwrap();
+        assert_eq!(g2.mod_base, "documents");
+        assert_eq!(crate::roots::deploy_root(&g2), None);
     }
 
     #[test]
@@ -1794,5 +1856,52 @@ mod tests {
             pristine
         );
         assert!(!install.join("Data/new.esp").exists());
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn profile_base_deploys_into_the_proton_prefix_end_to_end() {
+        // The full stage -> deploy -> verify -> undeploy cycle for a game whose
+        // mods live in the user profile (mod_base = documents), proving the
+        // Proton-prefix mapping end to end through the real apply pipeline -
+        // the games this matters for (The Sims, Baldur's Gate 3, …) are not on
+        // this machine, so a synthetic Steam+Proton layout stands in.
+        let (tmp, engine) = engine();
+        // A Steam layout so the prefix resolves from the install path.
+        let install = tmp.path().join("steamapps/common/ProfileGame");
+        std::fs::create_dir_all(&install).unwrap();
+        let def = GameDef::from_toml_str(
+            "api_version = 2\nid = \"pg\"\nname = \"Profile Game\"\nsteam_appid = 900001\n\
+             mod_root = \"MyMods\"\nmod_base = \"documents\"\n",
+            Path::new("<test>"),
+        )
+        .unwrap();
+        let game = engine.add_game(&def, &install, "steam").unwrap();
+        let profile = engine.active_profile(game.id).unwrap();
+
+        let src = tmp.path().join("extracted");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("mod.pak"), b"DATA").unwrap();
+        let m = engine.stage(game.id, "mymod", &src).unwrap();
+        engine.set_enabled(profile.id, m.id, true).unwrap();
+
+        // No Proton prefix yet -> deploy refuses rather than fabricating a path.
+        assert!(matches!(
+            engine.deploy(profile.id),
+            Err(Error::DeployTargetUnavailable { .. })
+        ));
+
+        // Initialize the prefix (as launching the game once would), then deploy.
+        let home = tmp
+            .path()
+            .join("steamapps/compatdata/900001/pfx/drive_c/users/steamuser");
+        std::fs::create_dir_all(&home).unwrap();
+        engine.deploy(profile.id).unwrap();
+        let deployed = home.join("Documents/MyMods/mod.pak");
+        assert_eq!(std::fs::read(&deployed).unwrap(), b"DATA");
+        assert!(engine.verify(profile.id).unwrap().is_clean());
+
+        engine.undeploy(profile.id).unwrap();
+        assert!(!deployed.exists(), "undeploy withdraws profile-base files");
     }
 }

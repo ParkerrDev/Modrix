@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Spyro Reignited Trilogy - Unreal Engine 4. Ported from Vortex's
+# game-spyroreignitedtrilogy. Mods are .pak files that deploy into the
+# falcon/content/paks/~mods folder (the UE4 ~mods override directory).
+#
+# Vortex tracks a drag-and-drop load order in loadOrder.json (higher index wins
+# conflicts). That is a bespoke JSON scheme, not a Bethesda Plugins.txt, so the
+# plugins_txt load_order strategy does not apply and is omitted.
+api_version    = 2
+id             = "spyroreignitedtrilogy"
+name           = "Spyro Reignited Trilogy"
+steam_appid    = 996580
+nexus_domain   = "spyroreignitedtrilogy"
+mod_root       = "falcon/content/paks/~mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["Spyro.exe"]
+
+# Hand-installed mods appear as loose .pak files in the ~mods folder.
+[[external_scan]]
+kind  = "file"
+label = "mod"
+dir   = ""
+exts  = ["pak"]

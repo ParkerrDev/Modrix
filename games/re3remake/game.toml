@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Resident Evil 3 (2020) - RE Engine. Ported from Vortex's game-re3remake, which
+# is only a game STUB (Vortex downloads the full extension the first time the
+# game is managed), so it declares no store id and only queryModPath: () => ".".
+# Mods (REFramework / dinput8 loaders and .pak archives) drop into the install
+# root, so mod_root is the install root. No load-order file.
+#
+# CAVEAT: steam_appid is NOT present in the Vortex stub; 952060 is the
+# well-known Steam AppID for RE3 (2020), supplied for detection - flagged.
+api_version   = 2
+id            = "re3remake"
+name          = "Resident Evil 3 (2020)"
+steam_appid   = 952060
+nexus_domain  = "residentevil32020"
+mod_root      = ""
+deploy        = "link"
+install_probe = ["steam"]

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Starbound - Chucklefish sandbox. Ported from Vortex's game-starbound. Mods
+# are .pak archives dropped into the game's mods/ folder.
+api_version    = 2
+id             = "starbound"
+name           = "Starbound"
+steam_appid    = 211820
+xbox_id        = "Chucklefish.StarboundWindows10Edition"
+nexus_domain   = "starbound"
+mod_root       = "mods"
+deploy         = "link"
+install_probe  = ["steam", "xbox"]
+required_files = ["assets/packed.pak"]

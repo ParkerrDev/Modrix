@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Skyrim VR - Bethesda/Gamebryo (Creation Engine). Ported from Vortex's
+# game-skyrimvr. Mods deploy into Data/, load order lives in Plugins.txt under
+# local app data, and SKSE VR is the script extender. Nexus downloads route
+# through the Skyrim Special Edition domain (VR is source-compatible with SE).
+api_version    = 2
+id             = "skyrimvr"
+name           = "Skyrim VR"
+steam_appid    = 611670
+nexus_domain   = "skyrimspecialedition"
+mod_root       = "Data"
+deploy         = "link"
+install_probe  = ["steam", "registry"]
+required_files = ["SkyrimVR.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Skyrim VR"
+value = "Installed Path"
+
+content_dirs = [
+  "meshes", "textures", "scripts", "interface", "sound", "music", "video",
+  "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
+  "facegen", "distantlod", "trees", "mcm", "skse", "f4se", "nvse", "obse",
+  "fose", "sfse", "fomod",
+]
+
+base_files = [
+  "skyrim.esm", "update.esm", "dawnguard.esm", "hearthfires.esm",
+  "dragonborn.esm", "highrestexturepack*.esp",
+]
+
+[load_order]
+strategy    = "plugins_txt"
+appdata_dir = "Skyrim VR"
+
+[[external_scan]]
+kind      = "file"
+label     = "plugin"
+exts      = ["esp", "esm", "esl"]
+skip_base = true
+
+[[external_scan]]
+kind  = "file"
+label = "SKSE plugin"
+dir   = "SKSE/Plugins"
+exts  = ["dll"]
+
+[health.loader]
+plugins_dir = "SKSE/Plugins"
+root_prefix = "skse"
+message     = "SKSE plugins are installed but the SKSE VR loader is missing - install Skyrim Script Extender VR"

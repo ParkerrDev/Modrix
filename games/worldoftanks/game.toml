@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# World of Tanks - mods deploy into res_mods/<game version>, where the version is
+# read from version.xml in the install root. Because the mod path is a function
+# of the installed version, mod_root is resolved dynamically by game.lua.
+#
+# Vortex discovers the install via a Wargaming.net launcher registry key whose
+# value names are per-install hashes; that enumeration cannot be expressed as a
+# fixed registry probe, so discovery relies on a manual path hint (required_files
+# confirm it). Flagged: no Steam/GOG app id (Wargaming launcher title).
+api_version    = 2
+id             = "worldoftanks"
+name           = "World of Tanks"
+nexus_domain   = "worldoftanks"
+mod_root       = "res_mods"        # overridden per-version by game.lua mod_root()
+deploy         = "link"
+install_probe  = ["path-hint"]
+required_files = ["WorldOfTanks.exe", "version.xml"]

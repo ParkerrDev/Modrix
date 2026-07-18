@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Kerbal Space Program - Squad. Ported from Vortex's game-kerbalspaceprogram.
+# Mods drop into GameData/ (each mod ships its own GameData/<Mod>/ subtree; a
+# redundant top-level GameData/ wrapper is stripped during normalization).
+api_version    = 2
+id             = "kerbalspaceprogram"
+name           = "Kerbal Space Program"
+steam_appid    = 220200
+nexus_domain   = "kerbalspaceprogram"
+mod_root       = "GameData"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["KSP_x64.exe"]

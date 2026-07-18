@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Oxygen Not Included - a Unity title modded through Unity Mod Manager (UMM).
+# Ported from Vortex's game-oni. Mods deploy as folders into the "Mods"
+# directory; UMM (a manual prerequisite the user installs separately) loads
+# them. There is no plugin activation file, so load_order is omitted.
+api_version    = 2
+id             = "oni"
+name           = "Oxygen Not Included"
+steam_appid    = 457140
+nexus_domain   = "oxygennotincluded"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["OxygenNotIncluded.exe"]
+
+# Hand-installed UMM mods are folders (each ships an Info.json) in the Mods dir.
+[[external_scan]]
+kind  = "folder"
+label = "UMM mod"
+dir   = ""

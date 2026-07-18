@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# The Witcher (Enhanced Edition) - mods deploy into Data/Override. Ported from
+# Vortex's game-witcher. Discovered via CD Projekt Red's registry key, then Steam.
+api_version    = 2
+id             = "witcher"
+name           = "The Witcher"
+steam_appid    = 20900
+nexus_domain   = "witcher"
+mod_root       = "Data/Override"
+deploy         = "link"
+install_probe  = ["registry", "steam"]
+required_files = ["system/witcher.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "Software\\CD Project Red\\Witcher"
+value = "InstallFolder"

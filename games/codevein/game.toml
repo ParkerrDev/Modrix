@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Code Vein - Unreal Engine 4 title. Mods are .pak files dropped into the ~mods
+# pak directory. Ported from Vortex's game-codevein.
+#
+# The game loads paks in alphabetic order, so Vortex reorders by renaming with an
+# AAA..ZZZ prefix - a name-prefix scheme, not a Bethesda-style Plugins.txt, so no
+# `load_order` strategy is declared.
+api_version    = 2
+id             = "codevein"
+name           = "Code Vein"
+steam_appid    = 678960
+nexus_domain   = "codevein"
+mod_root       = "CodeVein/content/paks/~mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["CodeVein/Binaries/Win64/CodeVein-Win64-Shipping.exe"]
+
+# Hand-installed mods are loose .pak files in the ~mods directory.
+[[external_scan]]
+kind  = "file"
+label = "pak mod"
+dir   = ""
+exts  = ["pak"]

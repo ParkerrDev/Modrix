@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Bloodstained: Ritual of the Night - Unreal Engine 4 title. Mods are .pak files
+# dropped into the ~mods pak directory. Ported from Vortex's
+# game-bloodstainedritualofthenight.
+#
+# The game loads paks in alphabetic order, so Vortex reorders by renaming with an
+# AAA..ZZZ prefix - a name-prefix scheme, not a Bethesda-style Plugins.txt, so no
+# `load_order` strategy is declared.
+api_version    = 2
+id             = "bloodstainedritualofthenight"
+name           = "Bloodstained: Ritual of the Night"
+steam_appid    = 692850
+epic_id        = "a2ac59c83b704e40b4ab3a9e963fef52"
+nexus_domain   = "bloodstainedritualofthenight"
+mod_root       = "BloodstainedRotN/Content/Paks/~mods"
+deploy         = "link"
+install_probe  = ["steam", "epic"]
+required_files = [
+  "BloodstainedRotN.exe",
+  "BloodstainedROTN/Binaries/Win64/BloodstainedRotN-Win64-Shipping.exe",
+]
+
+# Hand-installed mods are loose .pak files in the ~mods directory.
+[[external_scan]]
+kind  = "file"
+label = "pak mod"
+dir   = ""
+exts  = ["pak"]

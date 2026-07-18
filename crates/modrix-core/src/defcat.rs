@@ -19,11 +19,9 @@ use crate::paths::Paths;
 /// Most files a definition scan will consider (bounded loop).
 const MAX_DEF_SCAN: usize = 256;
 
-/// Definitions compiled into the binary, available out of the box.
-const BUILTIN_DEFS: [&str; 2] = [
-    include_str!("../../../games/skyrimse/game.toml"),
-    include_str!("../../../games/subnautica/game.toml"),
-];
+// `BuiltinDef { toml, lua }` and `BUILTIN_GAME_DEFS: &[BuiltinDef]`, generated
+// by `build.rs` from every `games/<id>/{game.toml, game.lua}` in the tree.
+include!(concat!(env!("OUT_DIR"), "/builtin_defs.rs"));
 
 /// One catalog entry: the parsed definition plus its raw text (frontends
 /// re-serialize or display it) and where it came from.
@@ -35,14 +33,22 @@ pub struct DefEntry {
     pub toml: String,
     /// Where the definition was loaded from (`None` = compiled in).
     pub source: Option<PathBuf>,
+    /// The definition's `game.lua`, when it ships one. Populated for compiled-in
+    /// (built-in) games; on-disk games load their script from `source`'s
+    /// directory instead, so this stays `None` for them.
+    pub lua: Option<String>,
 }
 
 /// The built-in definitions only (no filesystem access).
 #[must_use]
 pub fn builtin_defs() -> Vec<DefEntry> {
-    BUILTIN_DEFS
+    BUILTIN_GAME_DEFS
         .iter()
-        .filter_map(|text| entry_from_toml(text, None))
+        .filter_map(|builtin| {
+            let mut entry = entry_from_toml(builtin.toml, None)?;
+            entry.lua = builtin.lua.map(str::to_owned);
+            Some(entry)
+        })
         .collect()
 }
 
@@ -105,6 +111,7 @@ fn entry_from_toml(text: &str, source: Option<PathBuf>) -> Option<DefEntry> {
         def,
         toml: text.to_owned(),
         source,
+        lua: None,
     })
 }
 
@@ -115,7 +122,49 @@ mod tests {
     #[test]
     fn builtins_include_the_shipped_games() {
         let ids: Vec<String> = builtin_defs().into_iter().map(|e| e.def.id).collect();
-        assert_eq!(ids, vec!["skyrimse", "subnautica"]);
+        // The catalog grows as games are added; these two are always present.
+        assert!(ids.iter().any(|id| id == "skyrimse"), "got: {ids:?}");
+        assert!(ids.iter().any(|id| id == "subnautica"), "got: {ids:?}");
+    }
+
+    #[test]
+    fn every_builtin_definition_parses() {
+        // build.rs embeds each games/<id>/game.toml verbatim; all must be valid.
+        let defs = builtin_defs();
+        assert!(!defs.is_empty(), "at least the shipped games must embed");
+        for entry in &defs {
+            assert!(!entry.def.id.trim().is_empty());
+            assert!(!entry.def.name.trim().is_empty());
+        }
+    }
+
+    #[test]
+    fn all_bundled_game_tomls_parse_and_have_unique_ids() {
+        // The catalog's builtin_defs() silently drops a malformed def (so one
+        // bad plugin can't break the app at runtime); this test is the
+        // dev-time gate that every shipped def is actually valid, with the
+        // offending file named on failure.
+        let games = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../games");
+        let mut ids: Vec<String> = Vec::new();
+        for entry in std::fs::read_dir(&games).unwrap().flatten() {
+            let toml = entry.path().join("game.toml");
+            if !toml.is_file() {
+                continue;
+            }
+            let text = std::fs::read_to_string(&toml).unwrap();
+            let def = GameDef::from_toml_str(&text, &toml)
+                .unwrap_or_else(|e| panic!("{}: {e}", toml.display()));
+            // The folder name must match the def id (so build.rs embed order and
+            // on-disk override-by-id line up).
+            let folder = entry.file_name().to_string_lossy().into_owned();
+            assert_eq!(def.id, folder, "id must equal folder name in {folder}");
+            ids.push(def.id);
+        }
+        let mut seen = std::collections::HashSet::new();
+        for id in &ids {
+            assert!(seen.insert(id.as_str()), "duplicate game id: {id}");
+        }
+        assert!(ids.len() >= 2, "expected the shipped games at least");
     }
 
     #[test]

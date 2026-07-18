@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# X Rebirth - mods deploy into the extensions/ folder (each mod is a folder with
+# a content.xml). Ported from Vortex's game-xrebirth (Steam discovery by name).
+api_version    = 2
+id             = "xrebirth"
+name           = "X Rebirth"
+steam_appid    = 2870
+nexus_domain   = "xrebirth"
+mod_root       = "extensions"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["XRebirth.exe"]
+
+# Hand-installed mods are extension folders (each with a content.xml) in
+# extensions/.
+[[external_scan]]
+kind  = "folder"
+label = "extension"
+dir   = ""

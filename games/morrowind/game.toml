@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# The Elder Scrolls III: Morrowind - Bethesda/Gamebryo. Ported from Vortex's
+# game-morrowind. Mods deploy into "Data Files/". Morrowind has no Plugins.txt
+# load-order file and no script-extender health check, so both are omitted.
+api_version    = 2
+id             = "morrowind"
+name           = "The Elder Scrolls III: Morrowind"
+steam_appid    = 22320
+gog_id         = "1435828767"
+xbox_id        = "BethesdaSoftworks.TESMorrowind-PC"
+nexus_domain   = "morrowind"
+mod_root       = "Data Files"
+deploy         = "link"
+install_probe  = ["steam", "gog", "xbox", "registry"]
+required_files = ["Morrowind.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Morrowind"
+value = "Installed Path"
+
+content_dirs = [
+  "meshes", "textures", "scripts", "interface", "sound", "music", "video",
+  "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
+  "facegen", "distantlod", "trees", "mcm", "skse", "f4se", "nvse", "obse",
+  "fose", "sfse", "fomod",
+]
+
+base_files = ["morrowind.esm", "tribunal.esm", "bloodmoon.esm"]
+
+# Hand-installed mods appear as loose plugins in "Data Files/".
+[[external_scan]]
+kind      = "file"
+label     = "plugin"
+exts      = ["esp", "esm"]
+skip_base = true

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Mount & Blade II: Bannerlord - TaleWorlds. Vortex ships only a game *stub*
+# here (game-mount-and-blade2) that defers to a separately-distributed Bannerlord
+# extension (Nexus mod 875); the stub carries no store id and only a placeholder
+# mod path (queryModPath ".").
+#
+# FLAG: the store id and true mod layout are not in the Vortex stub.
+# steam_appid below is Bannerlord's well-known Steam id (261550); real Bannerlord
+# mods live under Modules/, but the stub declares the game root, so mod_root is
+# left at the root pending the full extension. Verify before relying on this.
+api_version    = 2
+id             = "mount-and-blade2"
+name           = "Mount & Blade II: Bannerlord"
+steam_appid    = 261550
+nexus_domain   = "mountandblade2bannerlord"
+mod_root       = ""
+deploy         = "link"
+install_probe  = ["steam"]

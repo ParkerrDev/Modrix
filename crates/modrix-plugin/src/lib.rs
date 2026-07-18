@@ -18,13 +18,18 @@ pub mod lua;
 pub fn register_lua_logic(engine: &mut modrix_core::Engine) {
     let entries = modrix_core::defcat::discover_defs(engine.paths());
     for entry in entries {
-        let Some(source) = entry.source.as_deref() else {
-            continue; // Built-ins are compiled in and ship no script.
+        // On-disk games (user/plugin) load their script from the definition's
+        // directory; built-in games carry it compiled in via `entry.lua`.
+        let loaded = match entry.source.as_deref().and_then(std::path::Path::parent) {
+            Some(dir) => lua::LuaGameLogic::load(dir, &entry.def),
+            None => match &entry.lua {
+                Some(script) => {
+                    lua::LuaGameLogic::from_source(&entry.def, script.clone()).map(Some)
+                }
+                None => Ok(None),
+            },
         };
-        let Some(dir) = source.parent() else {
-            continue;
-        };
-        match lua::LuaGameLogic::load(dir, &entry.def) {
+        match loaded {
             Ok(Some(logic)) => {
                 tracing::info!(plugin = %entry.def.id, "registered game.lua logic");
                 engine.register_logic(&entry.def.id, std::sync::Arc::new(logic));

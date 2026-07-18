@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Dark Souls II - mods deploy at the game install root. Ported from Vortex's
+# game-darksouls2. Vortex also detects the Scholar of the First Sin edition
+# (Steam AppID 335300); the base-game AppID is used here.
+api_version    = 2
+id             = "darksouls2"
+name           = "Dark Souls II"
+steam_appid    = 236430
+nexus_domain   = "darksouls2"
+mod_root       = ""
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["Game/DarksoulsII.exe"]

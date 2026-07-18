@@ -77,7 +77,20 @@ impl LuaGameLogic {
         }
         let script = std::fs::read_to_string(&path)
             .map_err(|e| plugin_err(&def.id, &format!("reading game.lua: {e}")))?;
-        Ok(Some(Self {
+        Ok(Some(Self::from_source(def, script)?))
+    }
+
+    /// Build logic from an in-memory `game.lua`, for a built-in game whose
+    /// script is compiled into the binary rather than read from disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Plugin`] if the script is over the size cap.
+    pub fn from_source(def: &GameDef, script: String) -> Result<Self, CoreError> {
+        if script.len() as u64 > MAX_SCRIPT_BYTES {
+            return Err(plugin_err(&def.id, "game.lua exceeds the size cap"));
+        }
+        Ok(Self {
             plugin_id: def.id.clone(),
             script,
             game: GameSummary {
@@ -86,7 +99,7 @@ impl LuaGameLogic {
                 mod_root: def.mod_root.clone(),
                 steam_appid: def.steam_appid,
             },
-        }))
+        })
     }
 
     /// Run one callback in a fresh sandboxed VM. `jail` (when given) roots
@@ -510,6 +523,24 @@ mod tests {
             "the plan's layout must win"
         );
         assert!(!staged.staged_path.join("readme.txt").exists());
+    }
+
+    #[test]
+    fn every_builtin_game_lua_loads_and_execs() {
+        // Each bundled game.lua must construct and run its top-level chunk under
+        // the real sandbox (surfacing syntax errors and undefined globals that a
+        // bare `luac` syntax check would miss). `detect()` execs the chunk; a
+        // script that only defines mod_root/install/load_order still runs here.
+        for entry in modrix_core::defcat::builtin_defs() {
+            let Some(script) = entry.lua else {
+                continue;
+            };
+            let logic = LuaGameLogic::from_source(&entry.def, script)
+                .unwrap_or_else(|e| panic!("{}: {e}", entry.def.id));
+            logic
+                .detect()
+                .unwrap_or_else(|e| panic!("{} game.lua failed to load: {e}", entry.def.id));
+        }
     }
 
     #[test]

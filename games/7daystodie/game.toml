@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# 7 Days to Die - a Unity game modded by dropping "modlet" folders (each with a
+# modinfo.xml) into the Mods directory. Ported from Vortex's game-7daystodie.
+#
+# The game loads modlets in alphabetic order, so Vortex reorders by renaming the
+# directories with an AAA..ZZZ prefix. That is a name-prefix scheme, not a
+# Bethesda-style Plugins.txt, so no `load_order` strategy is declared here.
+#
+# Vortex can optionally redirect deployment to a user-chosen "User Data Folder"
+# outside the install; that is per-user configuration and cannot be expressed
+# declaratively. The default (and the location the setup step creates) is the
+# in-install `Mods` directory used here.
+api_version    = 2
+id             = "7daystodie"
+name           = "7 Days to Die"
+steam_appid    = 251570
+nexus_domain   = "7daystodie"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["7DaysToDie.exe"]
+
+# Hand-installed modlets are folders in the Mods directory.
+[[external_scan]]
+kind  = "folder"
+label = "modlet"
+dir   = ""

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Mount & Blade - TaleWorlds. Ported from Vortex's game-mount-and-blade (which
+# registers several M&B titles; this is the original, Vortex game id
+# "mountandblade"). Mods deploy into Modules/. game.lua reproduces Vortex's
+# installer: a mod containing a module.ini keeps its module folder, while a
+# loose "override" mod has recognised files (.dds/.brf/.sco/.txt) routed into
+# the native module's subfolders by extension.
+api_version    = 2
+id             = "mount-and-blade"
+name           = "Mount & Blade"
+steam_appid    = 22100
+nexus_domain   = "mountandblade"
+mod_root       = "Modules"
+deploy         = "link"
+install_probe  = ["steam", "registry"]
+required_files = ["mount&blade.exe"]
+
+# Vortex reads the install dir from the Steam-app uninstall key.
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 22100"
+value = "InstallLocation"

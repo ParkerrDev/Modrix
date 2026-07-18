@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Starfield - Bethesda/Gamebryo (Creation Engine 2). Ported from Vortex's
+# game-starfield. Mods deploy into Data/ and SFSE is the script extender.
+# Starfield has no Plugins.txt load-order strategy, so load_order is omitted.
+api_version    = 2
+id             = "starfield"
+name           = "Starfield"
+steam_appid    = 1716740
+nexus_domain   = "starfield"
+mod_root       = "Data"
+deploy         = "link"
+install_probe  = ["steam", "registry"]
+required_files = ["Starfield.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Starfield"
+value = "Installed Path"
+
+content_dirs = [
+  "meshes", "textures", "scripts", "interface", "sound", "music", "video",
+  "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
+  "facegen", "distantlod", "trees", "mcm", "skse", "f4se", "nvse", "obse",
+  "fose", "sfse", "fomod",
+]
+
+base_files = [
+  "starfield.esm", "constellation.esm", "oldmars.esm",
+  "blueprintships-starfield.esm", "sfbgs*.esm", "sfbgs*.esp",
+]
+
+[[external_scan]]
+kind      = "file"
+label     = "plugin"
+exts      = ["esp", "esm", "esl"]
+skip_base = true
+
+[[external_scan]]
+kind  = "file"
+label = "SFSE plugin"
+dir   = "SFSE/Plugins"
+exts  = ["dll"]
+
+[health.loader]
+plugins_dir = "SFSE/Plugins"
+root_prefix = "sfse"
+message     = "SFSE plugins are installed but the SFSE loader is missing - install Starfield Script Extender"

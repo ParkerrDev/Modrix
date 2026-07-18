@@ -34,6 +34,7 @@ pub mod naming;
 mod paths;
 pub mod plugins;
 pub mod progress;
+pub mod roots;
 pub mod rules;
 mod store;
 

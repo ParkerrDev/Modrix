@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Subnautica: Below Zero - a Unity title modded through BepInEx (the modern
+# successor to QModManager). Mirrors the Subnautica definition. Vortex's
+# game-subnauticabelowzero is a stub that still points at the legacy "QMods"
+# folder; the current modding path is BepInEx/plugins, matching Subnautica.
+#
+# Like Subnautica, there is no plugins.txt / ESP load order: BepInEx discovers
+# every DLL under BepInEx/plugins/ and orders them by declared dependencies, so
+# load_order is intentionally omitted.
+api_version   = 2
+id            = "subnauticabelowzero"
+name          = "Subnautica: Below Zero"
+steam_appid   = 848450
+nexus_domain  = "subnauticabelowzero"
+mod_root      = "BepInEx/plugins"
+deploy        = "link"
+install_probe = ["steam", "registry", "path-hint"]
+
+# A lone BepInEx/ (or legacy QMods/) tree at an archive root is content, not a
+# packaging wrapper - hoisting it would strip the container and deploy the
+# plugin where the loader never finds it.
+content_dirs = ["bepinex", "qmods", "fomod"]
+
+# Hand-installed mods are folders in the plugin container (the deploy root
+# itself). The base game ships nothing there, so every unowned folder is an
+# external mod.
+[[external_scan]]
+kind  = "folder"
+label = "BepInEx plugin"
+dir   = ""

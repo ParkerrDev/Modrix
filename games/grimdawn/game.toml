@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Grim Dawn - Crate Entertainment ARPG. Ported from Vortex's game-grimdawn.
+# Vortex resolves the install from the GOG registry key first, then Steam by
+# name. Mods drop into mods/.
+api_version    = 2
+id             = "grimdawn"
+name           = "Grim Dawn"
+steam_appid    = 219990
+gog_id         = "1449651388"
+nexus_domain   = "grimdawn"
+mod_root       = "mods"
+deploy         = "link"
+install_probe  = ["steam", "gog", "registry"]
+required_files = ["Grim Dawn.exe"]
+
+# Vortex reads the install dir straight from the GOG.com Games registry key.
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1449651388"
+value = "path"

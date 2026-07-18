@@ -12,7 +12,7 @@ cargo install --git https://github.com/ParkerrDev/Modrix --locked modrix-gui mod
 ```
 
 > Cross-platform (Linux, Windows, macOS). GPL-2.0-only, zero telemetry, no Nexus API key.
-> Skyrim Special Edition and Subnautica ship built-in. More games install from the community registry.
+> 86 games ship built-in (ported from Vortex) - Bethesda/Gamebryo, Unity (BepInEx/UMM), and many more. Further games install from the community registry.
 > Windows builds update themselves through GitHub Releases.
 
 ---
@@ -58,7 +58,7 @@ Five invariants are enforced by tests: reversibility, idempotence, no-silent-clo
 
 Modrix has no game-specific logic baked into the engine. A game is a declarative `game.toml` (`api_version = 2`) that describes its capabilities: the load-order strategy, content directories, base files, external scans, and health checks. Frontends light up features based on `Engine::capabilities(game)`, so Subnautica (which has no plugin load order) simply hides the Load Order tab. Games that need real logic can add a sandboxed `game.lua`; most do not.
 
-Skyrim Special Edition and Subnautica (BepInEx) ship built-in. Everything else installs from the community plugin registry, verified by sha256.
+86 games ported from Vortex ship built-in - embedded at build time from `games/<id>/game.toml` (plus a `game.lua` for the few that need logic), so dropping in a new definition ships it with no code change. Further games install from the community plugin registry, verified by sha256.
 
 </details>
 
@@ -163,7 +163,7 @@ The binary is `modrix`. Everything the GUI can do is scriptable, and `--json` wr
 | Command | Description |
 |---|---|
 | `modrix game list` | List registered games |
-| `modrix game detect` | Probe Steam libraries for installed, supported games |
+| `modrix game detect` | Probe Steam (and, on Windows, GOG/Epic/Xbox/Origin/Uplay) for installed, supported games |
 | `modrix game add <def> <path>` | Register a game from a `game.toml` (or catalog id) at an install path |
 | `modrix game active` / `set-active` | Show or change the active game |
 | `modrix game capabilities` | Show what the active game's plugin enables |
@@ -214,10 +214,15 @@ The binary is `modrix`. Everything the GUI can do is scriptable, and `--json` wr
 
 ### Built-in
 
-| Game | Notes |
-|---|---|
-| The Elder Scrolls V: Skyrim Special Edition | Plugins.txt load order, SKSE health check, `.esp` sorting |
-| Subnautica | Unity plus BepInEx; mods deploy into the nested `BepInEx/plugins` mod root, no load-order file |
+**86 games**, ported from Vortex and embedded at build time (`games/<id>/game.toml`, plus a `game.lua` for the few that need dynamic logic). By family:
+
+| Family | Examples | Handling |
+|---|---|---|
+| Bethesda / Gamebryo | Skyrim SE, Fallout 4, Oblivion, Morrowind, Starfield | `Data/` deploy, Plugins.txt load order, script-extender (SKSE/F4SE/…) health, `.esp/.esm/.esl` sorting |
+| Unity (BepInEx / UMM) | Subnautica, Bloodstained, Oxygen Not Included | mods deploy into the loader's plugin root; no load-order file |
+| Everything else | Grim Dawn, Cyberpunk 2077, The Witcher 3, Stardew Valley | drop-into-a-folder mod roots, per-game content and external-scan rules |
+
+Install detection covers Steam (cross-platform) plus GOG, Epic, Xbox, Origin and Uplay on Windows (registry / manifest reads, no store APIs). Reaching Vortex's full 250+ catalog is the community registry's job as more definitions are authored.
 
 ### GameDef v2 capabilities
 
@@ -230,6 +235,9 @@ A `games/<id>/game.toml` with `api_version = 2` declares everything the engine n
 | `base_files` | Vanilla files the game ships, so they are never flagged as leftovers |
 | `external_scan` | Ecosystems (SKSE, BepInEx) to scan for unmanaged content |
 | `health` | Loader and recommended-mod checks that only run when declared |
+| store ids + `registry_keys` | Detect installs from Steam / GOG / Epic / Xbox / Origin / Uplay and vendor registry keys |
+| `required_files` | Files that must exist for a detected or entered directory to be accepted as this game |
+| `mod_base` | Whether `mod_root` is anchored to the install dir (default) or the user profile - Documents / AppData, inside the Proton prefix on Linux (The Sims, Baldur's Gate 3, Factorio, …) |
 
 Add your own definitions at `<config>/games/<id>/game.toml`. When logic is required (rare), a sandboxed `game.lua` beside it returns a stage plan that core validates and applies. Plugins never write files directly.
 

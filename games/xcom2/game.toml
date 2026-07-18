@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# XCOM 2 - mods deploy into XComGame/Mods (each mod is a folder containing a
+# <name>.XComMod descriptor). Ported from Vortex's game-xcom2. The War of the
+# Chosen edition is a separate Vortex game and is not modelled here. Vortex's
+# ActiveMods ordering (DefaultModOptions.ini) is not a plugins.txt scheme, so
+# load_order is omitted.
+api_version    = 2
+id             = "xcom2"
+name           = "XCOM 2"
+steam_appid    = 268500
+gog_id         = "1482002159"
+epic_id        = "3be3c4d681bc46b3b8b26c5df3ae0a18"
+nexus_domain   = "xcom2"
+mod_root       = "XComGame/Mods"
+deploy         = "link"
+install_probe  = ["steam", "gog", "epic"]
+required_files = ["XComGame/CookedPCConsole/3DUIBP.upk"]
+
+# Hand-installed mods are folders (each holding a <name>.XComMod) in the Mods dir.
+[[external_scan]]
+kind  = "folder"
+label = "mod"
+dir   = ""

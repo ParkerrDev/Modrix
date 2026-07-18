@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Monster Hunter: World - Capcom. Ported from Vortex's
+# game-monster-hunter-world (Vortex game id "monsterhunterworld"). Mods deploy
+# into nativePC/; a redundant top-level nativePC/ wrapper inside an archive is
+# stripped during normalization, matching Vortex's installer. Stracker's Loader
+# is a manual prerequisite for most mods (Vortex only warns), so no health check
+# is modeled here.
+api_version    = 2
+id             = "monster-hunter-world"
+name           = "Monster Hunter: World"
+steam_appid    = 582010
+nexus_domain   = "monsterhunterworld"
+mod_root       = "nativePC"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["MonsterHunterWorld.exe"]

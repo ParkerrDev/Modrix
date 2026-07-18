@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Resident Evil 2 (2019) - RE Engine. Ported from Vortex's game-re2remake, which
+# is only a game STUB (Vortex downloads the full extension the first time the
+# game is managed), so it declares no store id and only queryModPath: () => ".".
+# Mods (REFramework / dinput8 loaders and .pak archives) drop into the install
+# root, so mod_root is the install root. No load-order file.
+#
+# CAVEAT: steam_appid is NOT present in the Vortex stub; 883710 is the
+# well-known Steam AppID for RE2 (2019), supplied for detection - flagged.
+api_version   = 2
+id            = "re2remake"
+name          = "Resident Evil 2 (2019)"
+steam_appid   = 883710
+nexus_domain  = "residentevil22019"
+mod_root      = ""
+deploy        = "link"
+install_probe = ["steam"]

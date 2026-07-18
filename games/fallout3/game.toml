@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Fallout 3 - Bethesda/Gamebryo (Gamebryo engine). Ported from Vortex's
+# game-fallout3. Mods deploy into Data/, load order lives in Plugins.txt under
+# local app data, and FOSE is the script extender.
+api_version    = 2
+id             = "fallout3"
+name           = "Fallout 3"
+steam_appid    = 22300
+gog_id         = "1454315831"
+epic_id        = "adeae8bbfc94427db57c7dfecce3f1d4"
+xbox_id        = "BethesdaSoftworks.Fallout3"
+nexus_domain   = "fallout3"
+mod_root       = "Data"
+deploy         = "link"
+install_probe  = ["steam", "gog", "epic", "xbox", "registry"]
+required_files = ["Data/fallout3.esm"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Fallout3"
+value = "Installed Path"
+
+content_dirs = [
+  "meshes", "textures", "scripts", "interface", "sound", "music", "video",
+  "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
+  "facegen", "distantlod", "trees", "mcm", "skse", "f4se", "nvse", "obse",
+  "fose", "sfse", "fomod",
+]
+
+base_files = [
+  "fallout3.esm", "anchorage.esm", "thepitt.esm", "brokensteel.esm",
+  "pointlookout.esm", "zeta.esm",
+]
+
+[load_order]
+strategy    = "plugins_txt"
+appdata_dir = "Fallout3"
+
+[[external_scan]]
+kind      = "file"
+label     = "plugin"
+exts      = ["esp", "esm"]
+skip_base = true
+
+[[external_scan]]
+kind  = "file"
+label = "FOSE plugin"
+dir   = "FOSE/Plugins"
+exts  = ["dll"]
+
+[health.loader]
+plugins_dir = "FOSE/Plugins"
+root_prefix = "fose"
+message     = "FOSE plugins are installed but the FOSE loader is missing - install Fallout Script Extender (FOSE)"

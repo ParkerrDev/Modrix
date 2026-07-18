@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# X4: Foundations - mods deploy into the extensions/ folder (Vortex queryModPath
+# resolves to the constant "extensions"; the secondary documents-based mod type
+# is not modelled). Ported from Vortex's game-x4foundations. GOG installs are
+# discovered via the GOG.com registry key.
+api_version    = 2
+id             = "x4foundations"
+name           = "X4: Foundations"
+steam_appid    = 392160
+gog_id         = "1395669635"
+nexus_domain   = "x4foundations"
+mod_root       = "extensions"
+deploy         = "link"
+install_probe  = ["steam", "gog", "registry"]
+required_files = ["X4.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1395669635"
+value = "PATH"
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\GOG.com\\Games\\1395669635"
+value = "PATH"
+
+# Hand-installed mods are extension folders (each with a content.xml) in
+# extensions/.
+[[external_scan]]
+kind  = "folder"
+label = "extension"
+dir   = ""

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Neverwinter Nights - BioWare. Ported from Vortex's game-neverwinter-nights.
+# This maps the original NWN (Vortex game id "nwn", nexus domain "neverwinter"):
+# mods deploy into the game root and are sorted into the game's content folders
+# (hak/, tlk/, modules/, override/, ...) by file extension. game.lua reproduces
+# Vortex's per-extension installer; archives that already ship a recognised
+# folder layout fall through to default normalization (their content folders are
+# preserved by content_dirs below).
+#
+# Note: Vortex also registers NWN: Enhanced Edition (Steam 704450), whose mod
+# path is the user's Documents folder - outside the install and not expressible
+# as an install-relative mod_root - so this file targets the base game, which
+# deploys into the install itself.
+api_version    = 2
+id             = "neverwinter-nights"
+name           = "Neverwinter Nights"
+nexus_domain   = "neverwinter"
+mod_root       = ""
+deploy         = "link"
+install_probe  = ["registry"]
+required_files = ["nwmain.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bioware\\NWN\\Neverwinter"
+value = "Location"
+
+# The moddable content folders - kept intact when an archive already ships them.
+content_dirs = [
+  "ambient", "database", "development", "dmvault", "hak", "localvault", "logs",
+  "modules", "movies", "music", "nwsync", "override", "portraits", "servervault",
+  "tempclient", "tlk", "erf", "fomod",
+]

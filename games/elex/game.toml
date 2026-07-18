@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Elex - Genome engine (Piranha Bytes). Ported from Vortex's game-elex. Mods are
+# .pak archives that deploy into the install's data/packed/ folder.
+api_version    = 2
+id             = "elex"
+name           = "Elex"
+steam_appid    = 411300
+nexus_domain   = "elex"
+mod_root       = "data/packed"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["system/ELEX.exe"]
+
+# Hand-installed mods are loose .pak files in data/packed/; the base game ships
+# its own packs there, so this only reports .pak files as candidate mods.
+[[external_scan]]
+kind  = "file"
+label = "pak"
+dir   = ""
+exts  = ["pak"]

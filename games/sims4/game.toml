@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# The Sims 4 - ported from Vortex's game-sims4.
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+#
+# NOTE ON DISCOVERY: Vortex discovers The Sims 4 only via the Windows Maxis
+# registry key (no steamAppId in the extension), so no steam_appid is set.
+api_version   = 2
+id            = "sims4"
+name          = "The Sims 4"
+nexus_domain  = "thesims4"
+mod_root      = "Electronic Arts/The Sims 4/Mods"
+mod_base      = "documents"
+deploy        = "link"
+install_probe = ["registry"]
+required_files = ["game/bin/TS4_x64.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\Maxis\\The Sims 4"
+value = "Install Dir"

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Pathfinder: Kingmaker - a Unity title modded through Unity Mod Manager (UMM).
+# Ported from Vortex's game-pathfinderkingmaker. Mods deploy as folders into the
+# "Mods" directory; UMM (a manual prerequisite) loads them. No load-order file.
+api_version    = 2
+id             = "pathfinderkingmaker"
+name           = "Pathfinder: Kingmaker"
+steam_appid    = 640820
+nexus_domain   = "pathfinderkingmaker"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["Kingmaker.exe"]
+
+# Hand-installed UMM mods are folders (each ships an Info.json) in the Mods dir.
+[[external_scan]]
+kind  = "folder"
+label = "UMM mod"
+dir   = ""

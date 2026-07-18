@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Fallout: New Vegas - Bethesda/Gamebryo (Gamebryo engine). Ported from Vortex's
+# game-falloutnv. Mods deploy into Data/, load order lives in Plugins.txt under
+# local app data, and NVSE is the script extender.
+api_version    = 2
+id             = "falloutnv"
+name           = "Fallout: New Vegas"
+steam_appid    = 22380
+gog_id         = "1454587428"
+epic_id        = "5daeb974a22a435988892319b3a4f476"
+xbox_id        = "BethesdaSoftworks.FalloutNewVegas"
+nexus_domain   = "newvegas"
+mod_root       = "Data"
+deploy         = "link"
+install_probe  = ["steam", "gog", "epic", "xbox", "registry"]
+required_files = ["FalloutNV.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\falloutnv"
+value = "Installed Path"
+
+content_dirs = [
+  "meshes", "textures", "scripts", "interface", "sound", "music", "video",
+  "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
+  "facegen", "distantlod", "trees", "mcm", "skse", "f4se", "nvse", "obse",
+  "fose", "sfse", "fomod",
+]
+
+base_files = [
+  "falloutnv.esm", "deadmoney.esm", "honesthearts.esm", "oldworldblues.esm",
+  "lonesomeroad.esm", "gunrunnersarsenal.esm", "*pack.esm",
+]
+
+[load_order]
+strategy    = "plugins_txt"
+appdata_dir = "FalloutNV"
+
+[[external_scan]]
+kind      = "file"
+label     = "plugin"
+exts      = ["esp", "esm"]
+skip_base = true
+
+[[external_scan]]
+kind  = "file"
+label = "NVSE plugin"
+dir   = "NVSE/Plugins"
+exts  = ["dll"]
+
+[health.loader]
+plugins_dir = "NVSE/Plugins"
+root_prefix = "nvse"
+message     = "NVSE plugins are installed but the NVSE loader is missing - install New Vegas Script Extender (NVSE)"

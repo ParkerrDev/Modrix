@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Dragon's Dogma: Dark Arisen - MT Framework engine. Ported from Vortex's
+# game-dragons-dogma. Mods deploy into the install's nativePC/ folder; a typical
+# mod archive ships the engine content dirs (rom/, sound/, ...) at its root.
+# Vortex's id is "dragonsdogma" (the Nexus domain); this def's id matches the
+# folder slug per Modrix's rule.
+api_version    = 2
+id             = "dragons-dogma"
+name           = "Dragon's Dogma: Dark Arisen"
+steam_appid    = 367500
+nexus_domain   = "dragonsdogma"
+mod_root       = "nativePC"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["DDDA.exe"]
+
+# Engine content dirs that appear at a mod archive root - never a packaging
+# wrapper to hoist away. Taken from Vortex's valid-mod-layout check.
+content_dirs = [
+  "rom", "movie", "sa", "sound", "system", "tgs", "usershader", "usertexture",
+  "fomod",
+]

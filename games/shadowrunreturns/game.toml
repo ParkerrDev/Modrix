@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Shadowrun Returns - a Unity title. Ported from Vortex's game-shadowrunreturns.
+# Mods are content packs, each its own folder under the game's ContentPacks
+# directory (Vortex does not merge them). No external load-order file.
+api_version    = 2
+id             = "shadowrunreturns"
+name           = "Shadowrun Returns"
+steam_appid    = 234650
+nexus_domain   = "shadowrunreturns"
+mod_root       = "Shadowrun_Data/StreamingAssets/ContentPacks"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["Shadowrun.exe"]
+
+# Hand-installed mods are content-pack folders under ContentPacks/.
+[[external_scan]]
+kind  = "folder"
+label = "content pack"
+dir   = ""

@@ -20,6 +20,12 @@ sha2.workspace = true
 zip.workspace = true
 flate2.workspace = true
 
+# Non-Steam store detection reads the Windows registry; the crate is only
+# pulled in on Windows targets (other platforms have no registry to read and
+# fall through to `None`).
+[target.'cfg(windows)'.dependencies]
+winreg.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 proptest.workspace = true

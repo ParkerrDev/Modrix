@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Dragon Age: Origins - BioWare (Eclipse engine). Ported from Vortex's
+# game-dragonage. Vortex additionally uses a .dazip mod type and merges an
+# AddIns.xml manifest - neither of which GameDef v2 models; only the loose
+# "override" content path is represented here.
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+api_version    = 2
+id             = "dragonage"
+name           = "Dragon Age: Origins"
+steam_appid    = 17450
+nexus_domain   = "dragonage"
+mod_root       = "BioWare/Dragon Age/packages/core/override"
+mod_base       = "documents"
+deploy         = "link"
+install_probe  = ["steam", "registry"]
+required_files = ["bin_ship/daorigins.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\BioWare\\Dragon Age"
+value = "Path"

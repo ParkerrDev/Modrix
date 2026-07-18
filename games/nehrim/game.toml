@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Nehrim: At Fate's Edge - SureAI. A standalone Oblivion-engine total
+# conversion; ported from Vortex's game-nehrim. Mods deploy into data/; OBSE is
+# the script extender. Nehrim has no Plugins.txt load order (omitted, as in
+# Vortex). Vortex flags this game as symlink-averse; Modrix's "link" prefers
+# transparent hardlinks and only falls back to symlink cross-device, so it is
+# kept here.
+api_version    = 2
+id             = "nehrim"
+name           = "Nehrim: At Fate's Edge"
+steam_appid    = 1750901
+nexus_domain   = "nehrim"
+mod_root       = "data"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["NehrimLauncher.exe", "Oblivion.exe"]
+
+content_dirs = [
+  "meshes", "textures", "scripts", "interface", "sound", "music", "video",
+  "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
+  "facegen", "distantlod", "trees", "mcm", "skse", "f4se", "nvse", "obse",
+  "fose", "sfse", "fomod",
+]
+
+base_files = ["nehrim.esm", "oblivion.esm"]
+
+# Hand-installed mods appear as loose plugins in data/ ...
+[[external_scan]]
+kind      = "file"
+label     = "plugin"
+exts      = ["esp", "esm"]
+skip_base = true
+
+# ... or as OBSE plugin DLLs (the base game ships no OBSE directory).
+[[external_scan]]
+kind  = "file"
+label = "OBSE plugin"
+dir   = "OBSE/Plugins"
+exts  = ["dll"]
+
+[health.loader]
+plugins_dir = "OBSE/Plugins"
+root_prefix = "obse"
+message     = "OBSE plugins are installed but the OBSE loader is missing - install Oblivion Script Extender"

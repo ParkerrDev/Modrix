@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Team Fortress 2 - Source engine. Ported from Vortex's game-teamfortress2.
+# Mods are .vpk files that deploy into the tf/custom folder.
+api_version    = 2
+id             = "teamfortress2"
+name           = "Team Fortress 2"
+steam_appid    = 440
+nexus_domain   = "teamfortress2"
+mod_root       = "tf/custom"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["tf_win64.exe", "tf/gameinfo.txt"]

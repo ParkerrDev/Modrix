@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Fallout 4 VR - Bethesda/Gamebryo (Creation Engine). Ported from Vortex's
+# game-fallout4vr. Mods deploy into Data/, load order lives in Plugins.txt under
+# local app data, and F4SEVR is the script extender. Shares Nexus content with
+# fallout4 (nexusPageId "fallout4").
+api_version    = 2
+id             = "fallout4vr"
+name           = "Fallout 4 VR"
+steam_appid    = 611660
+nexus_domain   = "fallout4"
+mod_root       = "Data"
+deploy         = "link"
+install_probe  = ["steam", "registry"]
+required_files = ["Fallout4VR.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Fallout 4 VR"
+value = "Installed Path"
+
+content_dirs = [
+  "meshes", "textures", "scripts", "interface", "sound", "music", "video",
+  "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
+  "facegen", "distantlod", "trees", "mcm", "skse", "f4se", "nvse", "obse",
+  "fose", "sfse", "vis", "fomod",
+]
+
+base_files = [
+  "fallout4.esm", "dlcrobot.esm", "dlcworkshop01.esm", "dlccoast.esm",
+  "dlcworkshop02.esm", "dlcworkshop03.esm", "dlcnukaworld.esm",
+]
+
+[load_order]
+strategy    = "plugins_txt"
+appdata_dir = "Fallout4VR"
+
+[[external_scan]]
+kind      = "file"
+label     = "plugin"
+exts      = ["esp", "esm", "esl"]
+skip_base = true
+
+[[external_scan]]
+kind  = "file"
+label = "F4SE plugin"
+dir   = "F4SE/Plugins"
+exts  = ["dll"]
+
+[health.loader]
+plugins_dir = "F4SE/Plugins"
+root_prefix = "f4se"
+message     = "F4SE plugins are installed but the F4SE VR loader is missing - install Fallout 4 VR Script Extender (F4SEVR)"

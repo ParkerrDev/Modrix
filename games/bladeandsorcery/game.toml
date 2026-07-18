@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Blade & Sorcery - Unity VR title. Mods are folders (each with a manifest.json)
+# deployed into BladeAndSorcery_Data/StreamingAssets/Mods. Ported from Vortex's
+# game-bladeandsorcery.
+#
+# This game uses its own mod loader (StreamingAssets/Mods with manifest.json),
+# not BepInEx. Load order lives in a loadorder.json the game reads; that is not a
+# Bethesda-style Plugins.txt, so no `load_order` strategy is declared.
+api_version    = 2
+id             = "bladeandsorcery"
+name           = "Blade & Sorcery"
+steam_appid    = 629730
+nexus_domain   = "bladeandsorcery"
+mod_root       = "BladeAndSorcery_Data/StreamingAssets/Mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["BladeAndSorcery.exe"]
+
+# Hand-installed mods are folders in the Mods directory.
+[[external_scan]]
+kind  = "folder"
+label = "mod"
+dir   = ""

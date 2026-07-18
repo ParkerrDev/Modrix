@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# State of Decay (Year-One / original) - ported from Vortex's game-stateofdecay.
+# Mods deploy into the game/ folder.
+api_version    = 2
+id             = "stateofdecay"
+name           = "State of Decay"
+steam_appid    = 241540
+nexus_domain   = "stateofdecay"
+mod_root       = "game"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["StateOfDecay.exe"]

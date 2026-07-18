@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Daggerfall Unity - the free, open-source Unity remake of Daggerfall. Ported
+# from Vortex's game-daggerfallunity.
+#
+# Mods are .dfmod asset bundles loaded from DaggerfallUnity_Data/StreamingAssets/
+# Mods, which is why mod_root points there (Vortex's installer explicitly routes
+# every .dfmod into that Mods subfolder). The extension only supports archives
+# that contain at least one .dfmod, so the Mods directory is the correct target.
+#
+# NOTE: Daggerfall Unity is distributed free (not via a store), so it has no
+# steam/gog/etc. id and no store install-probe; discovery is manual. Flagged.
+api_version    = 2
+id             = "daggerfallunity"
+name           = "Daggerfall Unity"
+nexus_domain   = "daggerfallunity"
+mod_root       = "DaggerfallUnity_Data/StreamingAssets/Mods"
+deploy         = "link"
+required_files = ["DaggerfallUnity.exe"]
+
+# Hand-installed mods are loose .dfmod asset bundles in the Mods directory.
+[[external_scan]]
+kind  = "file"
+label = "dfmod"
+dir   = ""
+exts  = ["dfmod"]

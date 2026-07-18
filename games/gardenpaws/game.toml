@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Garden Paws - a Unity title modded through Unity Mod Manager (UMM). Ported
+# from Vortex's game-gardenpaws. UMM mods deploy into the install's Mods/ folder;
+# the UMM loader itself is a manual prerequisite (Vortex prompts to install it).
+api_version    = 2
+id             = "gardenpaws"
+name           = "Garden Paws"
+steam_appid    = 840010
+nexus_domain   = "gardenpaws"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["GardenPaws.exe"]
+
+# Each hand-installed UMM mod is a self-contained folder in the Mods/ directory;
+# the base game ships nothing there.
+[[external_scan]]
+kind  = "folder"
+label = "UMM mod"
+dir   = ""

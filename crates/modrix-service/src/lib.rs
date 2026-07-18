@@ -426,7 +426,8 @@ fn nexus_domain_from_url(url: &str) -> Option<String> {
 pub fn present_files(engine: &Engine, game: GameId) -> modrix_plugin::fomod::Present {
     let mut present = modrix_plugin::fomod::Present::new();
     if let Ok(g) = engine.game(game)
-        && let Ok(entries) = std::fs::read_dir(g.deploy_target_root())
+        && let Some(root) = modrix_core::roots::deploy_root(&g)
+        && let Ok(entries) = std::fs::read_dir(root)
     {
         for entry in entries.flatten() {
             present.insert(entry.file_name().to_string_lossy().to_ascii_lowercase());

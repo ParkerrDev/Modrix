@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# The Elder Scrolls IV: Oblivion - Bethesda/Gamebryo. Ported from Vortex's
+# game-oblivion. Mods deploy into Data/, load order lives in Plugins.txt under
+# local app data, and OBSE is the script extender.
+api_version    = 2
+id             = "oblivion"
+name           = "The Elder Scrolls IV: Oblivion"
+steam_appid    = 22330
+gog_id         = "1458058109"
+xbox_id        = "BethesdaSoftworks.TESOblivion-PC"
+nexus_domain   = "oblivion"
+mod_root       = "Data"
+deploy         = "link"
+install_probe  = ["steam", "gog", "xbox", "registry"]
+required_files = ["Oblivion.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\oblivion"
+value = "Installed Path"
+
+content_dirs = [
+  "meshes", "textures", "scripts", "interface", "sound", "music", "video",
+  "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
+  "facegen", "distantlod", "trees", "mcm", "skse", "f4se", "nvse", "obse",
+  "fose", "sfse", "fomod",
+]
+
+base_files = ["oblivion.esm", "dlcshiveringisles.esp", "knights.esp", "dlc*"]
+
+[load_order]
+strategy    = "plugins_txt"
+appdata_dir = "Oblivion"
+
+[[external_scan]]
+kind      = "file"
+label     = "plugin"
+exts      = ["esp", "esm", "esl"]
+skip_base = true
+
+[[external_scan]]
+kind  = "file"
+label = "OBSE plugin"
+dir   = "OBSE/Plugins"
+exts  = ["dll"]
+
+[health.loader]
+plugins_dir = "OBSE/Plugins"
+root_prefix = "obse"
+message     = "OBSE plugins are installed but the OBSE loader is missing - install Oblivion Script Extender"

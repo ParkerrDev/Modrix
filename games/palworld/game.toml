@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Palworld - Unreal Engine. Ported from Vortex's game-palworld, which is only a
+# game STUB (Vortex downloads the full extension the first time the game is
+# managed), so it declares no store id and only queryModPath: () => ".". Mods
+# (pak files / UE4SS-style loaders) drop into the install root, so mod_root is
+# the install root. No load-order file.
+#
+# CAVEAT: steam_appid is NOT present in the Vortex stub; 1623730 is Palworld's
+# well-known Steam AppID, supplied so the game can be detected - flagged.
+api_version   = 2
+id            = "palworld"
+name          = "Palworld"
+steam_appid   = 1623730
+nexus_domain  = "palworld"
+mod_root      = ""
+deploy        = "link"
+install_probe = ["steam"]

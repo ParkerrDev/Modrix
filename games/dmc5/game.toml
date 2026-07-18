@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Devil May Cry 5 - RE Engine. Ported from Vortex's game-dmc5, which is a game
+# *stub* (registerGameStub): it carries no queryPath, no store id, and no
+# required files - Vortex only knows how to route downloads for it, not how to
+# discover an install. Mods deploy at the install root (Vortex queryModPath ".").
+#
+# Vortex's id is "devilmaycry5" (the Nexus domain); this def's id matches the
+# folder slug per Modrix's rule. steam_appid is NOT in the Vortex source - the
+# well-known DMC5 Steam appid (601150) is supplied so the game can be detected;
+# flagged as an addition, not a port.
+api_version   = 2
+id            = "dmc5"
+name          = "Devil May Cry 5"
+steam_appid   = 601150
+nexus_domain  = "devilmaycry5"
+mod_root      = ""
+deploy        = "link"
+install_probe = ["steam"]

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Divinity: Original Sin 2 (Original Edition) - Larian's engine. Ported from
+# Vortex's game-divinityoriginalsin2. Mods are .pak files.
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+api_version    = 2
+id             = "divinityoriginalsin2"
+name           = "Divinity: Original Sin 2"
+steam_appid    = 435150
+gog_id         = "1584823040"
+nexus_domain   = "divinityoriginalsin2"
+mod_root       = "Larian Studios/Divinity Original Sin 2 Definitive Edition/Mods"
+mod_base       = "documents"
+deploy         = "link"
+install_probe  = ["steam", "gog", "registry"]
+required_files = ["bin/SupportTool.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1584823040"
+value = "path"

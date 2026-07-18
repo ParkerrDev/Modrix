@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Cyberpunk 2077 - CD Projekt Red / REDengine. Ported from Vortex's
+# game-cyberpunk2077, which ships only as a stub (the full extension is fetched
+# on demand). Mods deploy at the game install root ("." in Vortex).
+#
+# NOTE: the Vortex stub carries no store id; steam_appid below is the well-known
+# Steam AppID for the game (best guess, flagged). The game is also on GOG
+# (1423049311) and Epic, omitted here since the stub did not declare them.
+api_version    = 2
+id             = "cyberpunk2077"
+name           = "Cyberpunk 2077"
+steam_appid    = 1091500
+nexus_domain   = "cyberpunk2077"
+mod_root       = ""
+deploy         = "link"
+install_probe  = ["steam"]

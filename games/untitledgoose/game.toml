@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Untitled Goose Game - a Unity title modded through BepInEx. Ported from
+# Vortex's game-untitledgoose (Vortex game id "untitledgoosegame"). Discovery is
+# Epic-only (app id "Flour"); mods deploy into BepInEx/plugins, which BepInEx
+# discovers by dependency order, so there is no plugins.txt / load_order.
+api_version    = 2
+id             = "untitledgoose"
+name           = "Untitled Goose Game"
+epic_id        = "Flour"
+nexus_domain   = "untitledgoosegame"
+mod_root       = "BepInEx/plugins"
+deploy         = "link"
+install_probe  = ["epic"]
+required_files = ["Untitled.exe"]
+
+# A lone BepInEx/ tree at an archive root is content, not a packaging wrapper.
+content_dirs = ["bepinex", "fomod"]
+
+# Hand-installed mods are folders in the plugin container (the deploy root).
+[[external_scan]]
+kind  = "folder"
+label = "BepInEx plugin"
+dir   = ""

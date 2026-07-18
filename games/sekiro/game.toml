@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Sekiro: Shadows Die Twice - a FromSoftware title modded through Sekiro Mod
+# Engine (a dinput8.dll shim at the game root, installed as a mod). Ported from
+# Vortex's game-sekiro. Mod Engine reads overrides from the "mods" folder, whose
+# subfolders are the game's asset categories (parts, chr, etc.). No load order.
+api_version    = 2
+id             = "sekiro"
+name           = "Sekiro: Shadows Die Twice"
+steam_appid    = 814380
+nexus_domain   = "sekiro"
+mod_root       = "mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["sekiro.exe"]
+
+# A lone asset-category tree (e.g. a bare `parts/`) at an archive root is mod
+# content, not a packaging wrapper - hoisting it would misplace the .dcx files.
+content_dirs = [
+  "parts", "chr", "obj", "map", "menu", "msg", "sfx", "sound", "event",
+  "script", "param", "font", "action", "fomod",
+]

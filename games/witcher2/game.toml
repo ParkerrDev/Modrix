@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# The Witcher 2: Assassins of Kings - mods deploy into CookedPC. Ported from
+# Vortex's game-witcher2 (discovered via CD Projekt Red's registry key).
+api_version    = 2
+id             = "witcher2"
+name           = "The Witcher 2"
+steam_appid    = 20920
+nexus_domain   = "witcher2"
+mod_root       = "CookedPC"
+deploy         = "link"
+install_probe  = ["registry", "steam"]
+required_files = ["bin/witcher2.exe", "bin/userContentManager.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "Software\\CD Project Red\\The Witcher 2"
+value = "InstallFolder"

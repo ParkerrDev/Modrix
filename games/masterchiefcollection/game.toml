@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Halo: The Master Chief Collection - 343 Industries. Ported from Vortex's
+# game-masterchiefcollection (Vortex game id "halothemasterchiefcollection").
+# Mods deploy into the game root.
+api_version    = 2
+id             = "masterchiefcollection"
+name           = "Halo: The Master Chief Collection"
+steam_appid    = 976730
+xbox_id        = "Microsoft.Chelan"
+nexus_domain   = "halothemasterchiefcollection"
+mod_root       = ""
+deploy         = "link"
+install_probe  = ["steam", "xbox"]
+required_files = ["mcclauncher.exe"]

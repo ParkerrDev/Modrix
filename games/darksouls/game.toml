@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Dark Souls: Prepare to Die Edition - texture and asset mods deploy through the
+# DSfix tool into DATA/dsfix/tex_override. Ported from Vortex's game-darksouls.
+#
+# DSfix is a required third-party prerequisite (Vortex prompts the user to
+# install it); it is not a mod Modrix manages.
+api_version    = 2
+id             = "darksouls"
+name           = "Dark Souls"
+steam_appid    = 211420
+nexus_domain   = "darksouls"
+mod_root       = "DATA/dsfix/tex_override"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["DATA/DARKSOULS.exe"]

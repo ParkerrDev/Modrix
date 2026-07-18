@@ -37,17 +37,64 @@ pub struct GameDef {
     /// incoming `nxm://` links to this game.
     #[serde(default)]
     pub nexus_domain: Option<String>,
+    /// GOG product id (the numeric `HKLM\…\GOG.com\Games\<id>` subkey), when
+    /// the game is on GOG. Used by the `gog` install probe.
+    #[serde(default)]
+    pub gog_id: Option<String>,
+    /// Epic Games Store `AppName` (the catalog codename in a `*.item`
+    /// manifest), when the game is on Epic. Used by the `epic` install probe.
+    #[serde(default)]
+    pub epic_id: Option<String>,
+    /// Xbox / Microsoft Store package identity name (the appid segment of a
+    /// package family name), when the game is on the Microsoft Store. Used by
+    /// the `xbox` install probe.
+    #[serde(default)]
+    pub xbox_id: Option<String>,
+    /// Origin / EA offer id (the `id=` field of a `.mfst` manifest), when the
+    /// game is on EA/Origin. Used by the `origin` install probe.
+    #[serde(default)]
+    pub origin_id: Option<String>,
+    /// Ubisoft Connect / Uplay install id (the `HKLM\…\Ubisoft\Launcher\
+    /// Installs\<id>` subkey), when the game is on Uplay. Used by the `uplay`
+    /// install probe.
+    #[serde(default)]
+    pub uplay_id: Option<String>,
     /// Where mods deploy, relative to the install path (e.g. `Data`). May be
-    /// empty to deploy at the install root.
+    /// empty to deploy at the install root. Interpreted relative to
+    /// [`GameDef::mod_base`].
     #[serde(default)]
     pub mod_root: String,
+    /// What `mod_root` is anchored to when resolving the deploy target:
+    /// `install` (default), `documents`, `local_appdata`, or `roaming_appdata`.
+    /// Non-install bases deploy into the user's profile folder rather than the
+    /// game directory - some games (The Sims, Dragon Age, Baldur's Gate 3,
+    /// Factorio, …) keep mods there. On Linux/macOS the base lives inside the
+    /// game's Proton prefix; on Windows it is the real user folder. Absent =
+    /// `install` (the game directory), byte-identical to pre-`mod_base` behavior.
+    #[serde(default)]
+    pub mod_base: Option<String>,
     /// Deploy strategy hint (`link` or `copy`); the applier always falls back
     /// link → copy, so this only forces copy when a game cannot tolerate links.
     #[serde(default)]
     pub deploy: Option<String>,
-    /// Ordered install-probe strategies (`steam`, `registry`, `path-hint`).
+    /// Ordered install-probe strategies, tried in order until one resolves an
+    /// existing directory: `steam`, `gog`, `epic`, `xbox`, `origin`, `uplay`,
+    /// `registry` (uses `registry_keys`), `path-hint`. Unknown/unimplemented
+    /// strategies are skipped cleanly so a later one still gets its turn.
     #[serde(default)]
     pub install_probe: Vec<String>,
+    /// Windows registry values that name an install directory, consulted by the
+    /// `registry` probe in order. Generalizes the vendor keys Bethesda, CD
+    /// Projekt, Maxis, etc. write (e.g. `Installed Path`). Windows-only; ignored
+    /// on other platforms. Empty = the `registry` probe finds nothing.
+    #[serde(default)]
+    pub registry_keys: Vec<RegistryKeyDef>,
+    /// Files (relative to the install directory) that must all exist for a
+    /// detected or manually-entered directory to be accepted as this game.
+    /// Disambiguates when a probe returns a plausible-but-wrong directory
+    /// (Vortex's `requiredFiles`). Empty = accept any directory a probe yields.
+    #[serde(default)]
+    pub required_files: Vec<String>,
     /// The game's load-order strategy, when it has one. v1 defs use a bare
     /// name (`"plugins_txt"`, parameters from a legacy preset); v2 defs use a
     /// table with explicit parameters. Absent = the game has no load-order
@@ -95,6 +142,21 @@ pub struct PluginsTxtDef {
     /// The game's folder under the user's local app data (e.g.
     /// `Skyrim Special Edition`), where `Plugins.txt` lives.
     pub appdata_dir: String,
+}
+
+/// A Windows registry value naming a game's install directory.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RegistryKeyDef {
+    /// The hive: `HKLM`, `HKCU`, `HKCR`, or `HKU`.
+    pub hive: String,
+    /// The key path under the hive (backslash-separated, no leading slash).
+    pub key: String,
+    /// The value name to read (its string data is the install directory).
+    pub value: String,
+    /// A subdirectory to append to the read path (e.g. some vendors point at a
+    /// parent). Empty = use the read path verbatim.
+    #[serde(default)]
+    pub subdir: String,
 }
 
 /// One external-mod detector: how hand-installed content appears on disk.
@@ -251,6 +313,27 @@ impl GameDef {
                 return Some("a `file` external_scan needs `exts`".to_owned());
             }
         }
+        if let Some(base) = &self.mod_base
+            && !matches!(
+                base.as_str(),
+                "install" | "documents" | "local_appdata" | "roaming_appdata"
+            )
+        {
+            return Some(format!(
+                "unknown mod_base `{base}` (install/documents/local_appdata/roaming_appdata)"
+            ));
+        }
+        for probe in &self.registry_keys {
+            if !matches!(probe.hive.as_str(), "HKLM" | "HKCU" | "HKCR" | "HKU") {
+                return Some(format!(
+                    "registry_keys hive `{}` is not HKLM/HKCU/HKCR/HKU",
+                    probe.hive
+                ));
+            }
+            if probe.key.trim().is_empty() || probe.value.trim().is_empty() {
+                return Some("a registry_keys entry needs a `key` and a `value`".to_owned());
+            }
+        }
         None
     }
 }
@@ -385,6 +468,39 @@ mod tests {
     }
 
     #[test]
+    fn parses_multi_store_identity_and_registry_probes() {
+        let text = r#"
+            api_version = 2
+            id = "witcher3"
+            name = "The Witcher 3"
+            steam_appid = 292030
+            gog_id = "1207664663"
+            epic_id = "cabe2a"
+            install_probe = ["steam", "gog", "epic", "registry"]
+            required_files = ["bin/x64/witcher3.exe"]
+
+            [[registry_keys]]
+            hive  = "HKLM"
+            key   = "SOFTWARE\\WOW6432Node\\CD Projekt Red\\The Witcher 3"
+            value = "InstallFolder"
+        "#;
+        let def = GameDef::from_toml_str(text, &inline()).unwrap();
+        assert_eq!(def.gog_id.as_deref(), Some("1207664663"));
+        assert_eq!(def.epic_id.as_deref(), Some("cabe2a"));
+        assert_eq!(def.required_files, vec!["bin/x64/witcher3.exe"]);
+        assert_eq!(def.registry_keys.len(), 1);
+        assert_eq!(def.registry_keys[0].hive, "HKLM");
+        assert_eq!(def.registry_keys[0].value, "InstallFolder");
+    }
+
+    #[test]
+    fn rejects_an_unknown_registry_hive() {
+        let text = "api_version = 2\nid = \"x\"\nname = \"X\"\n\
+                    [[registry_keys]]\nhive = \"HKWAT\"\nkey = \"a\\\\b\"\nvalue = \"Path\"\n";
+        assert!(GameDef::from_toml_str(text, &inline()).is_err());
+    }
+
+    #[test]
     fn rejects_a_bad_scan_kind() {
         let text = "api_version = 2\nid = \"x\"\nname = \"X\"\n\
                     [[external_scan]]\nkind = \"weird\"\nlabel = \"x\"\n";
@@ -407,5 +523,9 @@ mod tests {
         assert!(def.content_dirs.is_empty());
         assert!(def.external_scan.is_empty());
         assert!(def.health.is_none());
+        assert!(def.gog_id.is_none());
+        assert!(def.epic_id.is_none());
+        assert!(def.registry_keys.is_empty());
+        assert!(def.required_files.is_empty());
     }
 }

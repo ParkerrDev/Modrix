@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Darkest Dungeon - mods are folders (each usually with a project.xml) deployed
+# into the mods directory. Ported from Vortex's game-darkestdungeon.
+#
+# Vortex additionally generates/rewrites each mod's project.xml so the in-game
+# mod menu lists it; that cosmetic step is not reproduced here - mods still
+# deploy to the correct location. No load-order file.
+api_version    = 2
+id             = "darkestdungeon"
+name           = "Darkest Dungeon"
+steam_appid    = 262060
+gog_id         = "1450711444"
+epic_id        = "36cbf259e631478eaac6ea244e55a709"
+nexus_domain   = "darkestdungeon"
+mod_root       = "mods"
+deploy         = "link"
+install_probe  = ["steam", "gog", "epic", "registry"]
+required_files = ["_windowsnosteam/win64/Darkest.exe"]
+
+# GOG writes the install directory to one of these registry values.
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1450711444"
+value = "PATH"
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\GOG.com\\Games\\1450711444"
+value = "PATH"
+
+# Hand-installed mods are folders in the mods directory.
+[[external_scan]]
+kind  = "folder"
+label = "mod"
+dir   = ""

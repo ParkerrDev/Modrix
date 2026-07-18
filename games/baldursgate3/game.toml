@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Baldur's Gate 3 - Larian's Divinity engine. Ported from Vortex's
+# game-baldursgate3.
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+api_version    = 2
+id             = "baldursgate3"
+name           = "Baldur's Gate 3"
+steam_appid    = 1086940
+gog_id         = "1456460669"
+nexus_domain   = "baldursgate3"
+mod_root       = "Larian Studios/Baldur's Gate 3/Mods"
+mod_base       = "local_appdata"
+deploy         = "link"
+install_probe  = ["steam", "gog"]
+required_files = ["bin/bg3_dx11.exe"]

@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Vampire: The Masquerade - Bloodlines. Ported from Vortex's game-vtmbloodlines
+# (Vortex game id "vampirebloodlines"). Mods deploy into the Vampire/ folder;
+# GOG installs are discovered via the GOG.com registry key.
+api_version    = 2
+id             = "vtmbloodlines"
+name           = "Vampire: The Masquerade - Bloodlines"
+steam_appid    = 2600
+gog_id         = "1207659240"
+nexus_domain   = "vampirebloodlines"
+mod_root       = "Vampire"
+deploy         = "link"
+install_probe  = ["steam", "gog", "registry"]
+required_files = ["Vampire.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1207659240"
+value = "PATH"
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\GOG.com\\Games\\1207659240"
+value = "PATH"

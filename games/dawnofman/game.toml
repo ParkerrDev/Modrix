@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Dawn of Man - a Unity title modded through Unity Mod Manager (UMM). Ported
+# from Vortex's game-dawnofman. UMM mods deploy into the install's Mods/ folder;
+# the UMM loader itself is a manual prerequisite (Vortex prompts to install it).
+#
+# Vortex also registers a second "scenario" mod type that deploys .scn.xml packs
+# into the user's Documents/DawnOfMan/Scenarios folder - that target lives
+# outside the install dir and is not expressible in GameDef v2, so only the main
+# UMM mod path is modelled here.
+api_version    = 2
+id             = "dawnofman"
+name           = "Dawn of Man"
+steam_appid    = 858810
+gog_id         = "1899257943"
+nexus_domain   = "dawnofman"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["steam", "gog"]
+required_files = ["DawnOfMan.exe"]
+
+# Each hand-installed UMM mod is a self-contained folder (with an Info.json) in
+# the Mods/ directory; the base game ships nothing there.
+[[external_scan]]
+kind  = "folder"
+label = "UMM mod"
+dir   = ""

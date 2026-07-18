@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# BattleTech - Unity game modded via ModTek. Mods are folders (each with a
+# mod.json) that the loader reads from <install>/Mods. Ported from Vortex's
+# game-battletech.
+#
+# NOTE ON mod_root: Vortex's queryModPath pointed at a per-user Documents path
+# (Documents/My Games/BattleTech/mods), but its setup step creates <install>/Mods
+# and ModTek loads from <install>/Mods, so the in-install "Mods" folder used here
+# is the loader-correct location. Flagged as a best guess if a build ever expects
+# the Documents path instead.
+api_version    = 2
+id             = "battletech"
+name           = "BattleTech"
+steam_appid    = 637090
+nexus_domain   = "battletech"
+mod_root       = "Mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["BattleTech.exe", "BattleTechLauncher.exe"]
+
+# Hand-installed mods are folders in the Mods directory.
+[[external_scan]]
+kind  = "folder"
+label = "mod"
+dir   = ""

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Conan Exiles - Unreal Engine 4 title. Mods are .pak files dropped into
+# ConanSandbox/Mods. Ported from Vortex's game-conanexiles.
+#
+# Load order is written to ConanSandbox/Mods/modlist.txt (a list of .pak paths),
+# not a Bethesda-style Plugins.txt, so no `load_order` strategy is declared.
+api_version    = 2
+id             = "conanexiles"
+name           = "Conan Exiles"
+steam_appid    = 440900
+nexus_domain   = "conanexiles"
+mod_root       = "ConanSandbox/Mods"
+deploy         = "link"
+install_probe  = ["steam"]
+required_files = ["ConanSandbox.exe"]
+
+# Hand-installed mods are loose .pak files in the Mods directory.
+[[external_scan]]
+kind  = "file"
+label = "pak mod"
+dir   = ""
+exts  = ["pak"]

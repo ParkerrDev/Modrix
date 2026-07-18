@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# The Sims 3 - ported from Vortex's game-sims3.
+#
+# Mods deploy to the user profile (mod_base) rather than the install dir; on
+# Linux this is inside the game's Proton prefix.
+api_version    = 2
+id             = "sims3"
+name           = "The Sims 3"
+steam_appid    = 47890
+nexus_domain   = "thesims3"
+mod_root       = "Electronic Arts/The Sims 3/Mods/Packages"
+mod_base       = "documents"
+deploy         = "link"
+install_probe  = ["steam", "registry"]
+required_files = ["game/bin/TS3.exe"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Sims\\The Sims 3"
+value = "Install Dir"

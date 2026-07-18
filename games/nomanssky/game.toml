@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# No Man's Sky - a Unity-ish custom engine. Ported from Vortex's game-nomanssky.
+# Mods are .pak archives dropped into GAMEDATA/MODS; the game reads them once
+# ENABLEMODS.TXT exists (Vortex renames DISABLEMODS.TXT on setup). No load-order
+# file - the engine merges the PAKs directly.
+api_version    = 2
+id             = "nomanssky"
+name           = "No Man's Sky"
+steam_appid    = 275850
+xbox_id        = "HelloGames.NoMansSky"
+nexus_domain   = "nomanssky"
+mod_root       = "GAMEDATA/MODS"
+deploy         = "link"
+install_probe  = ["steam", "xbox"]
+required_files = ["Binaries/NMS.exe"]
+
+# Hand-installed mods are loose .pak files in the MODS directory.
+[[external_scan]]
+kind  = "file"
+label = "PAK mod"
+dir   = ""
+exts  = ["pak"]
