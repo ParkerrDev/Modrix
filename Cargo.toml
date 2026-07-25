@@ -8,7 +8,7 @@ members = ["crates/*"]
 # About card, `modrix --version`), and the in-app updater compares it to the
 # latest GitHub release tag. The Release workflow re-stamps this from the pushed
 # `v*` tag, so a tag is always authoritative and code/About/release stay in sync.
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 edition = "2024"
 rust-version = "1.96"
 license = "GPL-2.0-only"

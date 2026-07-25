@@ -2868,7 +2868,7 @@ dependencies = [
 
 [[package]]
 name = "modrix-cli"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -2888,7 +2888,7 @@ dependencies = [
 
 [[package]]
 name = "modrix-core"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "directories",
  "flate2",
@@ -2907,7 +2907,7 @@ dependencies = [
 
 [[package]]
 name = "modrix-download"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "http-body-util",
  "hyper",
@@ -2930,7 +2930,7 @@ dependencies = [
 
 [[package]]
 name = "modrix-gui"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "iced",
  "image",
@@ -2950,7 +2950,7 @@ dependencies = [
 
 [[package]]
 name = "modrix-ipc"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "getrandom 0.3.4",
  "serde",
@@ -2962,7 +2962,7 @@ dependencies = [
 
 [[package]]
 name = "modrix-mcp"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "modrix-core",
  "modrix-ipc",
@@ -2978,7 +2978,7 @@ dependencies = [
 
 [[package]]
 name = "modrix-plugin"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "mlua",
  "modrix-core",
@@ -2990,7 +2990,7 @@ dependencies = [
 
 [[package]]
 name = "modrix-protocol"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "anyhow",
  "modrix-core",
@@ -3000,7 +3000,7 @@ dependencies = [
 
 [[package]]
 name = "modrix-registry"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "modrix-core",
  "modrix-download",
@@ -3016,7 +3016,7 @@ dependencies = [
 
 [[package]]
 name = "modrix-service"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "anyhow",
  "modrix-core",
@@ -3030,11 +3030,11 @@ dependencies = [
 
 [[package]]
 name = "modrix-tui"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 
 [[package]]
 name = "modrix-update"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "modrix-download",
  "semver",
