@@ -1,6 +1,9 @@
 <!-- SPDX-License-Identifier: GPL-2.0-only -->
 # Modrix
 
+<img width="2508" height="1491" alt="image" src="https://github.com/user-attachments/assets/4e7700e7-ba46-47c6-99e4-a380d4b36411" />
+
+
 Modrix is a fast, native mod manager for Linux, Windows, and macOS - an open-source replacement for [Vortex](https://www.nexusmods.com/about/vortex/) with a GUI, a TUI, and a CLI over one shared engine. Downloads come from your own browser through a zero-config extension, so there is no site API and no API key. Any game is supported through community plugins, and Steam plus Proton are first-class. The deploy engine never edits your game folder in place: it hardlinks mod files in, backs up anything it overwrites, journals every step for crash recovery, and reverses cleanly on undeploy. It will not silently clobber a file you changed by hand.
 
 ```bash
