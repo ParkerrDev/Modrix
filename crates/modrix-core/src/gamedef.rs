@@ -219,6 +219,76 @@ pub struct RecommendDef {
     pub message: String,
 }
 
+/// Every key that belongs at the top level of a `game.toml`. None of these
+/// names is also valid inside a nested table, so finding one there is
+/// unambiguously a misplaced key rather than a field from a newer schema
+/// (unknown nested keys stay tolerated, so definitions written for a later
+/// build still load).
+const TOP_LEVEL_KEYS: [&str; 21] = [
+    "api_version",
+    "id",
+    "name",
+    "steam_appid",
+    "nexus_domain",
+    "gog_id",
+    "epic_id",
+    "xbox_id",
+    "origin_id",
+    "uplay_id",
+    "mod_root",
+    "mod_base",
+    "deploy",
+    "install_probe",
+    "registry_keys",
+    "required_files",
+    "load_order",
+    "content_dirs",
+    "base_files",
+    "external_scan",
+    "health",
+];
+
+/// Most nodes the misplaced-key walk will visit (bounded loop, no recursion).
+const MAX_WALK_NODES: usize = 1024;
+
+/// Find a top-level key that was written inside a nested table. Returns the
+/// offending key and the table it landed in.
+fn find_misplaced_key(text: &str) -> Option<(String, String)> {
+    let root: toml::Value = toml::from_str(text).ok()?;
+    // Seed the worklist with the root's nested values; the root's own keys are
+    // legitimately top-level.
+    let mut work: Vec<(String, &toml::Value)> = Vec::new();
+    for (name, value) in root.as_table()? {
+        if value.is_table() || value.is_array() {
+            work.push((name.clone(), value));
+        }
+    }
+    let mut visited = 0_usize;
+    while let Some((path, value)) = work.pop() {
+        visited = visited.saturating_add(1);
+        if visited > MAX_WALK_NODES {
+            break;
+        }
+        if let Some(table) = value.as_table() {
+            for (key, child) in table {
+                if TOP_LEVEL_KEYS.contains(&key.as_str()) {
+                    return Some((key.clone(), path));
+                }
+                if child.is_table() || child.is_array() {
+                    work.push((format!("{path}.{key}"), child));
+                }
+            }
+        } else if let Some(array) = value.as_array() {
+            for item in array {
+                if item.is_table() || item.is_array() {
+                    work.push((path.clone(), item));
+                }
+            }
+        }
+    }
+    None
+}
+
 impl GameDef {
     /// Parse and validate a `game.toml` from its text.
     ///
@@ -231,6 +301,21 @@ impl GameDef {
             path: source.to_path_buf(),
             message: e.to_string(),
         })?;
+        // TOML scopes every key after a `[table]` header into that table, so a
+        // top-level key written below one is silently swallowed (serde ignores
+        // the unknown field) and its capability is lost without a parse error.
+        // Catch that here rather than shipping a definition whose
+        // `content_dirs`/`base_files` never took effect.
+        if let Some((key, table)) = find_misplaced_key(text) {
+            return Err(Error::GameDef {
+                path: source.to_path_buf(),
+                message: format!(
+                    "`{key}` is a top-level key but appears inside the `[{table}]` table - \
+                     move it above the first table header (TOML scopes keys to the preceding \
+                     header, so it is otherwise ignored)"
+                ),
+            });
+        }
         def.validate(source)?;
         Ok(def)
     }
@@ -491,6 +576,57 @@ mod tests {
         assert_eq!(def.registry_keys.len(), 1);
         assert_eq!(def.registry_keys[0].hive, "HKLM");
         assert_eq!(def.registry_keys[0].value, "InstallFolder");
+    }
+
+    #[test]
+    fn rejects_a_top_level_key_swallowed_by_a_table() {
+        // TOML scopes `content_dirs` into `[[registry_keys]]` here, so serde
+        // silently dropped it and the game shipped with no content dirs. This
+        // must be a loud parse error, not a silent capability loss.
+        let text = "api_version = 2\nid = \"x\"\nname = \"X\"\n\
+                    [[registry_keys]]\nhive = \"HKLM\"\nkey = \"a\\\\b\"\nvalue = \"Path\"\n\
+                    content_dirs = [\"meshes\"]\n";
+        let err = GameDef::from_toml_str(text, &inline()).unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("content_dirs"), "got: {message}");
+        assert!(message.contains("registry_keys"), "got: {message}");
+
+        // The same keys placed above the table header are fine.
+        let good = "api_version = 2\nid = \"x\"\nname = \"X\"\n\
+                    content_dirs = [\"meshes\"]\n\
+                    [[registry_keys]]\nhive = \"HKLM\"\nkey = \"a\\\\b\"\nvalue = \"Path\"\n";
+        let def = GameDef::from_toml_str(good, &inline()).unwrap();
+        assert_eq!(def.content_dirs, vec!["meshes"]);
+        assert_eq!(def.registry_keys.len(), 1);
+    }
+
+    #[test]
+    fn unknown_nested_keys_stay_tolerated_for_forward_compatibility() {
+        // A definition authored for a newer build may carry nested fields this
+        // one does not know; those must still load (only *top-level* names in a
+        // nested table are an error).
+        let text = "api_version = 2\nid = \"x\"\nname = \"X\"\n\
+                    [load_order]\nstrategy = \"plugins_txt\"\nappdata_dir = \"X\"\n\
+                    plugin_exts = [\"esp\"]\n";
+        let def = GameDef::from_toml_str(text, &inline()).unwrap();
+        assert!(def.load_order.is_some());
+    }
+
+    #[test]
+    fn starfield_activates_plugins_through_plugins_txt() {
+        // Regression: Starfield's plugin list lives at
+        // %LOCALAPPDATA%\Starfield\Plugins.txt like the rest of the Creation
+        // Engine family. Without this block a deployed mod never activates.
+        let text = include_str!("../../../games/starfield/game.toml");
+        let def = GameDef::from_toml_str(text, std::path::Path::new("games/starfield/game.toml"))
+            .unwrap();
+        let Some(LoadOrderDef::PluginsTxt(ref t)) = def.load_order else {
+            panic!("starfield must declare the plugins_txt strategy");
+        };
+        assert_eq!(t.appdata_dir, "Starfield");
+        // The structural fix above must also hold: these are real capabilities.
+        assert!(def.content_dirs.contains(&"meshes".to_owned()));
+        assert!(def.base_files.contains(&"starfield.esm".to_owned()));
     }
 
     #[test]

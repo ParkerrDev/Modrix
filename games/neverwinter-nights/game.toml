@@ -20,14 +20,14 @@ deploy         = "link"
 install_probe  = ["registry"]
 required_files = ["nwmain.exe"]
 
-[[registry_keys]]
-hive  = "HKLM"
-key   = "SOFTWARE\\WOW6432Node\\Bioware\\NWN\\Neverwinter"
-value = "Location"
-
 # The moddable content folders - kept intact when an archive already ships them.
 content_dirs = [
   "ambient", "database", "development", "dmvault", "hak", "localvault", "logs",
   "modules", "movies", "music", "nwsync", "override", "portraits", "servervault",
   "tempclient", "tlk", "erf", "fomod",
 ]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bioware\\NWN\\Neverwinter"
+value = "Location"

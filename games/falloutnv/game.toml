@@ -15,11 +15,6 @@ deploy         = "link"
 install_probe  = ["steam", "gog", "epic", "xbox", "registry"]
 required_files = ["FalloutNV.exe"]
 
-[[registry_keys]]
-hive  = "HKLM"
-key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\falloutnv"
-value = "Installed Path"
-
 content_dirs = [
   "meshes", "textures", "scripts", "interface", "sound", "music", "video",
   "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
@@ -31,6 +26,11 @@ base_files = [
   "falloutnv.esm", "deadmoney.esm", "honesthearts.esm", "oldworldblues.esm",
   "lonesomeroad.esm", "gunrunnersarsenal.esm", "*pack.esm",
 ]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\falloutnv"
+value = "Installed Path"
 
 [load_order]
 strategy    = "plugins_txt"

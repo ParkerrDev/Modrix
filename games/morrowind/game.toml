@@ -14,11 +14,6 @@ deploy         = "link"
 install_probe  = ["steam", "gog", "xbox", "registry"]
 required_files = ["Morrowind.exe"]
 
-[[registry_keys]]
-hive  = "HKLM"
-key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Morrowind"
-value = "Installed Path"
-
 content_dirs = [
   "meshes", "textures", "scripts", "interface", "sound", "music", "video",
   "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
@@ -27,6 +22,11 @@ content_dirs = [
 ]
 
 base_files = ["morrowind.esm", "tribunal.esm", "bloodmoon.esm"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Morrowind"
+value = "Installed Path"
 
 # Hand-installed mods appear as loose plugins in "Data Files/".
 [[external_scan]]

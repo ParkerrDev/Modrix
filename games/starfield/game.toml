@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Starfield - Bethesda/Gamebryo (Creation Engine 2). Ported from Vortex's
 # game-starfield. Mods deploy into Data/ and SFSE is the script extender.
-# Starfield has no Plugins.txt load-order strategy, so load_order is omitted.
 api_version    = 2
 id             = "starfield"
 name           = "Starfield"
@@ -11,11 +10,6 @@ mod_root       = "Data"
 deploy         = "link"
 install_probe  = ["steam", "registry"]
 required_files = ["Starfield.exe"]
-
-[[registry_keys]]
-hive  = "HKLM"
-key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Starfield"
-value = "Installed Path"
 
 content_dirs = [
   "meshes", "textures", "scripts", "interface", "sound", "music", "video",
@@ -28,6 +22,20 @@ base_files = [
   "starfield.esm", "constellation.esm", "oldmars.esm",
   "blueprintships-starfield.esm", "sfbgs*.esm", "sfbgs*.esp",
 ]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Starfield"
+value = "Installed Path"
+
+# Starfield activates plugins through the same Plugins.txt the rest of the
+# Creation Engine family uses, under the user's local app data (inside the
+# Proton prefix on Linux). Writing it is what makes a deployed mod actually
+# load - without it the game only sees mods enabled through its own Creations
+# menu, which is the classic "mods deployed but absent in game" trap.
+[load_order]
+strategy    = "plugins_txt"
+appdata_dir = "Starfield"
 
 [[external_scan]]
 kind      = "file"

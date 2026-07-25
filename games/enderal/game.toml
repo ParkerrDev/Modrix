@@ -13,11 +13,6 @@ deploy         = "link"
 install_probe  = ["steam", "registry"]
 required_files = ["Enderal Launcher.exe", "TESV.exe"]
 
-[[registry_keys]]
-hive  = "HKCU"
-key   = "SOFTWARE\\SureAI\\Enderal"
-value = "Install_Path"
-
 content_dirs = [
   "meshes", "textures", "scripts", "interface", "sound", "music", "video",
   "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
@@ -29,6 +24,11 @@ base_files = [
   "skyrim.esm", "update.esm", "dawnguard.esm", "hearthfires.esm",
   "dragonborn.esm", "highrestexturepack*.esp",
 ]
+
+[[registry_keys]]
+hive  = "HKCU"
+key   = "SOFTWARE\\SureAI\\Enderal"
+value = "Install_Path"
 
 [load_order]
 strategy    = "plugins_txt"

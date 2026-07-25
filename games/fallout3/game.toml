@@ -15,11 +15,6 @@ deploy         = "link"
 install_probe  = ["steam", "gog", "epic", "xbox", "registry"]
 required_files = ["Data/fallout3.esm"]
 
-[[registry_keys]]
-hive  = "HKLM"
-key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Fallout3"
-value = "Installed Path"
-
 content_dirs = [
   "meshes", "textures", "scripts", "interface", "sound", "music", "video",
   "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
@@ -31,6 +26,11 @@ base_files = [
   "fallout3.esm", "anchorage.esm", "thepitt.esm", "brokensteel.esm",
   "pointlookout.esm", "zeta.esm",
 ]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Fallout3"
+value = "Installed Path"
 
 [load_order]
 strategy    = "plugins_txt"

@@ -14,11 +14,6 @@ deploy         = "link"
 install_probe  = ["steam", "gog", "xbox", "registry"]
 required_files = ["Oblivion.exe"]
 
-[[registry_keys]]
-hive  = "HKLM"
-key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\oblivion"
-value = "Installed Path"
-
 content_dirs = [
   "meshes", "textures", "scripts", "interface", "sound", "music", "video",
   "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
@@ -27,6 +22,11 @@ content_dirs = [
 ]
 
 base_files = ["oblivion.esm", "dlcshiveringisles.esp", "knights.esp", "dlc*"]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\oblivion"
+value = "Installed Path"
 
 [load_order]
 strategy    = "plugins_txt"

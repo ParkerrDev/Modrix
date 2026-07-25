@@ -15,11 +15,6 @@ deploy         = "link"
 install_probe  = ["steam", "gog", "epic", "xbox", "registry"]
 required_files = ["Fallout4.exe"]
 
-[[registry_keys]]
-hive  = "HKLM"
-key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Fallout4"
-value = "Installed Path"
-
 content_dirs = [
   "meshes", "textures", "scripts", "interface", "sound", "music", "video",
   "strings", "seq", "grass", "shadersfx", "lodsettings", "materials", "source",
@@ -31,6 +26,11 @@ base_files = [
   "fallout4.esm", "dlcrobot.esm", "dlcworkshop01.esm", "dlccoast.esm",
   "dlcworkshop02.esm", "dlcworkshop03.esm", "dlcnukaworld.esm", "cc*",
 ]
+
+[[registry_keys]]
+hive  = "HKLM"
+key   = "SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Fallout4"
+value = "Installed Path"
 
 [load_order]
 strategy    = "plugins_txt"
