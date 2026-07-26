@@ -4,3 +4,7 @@
 *.db-shm
 *.db-wal
 .DS_Store
+
+# Python bytecode from the branding generator
+__pycache__/
+*.pyc
