@@ -5,35 +5,88 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Modrix brand</title>
 <style>
- :root { color-scheme: dark; }
- body { margin:0; background:#0b0d10; color:#e6eaf2; font:15px/1.6 system-ui,sans-serif; }
- main { max-width:1000px; margin:0 auto; padding:48px 24px 96px; }
- h1 { font-size:28px; margin:0 0 4px; }
- h2 { font-size:14px; text-transform:uppercase; letter-spacing:.1em;
-       color:#8b93a3; margin:48px 0 16px; font-weight:600; }
- p.lede { color:#8b93a3; margin:0 0 8px; }
- .panel { background:#000; border:1px solid #1c2128; border-radius:10px; padding:32px; }
- .panel.light { background:#fff; }
- .panel.grey { background:#6b7280; }
- .row { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end; }
- figure { margin:0; }
- figcaption { color:#8b93a3; font-size:12px; margin-top:8px; text-align:center; }
- svg { display:block; width:100%; height:100%; }
- figure > div { display:flex; align-items:center; }
- .sw { display:flex; align-items:center; gap:12px; padding:8px 0; }
- .chip { width:36px; height:36px; border-radius:6px; border:1px solid #2a3038; }
- .sw b { width:60px; } .sw code { width:90px; color:#93c5fd; }
- .sw span:last-child { color:#8b93a3; font-size:13px; }
- table { border-collapse:collapse; width:100%; font-size:14px; }
- td { padding:8px 12px; border-top:1px solid #1c2128; }
- td:first-child { color:#8b93a3; width:240px; }
+:root {
+  --ground:#0A0C10; --surface:#111620; --line:#1E2530;
+  --ink:#E7EBF3; --muted:#79839A; --accent:#3B82F6; --ok:#34D399;
+  color-scheme: dark light;
+}
+@media (prefers-color-scheme: light) {
+  :root { --ground:#F6F7FA; --surface:#FFFFFF; --line:#DFE4EC;
+          --ink:#0A0C10; --muted:#5B6577; --accent:#2563EB; --ok:#059669; }
+}
+:root[data-theme="dark"] {
+  --ground:#0A0C10; --surface:#111620; --line:#1E2530;
+  --ink:#E7EBF3; --muted:#79839A; --accent:#3B82F6; --ok:#34D399;
+}
+:root[data-theme="light"] {
+  --ground:#F6F7FA; --surface:#FFFFFF; --line:#DFE4EC;
+  --ink:#0A0C10; --muted:#5B6577; --accent:#2563EB; --ok:#059669;
+}
+* { box-sizing: border-box; }
+body {
+  margin:0; background:var(--ground); color:var(--ink);
+  font:15px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+code, .mono, td.num { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+main { max-width: 940px; margin:0 auto; padding: 72px 28px 120px;
+       display:flex; flex-direction:column; gap:64px; }
+header { display:flex; flex-direction:column; gap:20px; }
+.brandbar { background:#000; border:1px solid var(--line); border-radius:12px;
+            padding:36px 40px; display:flex; }
+.brandbar > div { width:260px; }
+h1 { font-size:34px; line-height:1.1; margin:0; font-weight:800;
+     letter-spacing:-.021em; text-wrap:balance; }
+.lede { color:var(--muted); margin:0; max-width:62ch; }
+section { display:flex; flex-direction:column; gap:20px; }
+h2 { font-size:11px; text-transform:uppercase; letter-spacing:.15em;
+     font-weight:700; color:var(--muted); margin:0;
+     padding-bottom:12px; border-bottom:1px solid var(--line); }
+.note { color:var(--muted); margin:0; font-size:14px; max-width:62ch; }
+.row { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-end; }
+.panel { border:1px solid var(--line); border-radius:12px; padding:32px;
+         display:flex; align-items:center; justify-content:center; }
+.on-black { background:#000; } .on-white { background:#fff; }
+.on-grey  { background:#6B7280; }
+figure { margin:0; display:flex; flex-direction:column; gap:10px; align-items:center; }
+figcaption { color:var(--muted); font-size:12px; text-align:center;
+             font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
+svg { display:block; width:100%; height:100%; }
+figure .box { display:flex; align-items:center; }
+.spec { background:var(--surface); border:1px solid var(--line);
+        border-radius:12px; padding:28px 32px; }
+.spec svg { max-width:520px; margin:0 auto; height:auto; }
+ul.pal { list-style:none; margin:0; padding:0; display:flex;
+         flex-direction:column; gap:2px; }
+.sw { display:flex; align-items:center; gap:16px; padding:10px 0;
+      border-top:1px solid var(--line); }
+.sw:first-child { border-top:0; }
+.chip { width:40px; height:40px; border-radius:8px; border:1px solid var(--line);
+        flex:none; }
+.sw-n { width:64px; font-weight:600; }
+.sw code { width:96px; color:var(--accent); }
+.sw-r { color:var(--muted); font-size:14px; }
+.scroll { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; font-size:14px;
+        font-variant-numeric: tabular-nums; }
+th { text-align:left; font-size:11px; text-transform:uppercase;
+     letter-spacing:.12em; color:var(--muted); font-weight:700;
+     padding:0 16px 10px 0; white-space:nowrap; }
+td { padding:10px 16px 10px 0; border-top:1px solid var(--line);
+     vertical-align:top; }
+td.num { text-align:right; white-space:nowrap; }
+td.k { color:var(--muted); width:270px; }
+.pass { color:var(--ok); font-weight:700; }
+.files { columns:2; column-gap:40px; font-size:14px; }
+.files p { margin:0 0 8px; break-inside:avoid; }
+.files b { font-family: ui-monospace,SFMono-Regular,Menlo,monospace;
+           font-weight:600; display:block; }
+.files span { color:var(--muted); }
+@media (max-width:640px) { .files { columns:1; } .sw-r { display:none; } }
 </style></head><body><main>
-<h1>Modrix brand</h1>
-<p class="lede">Generated by <code>branding/modrix_brand.py</code>. Every mark on this
-page is the same SVG the pipeline writes to <code>dist/</code>.</p>
 
-<h2>Wordmark</h2>
-<div class="panel"><div style="height:44px;width:196px"><?xml version="1.0" encoding="UTF-8"?>
+<header>
+  <div class="brandbar"><div><?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-License-Identifier: GPL-2.0-only -->
 <!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
@@ -50,114 +103,121 @@ page is the same SVG the pipeline writes to <code>dist/</code>.</p>
   </g>
 </svg>
 </div></div>
-<div class="row" style="margin-top:16px">
-  <div class="panel light" style="flex:1"><div style="height:44px;width:196px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
-  <title>Modrix wordmark</title>
-  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div></div>
-  <div class="panel grey" style="flex:1"><div style="height:44px;width:196px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
-  <title>Modrix wordmark</title>
-  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div></div>
-</div>
-<p class="lede" style="margin-top:12px">On white and on mid grey the transparent
-variant keeps RIX white, so it needs a dark surface. Use the black-background
-variant anywhere else.</p>
-<div class="row" style="margin-top:24px"><figure><div style="height:33px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
-  <title>Modrix wordmark</title>
-  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div><figcaption>33px tall</figcaption></figure><figure><div style="height:66px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
-  <title>Modrix wordmark</title>
-  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div><figcaption>66px tall</figcaption></figure><figure><div style="height:132px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
-  <title>Modrix wordmark</title>
-  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div><figcaption>132px tall</figcaption></figure><figure><div style="height:264px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
-  <title>Modrix wordmark</title>
-  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div><figcaption>264px tall</figcaption></figure></div>
+  <h1>Modrix brand</h1>
+  <p class="lede">Two lockups, three colours, one number. Every mark below is
+  drawn from a cap height and a handful of ratios, so the wordmark and the icon
+  stay in proportion at any size. This page is written by
+  <code>branding/modrix_brand.py</code> and shows the same SVGs it puts in
+  <code>dist/</code>.</p>
+</header>
 
-<h2>Icon</h2>
-<div class="row">
-  <figure><div style="width:256px;height:256px"><?xml version="1.0" encoding="UTF-8"?>
+<section>
+  <h2>Wordmark</h2>
+  <div class="row"><div class="panel on-black"><div style="width:210px;height:47px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
+  <title>Modrix wordmark</title>
+  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div></div><div class="panel on-white"><div style="width:210px;height:47px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
+  <title>Modrix wordmark</title>
+  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div></div><div class="panel on-grey"><div style="width:210px;height:47px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
+  <title>Modrix wordmark</title>
+  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div></div></div>
+  <p class="note">RIX is white, so the transparent variant needs a dark ground.
+  Anywhere else, use the variant that carries its own black.</p>
+  <div class="row"><figure><div class="box" style="height:33px"><div style="height:33px;width:148px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
+  <title>Modrix wordmark</title>
+  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div></div><figcaption>33px</figcaption></figure><figure><div class="box" style="height:66px"><div style="height:66px;width:296px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
+  <title>Modrix wordmark</title>
+  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div></div><figcaption>66px</figcaption></figure><figure><div class="box" style="height:132px"><div style="height:132px;width:592px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="148" height="33" viewBox="0 0 148 33" role="img" aria-label="Modrix">
+  <title>Modrix wordmark</title>
+  <g fill="#3B82F6" transform="translate(5.274 28) scale(0.032 -0.032)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(84.711 28) scale(0.032 -0.032)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(656 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1045 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div></div><figcaption>132px</figcaption></figure></div>
+</section>
+
+<section>
+  <h2>Icon</h2>
+  <div class="row"><figure><div style="width:220px;height:220px"><?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-License-Identifier: GPL-2.0-only -->
 <!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
@@ -174,9 +234,7 @@ variant anywhere else.</p>
     <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
   </g>
 </svg>
-</div>
-    <figcaption>square</figcaption></figure>
-  <figure><div style="width:256px;height:256px"><?xml version="1.0" encoding="UTF-8"?>
+</div><figcaption>square</figcaption></figure><figure><div style="width:220px;height:220px"><?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-License-Identifier: GPL-2.0-only -->
 <!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
@@ -193,10 +251,7 @@ variant anywhere else.</p>
     <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
   </g>
 </svg>
-</div>
-    <figcaption>rounded, 0.18 radius</figcaption></figure>
-  <figure><div class="panel" style="padding:0;background:#3b4252">
-    <div style="width:256px;height:256px"><?xml version="1.0" encoding="UTF-8"?>
+</div><figcaption>rounded 0.18</figcaption></figure><figure><div class="panel on-grey" style="padding:0;border-radius:0"><div style="width:220px;height:220px"><?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-License-Identifier: GPL-2.0-only -->
 <!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
@@ -212,135 +267,164 @@ variant anywhere else.</p>
     <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
   </g>
 </svg>
-</div></div>
-    <figcaption>transparent</figcaption></figure>
-</div>
+</div></div><figcaption>transparent</figcaption></figure></div>
+</section>
 
-<h2>Size ladder</h2>
-<div class="row"><figure style="width:16px"><div style="width:16px;height:16px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
+<section>
+  <h2>Construction</h2>
+  <div class="spec"><svg xmlns="http://www.w3.org/2000/svg" viewBox="-108 -20 848 800" role="img" aria-label="Modrix icon with dimensions">
   <title>Modrix icon</title>
-  <rect width="256" height="256" fill="#000000"/>
-  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
+  <rect width="720" height="720" fill="#000000"/>
+  <g fill="#3B82F6" transform="translate(44.622 303.3) scale(0.252 -0.252)">
     <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
     <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
     <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
   </g>
-  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
+  <g fill="#FFFFFF" transform="translate(45.882 596.7) scale(0.252 -0.252)">
     <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
     <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
     <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
   </g>
-</svg>
-</div><figcaption>16</figcaption></figure><figure style="width:24px"><div style="width:24px;height:24px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
-  <title>Modrix icon</title>
-  <rect width="256" height="256" fill="#000000"/>
-  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div><figcaption>24</figcaption></figure><figure style="width:32px"><div style="width:32px;height:32px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
-  <title>Modrix icon</title>
-  <rect width="256" height="256" fill="#000000"/>
-  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div><figcaption>32</figcaption></figure><figure style="width:48px"><div style="width:48px;height:48px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
-  <title>Modrix icon</title>
-  <rect width="256" height="256" fill="#000000"/>
-  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div><figcaption>48</figcaption></figure><figure style="width:64px"><div style="width:64px;height:64px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
-  <title>Modrix icon</title>
-  <rect width="256" height="256" fill="#000000"/>
-  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div><figcaption>64</figcaption></figure><figure style="width:128px"><div style="width:128px;height:128px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
-  <title>Modrix icon</title>
-  <rect width="256" height="256" fill="#000000"/>
-  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div><figcaption>128</figcaption></figure><figure style="width:256px"><div style="width:256px;height:256px"><?xml version="1.0" encoding="UTF-8"?>
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
-  <title>Modrix icon</title>
-  <rect width="256" height="256" fill="#000000"/>
-  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
-    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
-    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
-    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
-    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
-    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
-    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
-  </g>
-</svg>
-</div><figcaption>256</figcaption></figure></div>
+<path d="M-96 123.3H720" stroke="#3B82F6" stroke-width="1" stroke-dasharray="2 4" opacity=".45" fill="none"/><path d="M-96 303.3H720" stroke="#3B82F6" stroke-width="1" stroke-dasharray="2 4" opacity=".45" fill="none"/><path d="M-96 596.7H720" stroke="#3B82F6" stroke-width="1" stroke-dasharray="2 4" opacity=".45" fill="none"/><path d="M-34 123.3L-34 303.3M-39 123.3h10M-39 303.3h10" stroke="#3B82F6" stroke-width="1.5" fill="none"/><text x="-48" y="217.3" text-anchor="end" fill="#3B82F6" font-size="13" font-family="ui-monospace,monospace">1.00 cap</text><path d="M-34 303.3L-34 596.7M-39 303.3h10M-39 596.7h10" stroke="#3B82F6" stroke-width="1.5" fill="none"/><text x="-48" y="454" text-anchor="end" fill="#3B82F6" font-size="13" font-family="ui-monospace,monospace">1.63 cap</text><path d="M0 750H720M0 745v10M720 745v10" stroke="#3B82F6" stroke-width="1.5" fill="none"/><text x="360.0" y="772" text-anchor="middle" fill="#3B82F6" font-size="13" font-family="ui-monospace,monospace">4.00 cap</text></svg></div>
+  <p class="note">The canvas is four cap heights square and the two baselines sit
+  1.63 cap apart. RIX is not tracked by eye: it is letter-spaced until
+  its ink measures exactly as wide as MOD, which is what keeps both lines flush
+  when the cap height changes.</p>
+</section>
 
-<h2>Palette</h2>
-<div class="sw"><span class="chip" style="background:#3B82F6"></span><b>blue</b><code>#3B82F6</code><span>MOD, and theme::AURORA.accent in the GUI</span></div><div class="sw"><span class="chip" style="background:#FFFFFF"></span><b>white</b><code>#FFFFFF</code><span>RIX</span></div><div class="sw"><span class="chip" style="background:#000000"></span><b>black</b><code>#000000</code><span>background</span></div>
+<section>
+  <h2>Size ladder</h2>
+  <div class="row"><figure><div class="box" style="width:16px;height:16px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
+  <title>Modrix icon</title>
+  <rect width="256" height="256" fill="#000000"/>
+  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div><figcaption>16</figcaption></figure><figure><div class="box" style="width:24px;height:24px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
+  <title>Modrix icon</title>
+  <rect width="256" height="256" fill="#000000"/>
+  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div><figcaption>24</figcaption></figure><figure><div class="box" style="width:32px;height:32px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
+  <title>Modrix icon</title>
+  <rect width="256" height="256" fill="#000000"/>
+  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div><figcaption>32</figcaption></figure><figure><div class="box" style="width:48px;height:48px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
+  <title>Modrix icon</title>
+  <rect width="256" height="256" fill="#000000"/>
+  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div><figcaption>48</figcaption></figure><figure><div class="box" style="width:64px;height:64px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
+  <title>Modrix icon</title>
+  <rect width="256" height="256" fill="#000000"/>
+  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div><figcaption>64</figcaption></figure><figure><div class="box" style="width:128px;height:128px"><?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<!-- Generated by branding/modrix_brand.py. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Modrix">
+  <title>Modrix icon</title>
+  <rect width="256" height="256" fill="#000000"/>
+  <g fill="#3B82F6" transform="translate(15.866 107.84) scale(0.09 -0.09)">
+    <path d="M392 0 220 560H216Q217 540 219.0 500.0Q221 460 223.0 414.5Q225 369 225 332V0H90V714H296L465 168H468L647 714H853V0H712V338Q712 372 713.5 416.0Q715 460 716.5 499.5Q718 539 719 559H715L531 0Z"/>
+    <path transform="translate(943 0)" d="M735 358Q735 247 698.5 164.5Q662 82 587.0 36.0Q512 -10 395 -10Q279 -10 203.5 36.0Q128 82 91.5 165.0Q55 248 55 359Q55 469 91.5 551.5Q128 634 203.5 679.5Q279 725 396 725Q512 725 587.5 679.5Q663 634 699.0 551.5Q735 469 735 358ZM216 358Q216 246 258.5 182.5Q301 119 395 119Q491 119 532.5 182.5Q574 246 574 358Q574 470 532.5 534.0Q491 598 396 598Q301 598 258.5 534.0Q216 470 216 358Z"/>
+    <path transform="translate(1734 0)" d="M678 369Q678 246 632.0 164.0Q586 82 502.0 41.0Q418 0 303 0H85V714H321Q489 714 583.5 625.5Q678 537 678 369ZM518 363Q518 478 467.0 533.5Q416 589 317 589H238V126H302Q518 126 518 363Z"/>
+  </g>
+  <g fill="#FFFFFF" transform="translate(16.314 212.16) scale(0.09 -0.09)">
+    <path d="M304 714Q583 714 583 506Q583 433 546.0 387.0Q509 341 454 315L657 0H482L323 274H238V0H85V714ZM301 595H238V392H301Q362 392 395.0 417.0Q428 442 428 499Q428 547 397.5 571.0Q367 595 301 595Z"/>
+    <path transform="translate(1004 0)" d="M357 0H32V86L119 126V588L32 628V714H357V628L270 588V126L357 86Z"/>
+    <path transform="translate(1741 0)" d="M666 0H490L332 257L173 0H3L240 368L17 714H187L334 470L478 714H649L425 359Z"/>
+  </g>
+</svg>
+</div><figcaption>128</figcaption></figure></div>
+  <p class="note">At 16px the two lines are three pixels tall each. Legibility
+  gives out before the geometry does, so prefer the wordmark below 24px.</p>
+</section>
 
-<h2>Spec</h2>
-<table><tr><td>typeface</td><td>Noto Sans Bold, outlines baked to paths</td></tr><tr><td>wordmark side padding</td><td>0.35 cap</td></tr><tr><td>wordmark vertical padding</td><td>0.22 cap</td></tr><tr><td>icon canvas</td><td>4.0 cap square</td></tr><tr><td>icon baseline to baseline</td><td>1.63 cap</td></tr><tr><td>RIX tracking</td><td>computed so RIX ink width equals MOD ink width</td></tr></table>
+<section>
+  <h2>Palette</h2>
+  <ul class="pal"><li class="sw"><span class="chip" style="background:#3B82F6"></span><span class="sw-n">blue</span><code>#3B82F6</code><span class="sw-r">MOD, and theme::AURORA.accent in the GUI</span></li><li class="sw"><span class="chip" style="background:#FFFFFF"></span><span class="sw-n">white</span><code>#FFFFFF</code><span class="sw-r">RIX</span></li><li class="sw"><span class="chip" style="background:#000000"></span><span class="sw-n">black</span><code>#000000</code><span class="sw-r">ground</span></li></ul>
+</section>
+
+<section>
+  <h2>Spec</h2>
+  <div class="scroll"><table><tbody><tr><td class="k">typeface</td><td>Noto Sans Bold, outlines baked to paths</td></tr><tr><td class="k">wordmark side padding</td><td>0.35 cap</td></tr><tr><td class="k">wordmark vertical padding</td><td>0.22 cap</td></tr><tr><td class="k">icon canvas</td><td>4.0 cap, square</td></tr><tr><td class="k">icon baseline to baseline</td><td>1.63 cap</td></tr><tr><td class="k">rounded corner radius</td><td>0.18 of the canvas</td></tr><tr><td class="k">RIX tracking</td><td>computed so RIX ink width equals MOD ink width</td></tr></tbody></table></div>
+</section>
+
+<section>
+  <h2>Verification</h2>
+  <p class="note">The palette and geometry were measured out of the reference
+  artwork rather than guessed. These checks re-run on every build and fail the
+  pipeline if a change drifts out of tolerance.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>measure</th><th>generated</th><th>reference</th>
+    <th>delta</th><th>tolerance</th><th></th></tr></thead>
+    <tbody><tr><td class="k">wordmark canvas width</td><td class="num">147.75</td><td class="num">147</td><td class="num">0.75</td><td class="num">1.5</td><td class="num pass">pass</td></tr><tr><td class="k">wordmark canvas height</td><td class="num">33.12</td><td class="num">33</td><td class="num">0.12</td><td class="num">1.0</td><td class="num pass">pass</td></tr><tr><td class="k">icon MOD ink width</td><td class="num">194.31</td><td class="num">196</td><td class="num">1.69</td><td class="num">2.5</td><td class="num pass">pass</td></tr><tr><td class="k">icon side padding</td><td class="num">22.34</td><td class="num">22</td><td class="num">0.34</td><td class="num">1.5</td><td class="num pass">pass</td></tr><tr><td class="k">icon baseline delta</td><td class="num">97.39</td><td class="num">97</td><td class="num">0.39</td><td class="num">1.5</td><td class="num pass">pass</td></tr><tr><td class="k">icon RIX ink width</td><td class="num">194.31</td><td class="num">196</td><td class="num">1.69</td><td class="num">2.5</td><td class="num pass">pass</td></tr></tbody></table></div>
+</section>
+
+<section>
+  <h2>Files</h2>
+  <div class="files"><p><b>modrix-wordmark.svg</b><span>one line, black ground</span></p><p><b>modrix-wordmark-transparent.svg</b><span>one line, no ground</span></p><p><b>modrix-icon.svg</b><span>square, black ground</span></p><p><b>modrix-icon-transparent.svg</b><span>square, no ground</span></p><p><b>modrix-icon-rounded.svg</b><span>square, rounded corners</span></p><p><b>modrix.ico</b><span>Windows, 16 to 256</span></p><p><b>png/</b><span>icons 16 to 1024, wordmarks 33 to 264 tall</span></p></div>
+</section>
+
 </main></body></html>
