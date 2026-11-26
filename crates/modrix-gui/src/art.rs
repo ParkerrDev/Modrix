@@ -34,6 +34,8 @@ pub struct ArtData {
     pub logo: Option<Rgba>,
     /// Vibrant swatches (sRGB, 0..1), most representative first.
     pub swatches: Vec<[f32; 3]>,
+    /// The backdrop baked flat, keyed `(dark, calm)` (see `bake`).
+    pub bands: Vec<((bool, bool), Rgba)>,
 }
 
 /// Art the view draws.
@@ -41,8 +43,8 @@ pub struct ArtData {
 pub struct ArtSet {
     /// The wide hero.
     pub hero: Option<rune::Pixels>,
-    /// The soft backdrop.
-    pub soft: Option<rune::Pixels>,
+    /// The baked backdrop bands, keyed `(dark, calm)`.
+    pub bands: Vec<((bool, bool), rune::Pixels)>,
     /// The portrait cover.
     pub cover: Option<rune::Pixels>,
     /// The logo.
@@ -52,6 +54,15 @@ pub struct ArtSet {
 }
 
 impl ArtSet {
+    /// The baked backdrop for an appearance and screen kind.
+    #[must_use]
+    pub fn band(&self, dark: bool, calm: bool) -> Option<&rune::Pixels> {
+        self.bands
+            .iter()
+            .find(|(key, _)| *key == (dark, calm))
+            .map(|(_, px)| px)
+    }
+
     /// Upload decoded art into pixel buffers.
     #[must_use]
     pub fn from_data(data: ArtData) -> ArtSet {
@@ -64,7 +75,11 @@ impl ArtSet {
         };
         ArtSet {
             hero: upload(data.hero),
-            soft: upload(data.soft),
+            bands: data
+                .bands
+                .into_iter()
+                .filter_map(|(key, img)| upload(Some(img)).map(|px| (key, px)))
+                .collect(),
             cover: upload(data.cover),
             logo: upload(data.logo),
             swatches: data
@@ -140,6 +155,16 @@ fn decode_all(hero: Option<&Path>, cover: Option<&Path>, logo: Option<&Path>) ->
         let sharp = fit_width(img, HERO_W);
         data.soft = Some(soften(img));
         data.hero = Some(into_rgba(sharp));
+        let colors: Vec<rune::Color> = data
+            .swatches
+            .iter()
+            .map(|c| srgb(c[0], c[1], c[2]))
+            .collect();
+        data.bands = crate::bake::all(&crate::bake::Sources {
+            hero: data.hero.as_ref(),
+            soft: data.soft.as_ref(),
+            swatches: &colors,
+        });
     }
     data.cover = cover
         .and_then(|p| image::open(p).ok())

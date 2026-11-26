@@ -145,6 +145,7 @@ fn library(s: &mut App) {
         mod_loader: false,
         store: false,
     });
+    s.lib_gen = s.lib_gen.wrapping_add(1);
     s.lib.mods = MODS
         .iter()
         .zip(1..)

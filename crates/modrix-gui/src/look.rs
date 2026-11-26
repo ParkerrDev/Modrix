@@ -113,8 +113,8 @@ impl Look {
             on_accent: pick(dark, oklch(0.17, 0.02, hue), Color::WHITE),
             glass: pick(
                 dark,
-                oklcha(0.21, 0.016, hue, 0.62),
-                oklcha(0.995, 0.004, hue, 0.70),
+                oklcha(0.21, 0.016, hue, 0.80),
+                oklcha(0.995, 0.004, hue, 0.84),
             ),
             glass_strong: pick(
                 dark,

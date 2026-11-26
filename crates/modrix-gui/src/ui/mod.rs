@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-//! The view: the game's art as a living backdrop, a sidebar, a top bar, and
+//! The view: the game's art as a baked backdrop, a sidebar, a top bar, and
 //! one screen at a time in glass panels over it.
 
 mod conflicts;
@@ -14,13 +14,10 @@ mod settings;
 mod shell;
 mod wizard;
 
-use rune::{Color, Cx, El, ScrollSpec, SurfaceFit, col, el, row};
+use rune::{Cx, El, ScrollSpec, SurfaceFit, col, el, row};
 
 use crate::look::{Look, space};
 use crate::state::{App, Screen};
-
-/// Height of the sharp hero band at the top of the window.
-const HERO_H: f32 = 440.0;
 
 /// The whole window.
 pub fn view(s: &App, cx: &mut Cx<App>) -> El {
@@ -42,7 +39,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
         .w_full()
         .h_full()
         .fill(look.base)
-        .child(backdrop(s, &look))
+        .children(backdrop(s, &look))
         .child(body)
         .children(shell::drop_overlay(s, &look))
         .on_drop_hover(|s: &mut App, on, _| s.drop_hover = on)
@@ -55,83 +52,22 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     rune_kit::root(window, layer)
 }
 
-/// The art behind everything: a soft wash over the whole window and the
-/// sharp hero across the top, fading into the base colour.
-fn backdrop(s: &App, look: &Look) -> El {
-    let art = s.game_art();
-    let base = look.base;
+/// The art behind the top of the window: one image baked from the hero,
+/// its soft wash, the accent glow and the fade (see `bake`). It keeps the
+/// bake's aspect, so it scales with the window and is never squished, and it
+/// ends in the base colour the window is filled with.
+fn backdrop(s: &App, look: &Look) -> Option<El> {
     // Work screens keep the art quieter so tables and text stay readable.
     let calm = s.screen != Screen::Dashboard;
-    let top = if calm { 0.55 } else { 0.10 };
-    let wash = art.and_then(|a| a.soft.as_ref()).map(|soft| {
-        el().key("wash")
+    let band = s.game_art()?.band(look.dark, calm)?;
+    Some(
+        el().key("backdrop")
             .absolute(0.0, 0.0)
             .w_full()
-            .h_full()
-            .pixels_fit(soft, SurfaceFit::Fill)
-            .opacity(if look.dark { 0.55 } else { 0.30 })
-    });
-    let hero = art.and_then(|a| a.hero.as_ref()).map(|hero| {
-        el().key("hero")
-            .absolute(0.0, 0.0)
-            .w_full()
-            .h(HERO_H)
-            .pixels_fit(hero, SurfaceFit::Fill)
-            .opacity(match (look.dark, calm) {
-                (true, false) => 0.92,
-                (true, true) => 0.55,
-                (false, false) => 0.75,
-                (false, true) => 0.40,
-            })
-    });
-    el().key("backdrop")
-        .absolute(0.0, 0.0)
-        .w_full()
-        .h_full()
-        .a11y_hidden()
-        .children(wash)
-        .child(glow(look))
-        .children(hero)
-        .child(fade(base, top))
-        .child(
-            el().key("tint")
-                .absolute(0.0, HERO_H)
-                .w_full()
-                .h_full()
-                .gradient(base, base.alpha(if art.is_some() { 0.72 } else { 1.0 })),
-        )
-}
-
-/// Dissolves the hero into the base colour, from `top` opacity down.
-fn fade(base: Color, top: f32) -> El {
-    el().key("hero-fade")
-        .absolute(0.0, 0.0)
-        .w_full()
-        .h(HERO_H.max(1.0))
-        .linear_gradient(
-            std::f32::consts::PI,
-            [
-                (0.0, base.alpha(top)),
-                (0.45, base.alpha(top.max(0.45))),
-                (1.0, base),
-            ],
-        )
-}
-
-/// A soft bloom of the accent in the top right.
-fn glow(look: &Look) -> El {
-    el().key("glow")
-        .absolute(0.0, 0.0)
-        .w_full()
-        .h_full()
-        .radial_gradient(
-            [0.85, 0.05],
-            900.0,
-            [
-                (0.0, look.accent.alpha(if look.dark { 0.14 } else { 0.08 })),
-                (1.0, Color::TRANSPARENT),
-            ],
-        )
+            .aspect_ratio(crate::bake::RATIO)
+            .a11y_hidden()
+            .pixels_fit(band, SurfaceFit::Fill),
+    )
 }
 
 fn main_column(s: &App, look: &Look, layer: &mut Vec<El>) -> El {

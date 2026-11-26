@@ -8,6 +8,7 @@
 
 mod actions;
 mod art;
+mod bake;
 mod boot;
 mod bus;
 mod demo;

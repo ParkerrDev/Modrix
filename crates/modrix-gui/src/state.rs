@@ -493,6 +493,19 @@ pub struct App {
     pub appearance: Appearance,
     /// Confirm before deleting the selected mods.
     pub confirm_delete: bool,
+    /// Bumped whenever `lib.mods` is replaced or reordered.
+    pub lib_gen: u64,
+    /// The filtered row list, keyed by search text and `lib_gen`: the table
+    /// asks for it once per drawn row, so it must not refilter each time.
+    visible_cache: std::cell::RefCell<Option<VisibleCache>>,
+}
+
+/// One computed filter result for the Mods table.
+#[derive(Debug)]
+struct VisibleCache {
+    needle: String,
+    lib_gen: u64,
+    rows: std::rc::Rc<[usize]>,
 }
 
 impl App {
@@ -550,6 +563,8 @@ impl App {
             paths: None,
             appearance: crate::prefs::load(),
             confirm_delete: false,
+            lib_gen: 0,
+            visible_cache: std::cell::RefCell::new(None),
         }
     }
 
@@ -598,15 +613,32 @@ impl App {
 
     /// Indices into `lib.mods` that pass the search filter, in display order.
     #[must_use]
-    pub fn visible_mods(&self) -> Vec<usize> {
-        let needle = self.form.search.text.trim().to_lowercase();
-        self.lib
+    pub fn visible_mods(&self) -> std::rc::Rc<[usize]> {
+        let needle = self.form.search.text.trim();
+        if let Ok(cache) = self.visible_cache.try_borrow()
+            && let Some(hit) = cache.as_ref()
+            && hit.lib_gen == self.lib_gen
+            && hit.needle == needle
+        {
+            return std::rc::Rc::clone(&hit.rows);
+        }
+        let lower = needle.to_lowercase();
+        let rows: std::rc::Rc<[usize]> = self
+            .lib
             .mods
             .iter()
             .enumerate()
-            .filter(|(_, m)| needle.is_empty() || m.name.to_lowercase().contains(&needle))
+            .filter(|(_, m)| lower.is_empty() || m.name.to_lowercase().contains(&lower))
             .map(|(i, _)| i)
-            .collect()
+            .collect();
+        if let Ok(mut cache) = self.visible_cache.try_borrow_mut() {
+            *cache = Some(VisibleCache {
+                needle: needle.to_owned(),
+                lib_gen: self.lib_gen,
+                rows: std::rc::Rc::clone(&rows),
+            });
+        }
+        rows
     }
 
     /// The mod ids currently selected in the Mods table.

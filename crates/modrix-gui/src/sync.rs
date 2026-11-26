@@ -10,7 +10,7 @@ use modrix_download::DownloadState;
 use modrix_service::InstallOutcome;
 
 use crate::bus::{Event, Job, Work};
-use crate::state::{App, Library, MAX_NOTES, NOTE_TTL, Note, Screen, SortKey, Tone};
+use crate::state::{App, Library, MAX_NOTES, NOTE_TTL, Note, Screen, SortKey, TOAST_TTL, Tone};
 
 /// Seconds between idle refreshes.
 const IDLE_PERIOD: f64 = 2.0;
@@ -152,24 +152,37 @@ impl App {
         changed
     }
 
+    /// Re-read the live sections. Returns whether anything on screen moved,
+    /// so an idle window draws nothing between snapshots.
     fn tick(&mut self, now: f64) -> bool {
+        let before = self.last_refresh;
         self.last_refresh = now;
-        self.op = self.progress.snapshot();
-        self.read_downloads();
+        let op = self.progress.snapshot();
+        let mut changed = op != self.op;
+        self.op = op;
+        changed |= self.read_downloads();
+        // A toast that timed out since the last tick has to leave the screen.
+        changed |= self
+            .notes
+            .iter()
+            .any(|n| before - n.at < TOAST_TTL && now - n.at >= TOAST_TTL);
+        let notes = self.notes.len();
         self.notes.retain(|n| now - n.at < NOTE_TTL);
+        changed |= notes != self.notes.len();
         self.unread = self.unread.min(self.notes.len());
         // The light read is SQLite-only; skip it while a slow action holds
         // the engine (its own refresh follows it).
         if self.busy == 0 && !self.refresh_queued {
             self.request_refresh(false);
         }
-        true
+        changed
     }
 
     /// Pull the download list and install outcomes (in-memory, cheap).
-    fn read_downloads(&mut self) {
+    /// Returns whether the list or the notes changed.
+    fn read_downloads(&mut self) -> bool {
         let Some(service) = &self.service else {
-            return;
+            return false;
         };
         let mut downloads = service.manager().list();
         downloads.sort_by_key(|d| std::cmp::Reverse(d.id));
@@ -178,8 +191,11 @@ impl App {
             .filter(|d| d.state == DownloadState::Complete)
             .filter_map(|d| service.install_outcome(d.id).map(|o| (d.id, o)))
             .collect();
+        let notes = self.notes.len();
+        let changed = downloads != self.downloads;
         self.downloads = downloads;
         self.notify_new_outcomes();
+        changed || notes != self.notes.len()
     }
 
     fn notify_new_outcomes(&mut self) {
@@ -225,6 +241,7 @@ impl App {
         }
         let game_changed = lib.game != self.lib.game;
         let old = std::mem::replace(&mut self.lib, lib);
+        self.lib_gen = self.lib_gen.wrapping_add(1);
         if !heavy && !game_changed {
             self.lib.plugins = old.plugins;
             self.lib.health = old.health;
@@ -253,6 +270,7 @@ impl App {
     /// Sort `lib.mods` by the chosen column (stable, name tiebreak).
     pub fn sort_mods(&mut self) {
         let (key, ascending) = self.mod_sort;
+        self.lib_gen = self.lib_gen.wrapping_add(1);
         let enabled = &self.lib.enabled;
         let names = |a: &str, b: &str| a.to_lowercase().cmp(&b.to_lowercase());
         self.lib.mods.sort_by(|a, b| {

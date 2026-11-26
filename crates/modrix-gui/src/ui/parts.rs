@@ -7,7 +7,9 @@ use rune::{Color, El, Icon, col, el, icon, row, text};
 use crate::look::{Look, space, ty};
 use crate::state::App;
 
-/// A translucent panel over the backdrop, with a soft blur behind it.
+/// A translucent panel over the backdrop. No live blur: a backdrop blur
+/// copies and blurs the window behind every panel on every frame, which is
+/// what made the window lag. The glass is dense enough to read without it.
 #[must_use]
 pub fn panel(look: &Look, key: &str) -> El {
     col()
@@ -16,7 +18,6 @@ pub fn panel(look: &Look, key: &str) -> El {
         .radius(space::PANEL)
         .fill(look.glass)
         .border(1.0, look.edge)
-        .backdrop_blur(24.0)
         .clip_rounded(space::PANEL)
 }
 
