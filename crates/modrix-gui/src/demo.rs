@@ -26,6 +26,7 @@ pub const SCENES: &[Scene] = &[
     ("conflicts", conflicts),
     ("downloads", |s| scene(s, Screen::Downloads)),
     ("games", |s| scene(s, Screen::Games)),
+    ("store", store),
     ("settings", |s| scene(s, Screen::Settings)),
     ("wizard", wizard),
     ("light", light),
@@ -185,6 +186,16 @@ fn findings(s: &mut App) {
         path: PathBuf::from("d3d11.dll"),
         files: 14,
     }];
+    s.lib.log = [
+        "SKSE64 2.2.6 rel 66 (runtime 01060640 1.6.1170.0)",
+        "plugin directory = Data\\SKSE\\Plugins\\",
+        "checking plugin SkyUI_SE.dll",
+        "plugin SkyUI_SE.dll (00000001 SkyUI 00000005) loaded correctly",
+        "checking plugin AddressLibrary.dll",
+        "init complete",
+    ]
+    .map(str::to_owned)
+    .to_vec();
     s.booted = true;
     s.link = Some(Link {
         port: 47_761,
@@ -398,6 +409,29 @@ fn mods(s: &mut App) {
     scene(s, Screen::Mods);
     s.mod_sel.only(1);
     s.mod_sel.toggle(2);
+}
+
+/// A store catalog in the store API's own shape.
+const STORE_ITEMS: &str = r#"[
+  {"id":1,"name":"Better Building","mod_id":"BetterBuilding","shortDescription":"Snap, rotate and copy structures with fewer clicks","type":"Mod","isApproved":true,"downloads":48210,"latestVersion":"2.4.1","user":{"name":"timber"},"dependencies":["CoreLib"]},
+  {"id":2,"name":"Core Library","mod_id":"CoreLib","shortDescription":"Shared helpers other mods build on","type":"Library","isApproved":true,"downloads":91544,"latestVersion":"1.9.0","user":{"name":"forge"}},
+  {"id":3,"name":"Quiet Nights","mod_id":"QuietNights","shortDescription":"Fewer night raids, longer days to explore","type":"Mod","isApproved":true,"downloads":17302,"latestVersion":"0.8.3","user":{"name":"lantern"}},
+  {"id":4,"name":"Map Markers","mod_id":"MapMarkers","shortDescription":"Pin caves, caches and camps on the GPS","type":"Mod","isApproved":true,"downloads":33120,"latestVersion":"3.1.0","user":{"name":"compass"}},
+  {"id":5,"name":"Stack Sizes","mod_id":"StackSizes","shortDescription":"Carry more logs, sticks and stones per slot","type":"Mod","isApproved":true,"downloads":25877,"latestVersion":"1.2.2","user":{"name":"packrat"}}
+]"#;
+
+fn store(s: &mut App) {
+    scene(s, Screen::Store);
+    if let Some(caps) = s.lib.capabilities.as_mut() {
+        caps.store = true;
+    }
+    s.lib.store = Some(modrix_core::StoreDef {
+        kind: "sotf-mods".to_owned(),
+        base_url: "https://api.sotf-mods.com".to_owned(),
+    });
+    s.store.game = s.lib.game;
+    s.store.items = serde_json::from_str(STORE_ITEMS).unwrap_or_default();
+    s.store.installing.insert("QuietNights".to_owned());
 }
 
 fn conflicts(s: &mut App) {

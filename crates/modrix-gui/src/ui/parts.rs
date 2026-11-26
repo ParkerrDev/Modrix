@@ -62,7 +62,10 @@ pub fn icon_tile(i: &'static Icon, tint: Color, size: f32) -> El {
         .child(glyph(i, size * 0.5, tint))
 }
 
-/// A number with a caption, for the overview.
+/// A stat card's narrowest width; a row of them wraps below this.
+const STAT_MIN_W: f32 = 210.0;
+
+/// A number with its caption, as a card. Put cards in a `flex_wrap` row.
 #[must_use]
 pub fn stat(
     look: &Look,
@@ -71,7 +74,7 @@ pub fn stat(
     value: String,
     caption: &str,
 ) -> El {
-    panel(look, key).grow(1.0).w(0.0).child(
+    panel(look, key).grow(1.0).w(0.0).min_w(STAT_MIN_W).child(
         row()
             .padding(16.0)
             .gap(14.0)

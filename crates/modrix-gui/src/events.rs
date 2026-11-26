@@ -30,6 +30,8 @@ impl App {
             Event::SupportInstalled(result) => self.on_support_installed(result),
             Event::UpdateChecked(result) => self.on_update_checked(result),
             Event::UpdateApplied(result) => self.on_update_applied(result, tx),
+            Event::StoreCatalog(game, result) => self.on_store_catalog(game, result),
+            Event::StoreQueued(id, result) => self.on_store_queued(&id, result),
             Event::Art(game, data) => {
                 self.art.insert(game, crate::art::ArtSet::from_data(*data));
             }

@@ -19,6 +19,7 @@ mod keys;
 mod look;
 mod prefs;
 mod state;
+mod store;
 mod sync;
 mod ui;
 mod wizard;
@@ -47,7 +48,7 @@ fn main() -> anyhow::Result<()> {
     let handle = runtime.handle().clone();
     rune::set_app_id("modrix-gui");
     let spec = AppSpec::<State> {
-        min_size: Some((980.0, 640.0)),
+        min_size: Some((860.0, 560.0)),
         scenes: demo::SCENES,
         setup: Some(setup),
         poll: Some(state::App::poll),

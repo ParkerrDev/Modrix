@@ -85,6 +85,13 @@ pub enum Event {
     UpdateChecked(Result<Option<modrix_update::UpdateInfo>, String>),
     /// The update installer launched (or failed to).
     UpdateApplied(Result<(), String>),
+    /// A game's store catalog loaded (or failed to).
+    StoreCatalog(
+        GameId,
+        Result<Vec<modrix_service::store::StoreItem>, String>,
+    ),
+    /// A store install resolved and queued (or failed to).
+    StoreQueued(String, Result<crate::store::Queued, String>),
     /// A game's artwork resolved.
     Art(GameId, Box<ArtData>),
 }

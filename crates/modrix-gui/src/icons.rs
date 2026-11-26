@@ -64,6 +64,7 @@ stroked!(
     "bell",
     r#"<path d="M6 10a6 6 0 0 1 12 0c0 5 2 6.5 2 6.5H4S6 15 6 10z"/><path d="M10 19.5a2 2 0 0 0 4 0"/>"#
 );
+stroked!(PLAY, "play", r#"<path d="M7 4.5v15l12.5-7.5z"/>"#);
 stroked!(CHECK, "check", r#"<path d="m5 12.5 4.5 4.5L19 7.5"/>"#);
 stroked!(CLOSE, "close", r#"<path d="M6 6l12 12M18 6 6 18"/>"#);
 stroked!(CHEVRON_DOWN, "chevron-down", r#"<path d="m6 9 6 6 6-6"/>"#);

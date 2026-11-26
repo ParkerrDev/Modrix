@@ -17,29 +17,72 @@ use crate::ui::parts::{self, glyph};
 /// Height of one navigation row, gaps included.
 const NAV_STEP: f32 = 40.0;
 
+/// The sidebar cover banner's height: the 2:3 cover is cropped at the
+/// bottom (never squished) and the banner gives way first when the window
+/// is short.
+const BANNER_H: f32 = 300.0;
+const BANNER_MIN_H: f32 = 96.0;
+
 /// The left column.
 pub fn sidebar(s: &App, look: &Look, layer: &mut Vec<El>) -> El {
+    let cover = s.game_art().and_then(|a| a.cover.as_ref());
+    let head = match cover {
+        Some(px) => banner(look, px),
+        None => row().w_full().px(20.0).pt(18.0).child(wordmark(look)),
+    };
+    let body = col()
+        .w_full()
+        .grow(1.0)
+        .px(14.0)
+        .pt(if cover.is_some() { 4.0 } else { 18.0 })
+        .pb(14.0)
+        .gap(18.0)
+        .child(game_switcher(s, look, layer))
+        .child(nav(s, look))
+        .child(el().grow(1.0))
+        .child(footer(s, look));
     col()
         .key("sidebar")
         .w(space::SIDEBAR)
         .h_full()
-        .px(14.0)
-        .pt(18.0)
-        .pb(14.0)
-        .gap(18.0)
+        .clip_rounded(0.0)
         .fill(look.glass)
         .border(1.0, look.edge)
-        .child(wordmark(look))
-        .child(game_switcher(s, look, layer))
-        .child(nav(s, look))
-        .child(el().grow(1.0))
-        .child(footer(s, look))
+        .child(head)
+        .child(body)
+}
+
+/// The active game's cover across the full sidebar width, the wordmark
+/// over its top. The whole banner is a drag region.
+fn banner(look: &Look, px: &rune::Pixels) -> El {
+    let fade = el()
+        .pin(Some(0.0), None, Some(0.0), Some(0.0))
+        .h(BANNER_H * 0.4)
+        .gradient(rune::Color::TRANSPARENT, look.glass);
+    let shade = el()
+        .pin(Some(0.0), Some(0.0), Some(0.0), None)
+        .h(72.0)
+        .gradient(look.base.alpha(0.62), rune::Color::TRANSPARENT);
+    col()
+        .key("sidebar-banner")
+        .w_full()
+        .h(BANNER_H)
+        .min_h(BANNER_MIN_H)
+        .shrink()
+        .clip_rounded(0.0)
+        .pixels_fit(px, SurfaceFit::Fill)
+        .surface_anchor(rune::Align::Center, rune::Align::Start)
+        .window_drag()
+        .a11y_hidden()
+        .child(shade)
+        .child(fade)
+        .child(row().w_full().px(20.0).pt(18.0).child(wordmark(look)))
 }
 
 fn wordmark(look: &Look) -> El {
     row()
         .key("wordmark")
-        .px(6.0)
+        .w_full()
         .h(28.0)
         .center_y()
         .window_drag()
@@ -159,6 +202,7 @@ fn nav_icon(screen: Screen) -> &'static rune::Icon {
         Screen::LoadOrder => &icons::ORDER,
         Screen::Conflicts => &icons::CONFLICT,
         Screen::Downloads => &icons::DOWNLOAD,
+        Screen::Store => &icons::PACKAGE,
         Screen::Games => &icons::GAMEPAD,
         Screen::Settings => &icons::SETTINGS,
     }
@@ -226,6 +270,9 @@ fn nav_row(s: &App, look: &Look, screen: Screen) -> El {
         .on_press(move |s: &mut App| {
             s.screen = screen;
             s.popup = None;
+            if screen == Screen::Store {
+                s.open_store();
+            }
         })
         .child(glyph(
             nav_icon(screen),
@@ -345,6 +392,13 @@ fn heading(s: &App) -> (&'static str, String) {
             ),
         ),
         Screen::Downloads => ("Downloads", format!("{} active", s.active_downloads())),
+        Screen::Store => (
+            "Mod store",
+            s.lib
+                .store
+                .as_ref()
+                .map_or_else(String::new, |d| d.base_url.clone()),
+        ),
         Screen::Games => ("Games", format!("{} registered", s.lib.games.len())),
         Screen::Settings => (
             "Settings",

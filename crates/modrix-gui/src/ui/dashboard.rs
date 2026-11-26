@@ -33,6 +33,7 @@ pub fn view(s: &App, look: &Look, _layer: &mut Vec<El>) -> El {
                 .child(health(s, look).grow(1.0).w(0.0))
                 .child(recent(s, look).grow(1.0).w(0.0)),
         )
+        .children(game_status(s, look))
         .children((!s.lib.external.is_empty()).then(|| external(s, look)))
 }
 
@@ -46,31 +47,6 @@ fn hero(s: &App, look: &Look, name: &str, path: &str) -> El {
             .shadow(0.0, 30.0, look.shadow()),
         None => text(name.to_owned()).font(ty::HERO).color(look.text()),
     };
-    let blocked = s.blockers().next().is_some();
-    let actions = row()
-        .gap(space::SM)
-        .child(
-            Button::new("Deploy")
-                .icon(&icons::DEPLOY)
-                .variant(ButtonVariant::Submit)
-                .disabled(blocked || s.busy > 0)
-                .on_press(|s: &mut App| s.deploy())
-                .build(&look.k),
-        )
-        .child(
-            Button::new("Add mods")
-                .icon(&icons::PLUS)
-                .variant(ButtonVariant::Neutral)
-                .on_press_tx(|_: &mut App, tx| crate::ui::mods::pick_archives(tx))
-                .build(&look.k),
-        )
-        .child(
-            Button::new("Verify")
-                .icon(&icons::SHIELD)
-                .variant(ButtonVariant::Ghost)
-                .on_press(|s: &mut App| s.verify())
-                .build(&look.k),
-        );
     col()
         .key("hero-block")
         .w_full()
@@ -91,7 +67,42 @@ fn hero(s: &App, look: &Look, name: &str, path: &str) -> El {
                         .truncate(),
                 ),
         )
-        .child(actions)
+        .child(hero_actions(s, look))
+}
+
+fn hero_actions(s: &App, look: &Look) -> El {
+    let blocked = s.blockers().next().is_some();
+    row()
+        .gap(space::SM)
+        .child(
+            Button::new("Deploy")
+                .icon(&icons::DEPLOY)
+                .variant(ButtonVariant::Submit)
+                .disabled(blocked || s.busy > 0)
+                .on_press(|s: &mut App| s.deploy())
+                .build(&look.k),
+        )
+        .children(s.lib.capabilities.is_some_and(|c| c.launch).then(|| {
+            Button::new("Launch")
+                .icon(&icons::PLAY)
+                .variant(ButtonVariant::Neutral)
+                .on_press(|s: &mut App| s.launch())
+                .build(&look.k)
+        }))
+        .child(
+            Button::new("Add mods")
+                .icon(&icons::PLUS)
+                .variant(ButtonVariant::Neutral)
+                .on_press_tx(|_: &mut App, tx| crate::ui::mods::pick_archives(tx))
+                .build(&look.k),
+        )
+        .child(
+            Button::new("Verify")
+                .icon(&icons::SHIELD)
+                .variant(ButtonVariant::Ghost)
+                .on_press(|s: &mut App| s.verify())
+                .build(&look.k),
+        )
 }
 
 fn stats(s: &App, look: &Look) -> El {
@@ -99,6 +110,7 @@ fn stats(s: &App, look: &Look) -> El {
     row()
         .w_full()
         .gap(space::MD)
+        .flex_wrap()
         .child(parts::stat(
             look,
             "stat-mods",
@@ -222,6 +234,85 @@ fn recent(s: &App, look: &Look) -> El {
         col().w_full().pb(10.0).children(rows)
     };
     parts::section(look, "recent", "Recent activity", None, body)
+}
+
+/// The mod loader's state and the tail of the game's log, when the game
+/// declares either.
+fn game_status(s: &App, look: &Look) -> Option<El> {
+    let loader = s.lib.loader.as_ref().map(|l| loader_row(look, l));
+    let log = (!s.lib.log.is_empty()).then(|| log_tail(look, &s.lib.log));
+    if loader.is_none() && log.is_none() {
+        return None;
+    }
+    let body = col()
+        .w_full()
+        .pb(14.0)
+        .gap(10.0)
+        .children(loader)
+        .children(log);
+    let title = if s.lib.loader.is_some() {
+        "Game"
+    } else {
+        "Game log"
+    };
+    Some(parts::section(look, "game-status", title, None, body))
+}
+
+fn loader_row(look: &Look, l: &modrix_core::LoaderStatus) -> El {
+    let (tone, state) = match (&l.conflict, l.installed) {
+        (Some(rival), _) => (look.bad, format!("Blocked by {rival}")),
+        (None, true) => (
+            look.good,
+            l.version
+                .as_ref()
+                .map_or_else(|| "Installed".to_owned(), |v| format!("Installed, {v}")),
+        ),
+        (None, false) => (look.warn, "Not installed".to_owned()),
+    };
+    row()
+        .key("loader")
+        .w_full()
+        .px(18.0)
+        .gap(12.0)
+        .center_y()
+        .child(el().size(7.0, 7.0).radius(4.0).fill(tone))
+        .child(
+            text(format!("Mod loader: {}", l.kind))
+                .font(ty::BODY)
+                .color(look.text())
+                .grow(1.0)
+                .truncate(),
+        )
+        .child(text(state).font(ty::SMALL).color(look.muted()))
+        .children(l.installed.then(|| {
+            parts::tag(
+                look,
+                if l.interop_ready {
+                    "Interop ready"
+                } else {
+                    "Interop missing"
+                },
+            )
+        }))
+}
+
+fn log_tail(look: &Look, lines: &[String]) -> El {
+    let rows = lines.iter().enumerate().map(|(i, line)| {
+        text(line.clone())
+            .key(format!("log-{i}"))
+            .font(ty::MONO)
+            .color(look.muted())
+            .truncate()
+    });
+    col()
+        .key("log-tail")
+        .mx(18.0)
+        .padding(12.0)
+        .gap(3.0)
+        .radius(10.0)
+        .fill(look.base.alpha(0.55))
+        .border(1.0, look.edge)
+        .children(rows)
 }
 
 fn external(s: &App, look: &Look) -> El {

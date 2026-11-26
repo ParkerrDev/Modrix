@@ -66,6 +66,7 @@ fn summary(s: &App, look: &Look) -> El {
     row()
         .w_full()
         .gap(space::MD)
+        .flex_wrap()
         .child(parts::stat(
             look,
             "c-pairs",
@@ -195,8 +196,11 @@ fn rules(s: &App, look: &Look, conflict: &ModConflict) -> El {
                     2 => s.set_rule(first, second),
                     _ => s.clear_rule(first, second),
                 })
-                .width(Some(560.0))
-                .build(&look.k),
+                .width(None)
+                .build(&look.k)
+                .grow(1.0)
+                .w(0.0)
+                .max_w(560.0),
         )
 }
 

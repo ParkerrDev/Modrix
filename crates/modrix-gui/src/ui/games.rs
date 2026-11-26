@@ -17,7 +17,7 @@ const PER_ROW: usize = 3;
 pub fn view(s: &App, look: &Look, layer: &mut Vec<El>) -> El {
     let mut page = col().w_full().gap(space::LG);
     if !s.lib.games.is_empty() {
-        page = page.child(registered(s, look));
+        page = page.child(registered(s, look, layer));
     }
     let found = s.unregistered_detected();
     if !found.is_empty() {
@@ -30,9 +30,10 @@ pub fn view(s: &App, look: &Look, layer: &mut Vec<El>) -> El {
     page.child(manual(s, look, layer))
 }
 
-fn registered(s: &App, look: &Look) -> El {
+fn registered(s: &App, look: &Look, layer: &mut Vec<El>) -> El {
     let cards: Vec<El> = s.lib.games.iter().map(|g| game_card(s, look, g)).collect();
-    parts::section(look, "registered", "Your games", None, grid(cards))
+    let grid = super::menus::games(s, look, grid(cards), layer);
+    parts::section(look, "registered", "Your games", None, grid)
 }
 
 fn grid(cards: Vec<El>) -> El {
@@ -89,6 +90,7 @@ fn game_card(s: &App, look: &Look, g: &modrix_core::Game) -> El {
             s.switch_game(id);
             s.screen = Screen::Dashboard;
         })
+        .on_secondary_press(move |s: &mut App, p, _| s.open_game_menu(id, p))
         .child(banner(look, s.art.get(&id), &g.name))
         .child(caption(look, g, on))
 }
@@ -275,17 +277,24 @@ fn def_picker(s: &App, look: &Look, layer: &mut Vec<El>) -> El {
         .build(&look.k, layer)
 }
 
+/// The widest a form field grows; narrower windows shrink it.
+const FIELD_MAX_W: f32 = 380.0;
+
 fn folder_field(s: &App, look: &Look) -> El {
     row()
+        .w_full()
         .gap(space::SM)
         .child(
             TextInput::new(&s.form.install_path)
                 .placeholder("Game folder")
                 .leading_icon(&icons::FOLDER)
-                .width(Some(380.0))
+                .width(None)
                 .on_edit(|s: &mut App| &mut s.form.install_path)
                 .on_submit(|s: &mut App, _| s.add_game())
-                .build(&look.k),
+                .build(&look.k)
+                .grow(1.0)
+                .w(0.0)
+                .max_w(FIELD_MAX_W),
         )
         .child(
             Button::new("Browse")
@@ -310,9 +319,11 @@ fn manual(s: &App, look: &Look, layer: &mut Vec<El>) -> El {
     let folder = folder_field(s, look);
     let custom = TextInput::new(&s.form.def_path)
         .placeholder("Optional: path to a game.toml")
-        .width(Some(380.0))
+        .width(None)
         .on_edit(|s: &mut App| &mut s.form.def_path)
-        .build(&look.k);
+        .build(&look.k)
+        .w_full()
+        .max_w(FIELD_MAX_W);
     let body = col()
         .w_full()
         .pb(14.0)

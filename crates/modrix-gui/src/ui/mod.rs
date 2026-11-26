@@ -8,10 +8,12 @@ mod dialogs;
 mod downloads;
 mod games;
 mod load_order;
+mod menus;
 mod mods;
 pub mod parts;
 mod settings;
 mod shell;
+mod store;
 mod wizard;
 
 use rune::{Cx, El, ScrollSpec, SurfaceFit, col, el, row};
@@ -77,6 +79,7 @@ fn main_column(s: &App, look: &Look, layer: &mut Vec<El>) -> El {
         Screen::LoadOrder => load_order::view(s, look),
         Screen::Conflicts => conflicts::view(s, look, layer),
         Screen::Downloads => downloads::view(s, look),
+        Screen::Store => store::view(s, look),
         Screen::Games => games::view(s, look, layer),
         Screen::Settings => settings::view(s, look),
     };
@@ -118,6 +121,7 @@ fn screen_key(screen: Screen) -> &'static str {
         Screen::LoadOrder => "screen-order",
         Screen::Conflicts => "screen-conflicts",
         Screen::Downloads => "screen-downloads",
+        Screen::Store => "screen-store",
         Screen::Games => "screen-games",
         Screen::Settings => "screen-settings",
     }

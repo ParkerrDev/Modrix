@@ -42,6 +42,8 @@ pub enum Screen {
     Conflicts,
     /// Browser hand-off downloads.
     Downloads,
+    /// The game's community mod store.
+    Store,
     /// Registered, detected and installable games.
     Games,
     /// Appearance, paths, pairing, plugins, updates.
@@ -50,12 +52,13 @@ pub enum Screen {
 
 impl Screen {
     /// Every screen in navigation order.
-    pub const ALL: [Screen; 7] = [
+    pub const ALL: [Screen; 8] = [
         Screen::Dashboard,
         Screen::Mods,
         Screen::LoadOrder,
         Screen::Conflicts,
         Screen::Downloads,
+        Screen::Store,
         Screen::Games,
         Screen::Settings,
     ];
@@ -69,6 +72,7 @@ impl Screen {
             Screen::LoadOrder => "Load order",
             Screen::Conflicts => "Conflicts",
             Screen::Downloads => "Downloads",
+            Screen::Store => "Mod store",
             Screen::Games => "Games",
             Screen::Settings => "Settings",
         }
@@ -83,6 +87,7 @@ impl Screen {
             "loadorder" => Some(Screen::LoadOrder),
             "conflicts" => Some(Screen::Conflicts),
             "downloads" => Some(Screen::Downloads),
+            "store" => Some(Screen::Store),
             "games" => Some(Screen::Games),
             "settings" => Some(Screen::Settings),
             _ => None,
@@ -103,6 +108,15 @@ pub enum SortKey {
     Version,
     /// Source (nexus, local).
     Source,
+}
+
+/// What a right-click menu is for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Ctx {
+    /// A visible row of the Mods table.
+    Mod(usize),
+    /// A registered game's card.
+    Game(GameId),
 }
 
 /// Which list owns the keyboard.
@@ -322,6 +336,8 @@ impl Wizard {
 pub struct Forms {
     /// Mods table filter.
     pub search: TextEdit,
+    /// Store catalog filter.
+    pub store_search: TextEdit,
     /// Picked definition id for manual registration.
     pub def_id: Option<String>,
     /// Explicit `game.toml` path (overrides the pick).
@@ -370,6 +386,12 @@ pub struct Library {
     pub external: Vec<ExternalMod>,
     /// Plugins each mod ships (heavy pass).
     pub plugin_counts: HashMap<ModId, usize>,
+    /// The game's mod loader, when it declares one (heavy pass).
+    pub loader: Option<modrix_core::LoaderStatus>,
+    /// The last lines of the game's log, when it declares one.
+    pub log: Vec<String>,
+    /// The game's community mod store, when it declares one (heavy pass).
+    pub store: Option<modrix_core::StoreDef>,
 }
 
 /// Which popup surface is open (at most one at a time).
@@ -463,6 +485,8 @@ pub struct App {
     pub unread: usize,
     /// Open popup, if any.
     pub popup: Option<Popup>,
+    /// The open right-click menu: what was pressed, and where.
+    pub ctx: Option<(Ctx, rune::PointerPress)>,
     /// Updater state.
     pub update: UpdateState,
     /// Pending duplicate prompts (the first is shown).
@@ -487,6 +511,11 @@ pub struct App {
     pub installed_plugins: Vec<InstalledPlugin>,
     /// Text fields.
     pub form: Forms,
+    /// The Store screen's catalog.
+    pub store: crate::store::StoreView,
+    /// Mods table columns dropped for width: 0 none, 1 Source, 2 Source
+    /// and Installed.
+    pub mods_narrow: u8,
     /// Resolved on-disk locations.
     pub paths: Option<Paths>,
     /// Appearance preference.
@@ -548,6 +577,7 @@ impl App {
             note_seq: 0,
             unread: 0,
             popup: None,
+            ctx: None,
             update: UpdateState::Idle,
             dup_queue: Vec::new(),
             wizard: None,
@@ -560,6 +590,8 @@ impl App {
             registry_loading: false,
             installed_plugins: Vec::new(),
             form: Forms::default(),
+            store: crate::store::StoreView::default(),
+            mods_narrow: 0,
             paths: None,
             appearance: crate::prefs::load(),
             confirm_delete: false,
@@ -597,6 +629,7 @@ impl App {
         let load_order = self.lib.capabilities.is_none_or(|c| c.load_order);
         match screen {
             Screen::LoadOrder => load_order,
+            Screen::Store => self.lib.capabilities.is_some_and(|c| c.store),
             Screen::Conflicts => {
                 load_order
                     || !self.lib.conflicts.is_empty()

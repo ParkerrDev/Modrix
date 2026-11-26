@@ -168,6 +168,26 @@ impl App {
         );
     }
 
+    /// Start the selected game. A launch that cannot pass the loader's
+    /// environment on this platform says what to add to its launch options.
+    pub fn launch(&mut self) {
+        let Some(game) = self.game() else {
+            return;
+        };
+        let (id, name) = (game.id, game.name.clone());
+        self.popup = None;
+        self.run(
+            false,
+            Box::new(move |e| {
+                let r = e.launch(id).map_err(err)?;
+                Ok(match r.readiness.warning {
+                    Some(warning) => Reply::Note(Tone::Info, warning),
+                    None => Reply::Note(Tone::Ok, format!("Started {name}")),
+                })
+            }),
+        );
+    }
+
     /// Undeploy (purge) the active profile.
     pub fn purge(&mut self) {
         let Some(profile) = self.profile_id() else {

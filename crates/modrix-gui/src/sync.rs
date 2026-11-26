@@ -12,6 +12,8 @@ use modrix_service::InstallOutcome;
 use crate::bus::{Event, Job, Work};
 use crate::state::{App, Library, MAX_NOTES, NOTE_TTL, Note, Screen, SortKey, TOAST_TTL, Tone};
 
+/// Log lines the dashboard shows.
+const LOG_LINES: usize = 12;
 /// Seconds between idle refreshes.
 const IDLE_PERIOD: f64 = 2.0;
 /// Seconds between refreshes while something is running.
@@ -46,8 +48,21 @@ pub fn gather(engine: &Engine, game: Option<GameId>, heavy: bool) -> Library {
             lib.conflicts = engine.mod_conflicts(profile).unwrap_or_default();
         }
     }
+    let caps = lib.capabilities;
+    if caps.is_some_and(|c| c.launch) {
+        lib.log = engine
+            .tail_log(game, 0, LOG_LINES)
+            .map(|t| t.lines)
+            .unwrap_or_default();
+    }
     if heavy {
         lib.external = engine.external_mods(game).unwrap_or_default();
+        if caps.is_some_and(|c| c.mod_loader) {
+            lib.loader = engine.loader_status(game).ok();
+        }
+        if caps.is_some_and(|c| c.store) {
+            lib.store = engine.game_def(game).ok().and_then(|d| d.store);
+        }
     }
     lib.enabled = lib.order.iter().map(|m| m.id).collect();
     lib
@@ -247,6 +262,8 @@ impl App {
             self.lib.health = old.health;
             self.lib.conflicts = old.conflicts;
             self.lib.external = old.external;
+            self.lib.loader = old.loader;
+            self.lib.store = old.store;
         }
         self.lib.plugin_counts = if game_changed {
             HashMap::new()
@@ -261,6 +278,9 @@ impl App {
             self.screen = Screen::Dashboard;
         }
         self.request_art();
+        if self.screen == Screen::Store {
+            self.open_store();
+        }
         self.queue_unreviewed_fomods();
         if game_changed && !heavy {
             self.request_refresh(true);

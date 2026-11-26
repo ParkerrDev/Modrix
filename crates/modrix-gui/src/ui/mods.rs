@@ -28,7 +28,7 @@ pub fn pick_archives(tx: &mut Tx) {
 }
 
 /// The Mods screen.
-pub fn view(s: &App, look: &Look, _layer: &mut Vec<El>) -> El {
+pub fn view(s: &App, look: &Look, layer: &mut Vec<El>) -> El {
     if s.lib.mods.is_empty() {
         return parts::panel(look, "mods-empty").child(parts::empty(
             look,
@@ -46,7 +46,7 @@ pub fn view(s: &App, look: &Look, _layer: &mut Vec<El>) -> El {
         .gap(space::MD)
         .child(toolbar(s, look))
         .children((selected > 0).then(|| action_bar(s, look, selected)))
-        .child(table(s, look))
+        .child(table(s, look, layer))
 }
 
 fn add_button(look: &Look) -> El {
@@ -148,7 +148,7 @@ fn ghost(look: &Look, label: &str, i: &'static rune::Icon, f: impl Fn(&mut App) 
         .build(&look.k)
 }
 
-fn table(s: &App, look: &Look) -> El {
+fn table(s: &App, look: &Look, layer: &mut Vec<El>) -> El {
     let visible = s.visible_mods().len();
     let body_look = look.clone();
     let rows = col()
@@ -172,6 +172,7 @@ fn table(s: &App, look: &Look) -> El {
             s.mod_sort.0 as u8,
             s.mod_sort.1,
             s.form.search.text.as_str(),
+            s.mods_narrow,
         ));
     let list = col()
         .key("mod-scroll")
@@ -188,16 +189,72 @@ fn table(s: &App, look: &Look) -> El {
                 .color(look.muted()),
         )
     });
-    parts::panel(look, "mods-table")
+    let panel = parts::panel(look, "mods-table")
         .grow(1.0)
         .min_h(0.0)
+        .on_layout(|s: &mut App, [_, _, w, _]| s.mods_narrow = narrow_level(w))
         .child(header(s, look))
         .child(parts::hair(look))
         .children(footer)
         .child(list)
+        .child(parts::hair(look))
+        .child(summary(s, look));
+    super::menus::mods(s, look, panel, layer)
+}
+
+/// The line under the table: what the library holds.
+fn summary(s: &App, look: &Look) -> El {
+    let mods = s.lib.mods.len();
+    let enabled = s
+        .lib
+        .mods
+        .iter()
+        .filter(|m| s.lib.enabled.contains(&m.id))
+        .count();
+    let plugins: usize = s
+        .lib
+        .plugin_counts
+        .values()
+        .copied()
+        .fold(0, usize::saturating_add);
+    let assets = s
+        .lib
+        .mods
+        .iter()
+        .filter(|m| s.lib.plugin_counts.get(&m.id).copied().unwrap_or(0) == 0)
+        .count();
+    let mut parts = vec![
+        count(mods, "mod", "mods"),
+        format!("{enabled} enabled"),
+        count(plugins, "plugin", "plugins"),
+        format!("{assets} asset-only"),
+    ];
+    if !s.lib.external.is_empty() {
+        parts.push(format!("{} external (not managed)", s.lib.external.len()));
+    }
+    row()
+        .key("mods-summary")
+        .w_full()
+        .px(18.0)
+        .py(10.0)
+        .child(text(parts.join(", ")).font(ty::SMALL).color(look.muted()))
+}
+
+fn count(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// Table widths below which a column is dropped, Source first.
+const SOURCE_MIN_W: f32 = 820.0;
+const INSTALLED_MIN_W: f32 = 680.0;
+
+/// How many columns a table `w` points wide drops.
+fn narrow_level(w: f32) -> u8 {
+    u8::from(w < INSTALLED_MIN_W).saturating_add(u8::from(w < SOURCE_MIN_W))
 }
 
 fn header(s: &App, look: &Look) -> El {
+    let narrow = s.mods_narrow;
     row()
         .key("mods-head")
         .w_full()
@@ -207,8 +264,10 @@ fn header(s: &App, look: &Look) -> El {
         .center_y()
         .child(sort_cell(s, look, "Name", SortKey::Name).grow(1.0))
         .child(sort_cell(s, look, "Version", SortKey::Version).w(110.0))
-        .child(sort_cell(s, look, "Source", SortKey::Source).w(90.0))
-        .child(sort_cell(s, look, "Installed", SortKey::Installed).w(110.0))
+        .children((narrow < 1).then(|| sort_cell(s, look, "Source", SortKey::Source).w(90.0)))
+        .children(
+            (narrow < 2).then(|| sort_cell(s, look, "Installed", SortKey::Installed).w(110.0)),
+        )
         .child(sort_cell(s, look, "On", SortKey::Enabled).w(54.0))
 }
 
@@ -291,21 +350,27 @@ fn mod_row(s: &App, look: &Look, i: usize) -> El {
         .label(m.name.clone())
         .on_press_tx(move |s: &mut App, tx| s.row_click(Pane::Mods, i, tx.mods()))
         .on_double_press(move |s: &mut App| s.configure(id))
-        .children(mod_cells(look, m, name, on))
+        .on_secondary_press(move |s: &mut App, p, _| s.open_mod_menu(i, p))
+        .children(mod_cells(look, m, name, on, s.mods_narrow))
 }
 
-fn mod_cells(look: &Look, m: &modrix_core::Mod, name: El, on: bool) -> [El; 5] {
+fn mod_cells(look: &Look, m: &modrix_core::Mod, name: El, on: bool, narrow: u8) -> Vec<El> {
     let id = m.id;
     let installed = m.created_at.map_or_else(|| "-".to_owned(), date);
-    [
+    let source = (narrow < 1).then(|| el().w(90.0).child(parts::tag(look, m.source.clone())));
+    let installed =
+        (narrow < 2).then(|| text(installed).font(ty::SMALL).color(look.faint()).w(110.0));
+    let mut cells = vec![
         name.grow(1.0).w(0.0),
         text(m.version.clone().unwrap_or_else(|| "-".to_owned()))
             .font(ty::MONO)
             .color(look.muted())
             .truncate()
             .w(110.0),
-        el().w(90.0).child(parts::tag(look, m.source.clone())),
-        text(installed).font(ty::SMALL).color(look.faint()).w(110.0),
+    ];
+    cells.extend(source);
+    cells.extend(installed);
+    cells.push(
         el().w(54.0).child(
             Switch::new(on)
                 .hide_label()
@@ -313,7 +378,8 @@ fn mod_cells(look: &Look, m: &modrix_core::Mod, name: El, on: bool) -> [El; 5] {
                 .on_toggle(move |s: &mut App| s.set_mod_enabled(id, !on))
                 .build(&look.k),
         ),
-    ]
+    );
+    cells
 }
 
 /// A unix time as `2026-11-25`.
