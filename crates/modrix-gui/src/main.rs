@@ -1,62 +1,83 @@
 // SPDX-License-Identifier: GPL-2.0-only
-//! Modrix graphical frontend - a classy, modern take on the Vortex layout.
+//! Modrix's graphical frontend: a native GPU UI built with Rune over
+//! [`modrix_core::Engine`]. It embeds the same [`modrix_service::Service`] as
+//! `modrix serve`, so browser hand-offs install mods while the window is open.
 //!
-//! A thin Iced 0.13 face over [`modrix_core::Engine`]. It embeds the same
-//! [`modrix_service::Service`] as `modrix serve`, so browser download
-//! hand-offs install mods while the window is open. All state lives in
-//! [`app::App`]; all styling in [`theme`]; all layout in [`view`].
+//! The engine runs on its own thread ([`bus`]); the view only reads the
+//! state in [`state::App`], so frames never wait on the disk.
 
-mod app;
-mod artwork;
+mod actions;
+mod art;
+mod bake;
+mod boot;
+mod bus;
+mod demo;
+mod events;
 mod fmt;
 mod icons;
-mod theme;
-mod view;
+mod keys;
+mod look;
+mod prefs;
+mod state;
+mod store;
+mod sync;
+mod ui;
+mod wizard;
 
-fn main() -> iced::Result {
+use rune::{App, AppSpec};
+
+use crate::state::App as State;
+
+/// The window's opening size.
+const SIZE: (f32, f32) = (1320.0, 860.0);
+
+fn main() -> anyhow::Result<()> {
     init_tracing();
-    // Single-instance guard: if a primary is already serving the loopback port,
-    // do not open a second window. This is checked here, before the window is
-    // created, so a duplicate launch exits cleanly instead of running in a
-    // degraded "another instance active" mode. A crashed primary leaves a stale
-    // lockfile with nothing listening, which reads as not-running, so recovery
-    // launches through normally.
-    if another_instance_running() {
+    // One window per user: a live primary already serving the loopback port
+    // means a second launch exits. A crashed primary leaves a stale lock with
+    // nothing listening, which reads as not running.
+    if !rune::is_headless() && another_instance_running() {
         tracing::info!("Modrix is already running; not opening a second window.");
         return Ok(());
     }
-    iced::application("Modrix", app::update, view::view)
-        // Explicit app id: the Wayland window class the desktop entry's
-        // StartupWMClass matches against.
-        .settings(iced::Settings {
-            id: Some("modrix-gui".to_owned()),
-            ..iced::Settings::default()
-        })
-        .subscription(app::subscription)
-        .theme(|state| state.theme.clone())
-        // The window clear color comes from the active theme: glass themes
-        // use alpha < 1 so the compositor shows through (transparent(true)
-        // below makes that possible; opaque themes simply ignore it).
-        .style(|_state, _theme| iced::application::Appearance {
-            background_color: theme::window_background(),
-            text_color: theme::text(),
-        })
-        .transparent(true)
-        .antialiasing(true)
-        .window_size(iced::Size::new(1280.0, 840.0))
-        .centered()
-        .run_with(app::boot)
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .thread_name("modrix-rt")
+        .build()?;
+    let handle = runtime.handle().clone();
+    rune::set_app_id("modrix-gui");
+    let spec = AppSpec::<State> {
+        min_size: Some((860.0, 560.0)),
+        scenes: demo::SCENES,
+        setup: Some(setup),
+        poll: Some(state::App::poll),
+        on_key: Some(keys::on_key),
+        ..AppSpec::new("Modrix", SIZE, || State::new(None), ui::view)
+    };
+    App::new(spec).init(move || State::new(Some(handle))).run();
+    drop(runtime);
+    Ok(())
+}
+
+/// Attach the waker, then boot the service unless this is a headless snap.
+fn setup(s: &mut State, waker: rune::Waker) {
+    s.bus.set_waker(waker);
+    if rune::is_headless() {
+        return;
+    }
+    if let Some(rt) = s.rt.clone() {
+        boot::start(rt, std::sync::Arc::clone(&s.progress), s.bus.clone());
+    }
 }
 
 /// Whether a live primary Modrix instance already holds the loopback port.
-/// A failure to resolve the data directory reads as "not running" so the real
-/// error surfaces during boot rather than silently blocking launch.
 fn another_instance_running() -> bool {
     modrix_core::Paths::resolve()
         .is_ok_and(|paths| modrix_ipc::primary_is_live(&paths.instance_lock()))
 }
 
-/// Route `RUST_LOG`-filtered tracing to stderr for terminal launches.
+/// `RUST_LOG`-filtered tracing to stderr.
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt};
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));

@@ -618,7 +618,7 @@ mod tests {
             c.uninstall("testgame", &refs),
             Err(Error::InUse(_))
         ));
-        assert!(c.gc(&refs).unwrap().is_empty());
+        assert_eq!(c.gc(&refs).unwrap(), [] as [std::string::String; 0]);
         assert_eq!(c.installed().len(), 1);
 
         // Unreferenced: gc sweeps it.

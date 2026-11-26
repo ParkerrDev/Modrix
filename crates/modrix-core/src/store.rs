@@ -86,7 +86,7 @@ pub(crate) fn extract_zip(archive: &Path, dest: &Path) -> Result<()> {
         // `enclosed_name` returns None for any name that escapes the root.
         let Some(rel) = entry.enclosed_name() else {
             return Err(Error::PathEscape {
-                path: PathBuf::from(entry.name()),
+                path: PathBuf::from(entry.name().unwrap_or_default().into_owned()),
             });
         };
         let out = dest.join(&rel);
@@ -294,7 +294,17 @@ fn make_owner_writable(path: &Path) -> Result<()> {
     fs::set_permissions(path, perms).map_err(|e| Error::io(path, e))
 }
 
-pub(crate) fn normalize_staged(dest: &Path, mod_root: &str, content_dirs: &[String]) -> Result<()> {
+/// Rearrange a freshly extracted archive into the shape the deployer expects.
+///
+/// `park_root` overrides whether top-level binaries are treated as loader
+/// files (see [`crate::gamedef::GameDef::park_root_binaries`]); `None` keeps
+/// the mod-root-shape inference that suits Bethesda and BepInEx layouts.
+pub(crate) fn normalize_staged(
+    dest: &Path,
+    mod_root: &str,
+    content_dirs: &[String],
+    park_root: Option<bool>,
+) -> Result<()> {
     let ctx = ContentCtx {
         mod_root,
         content_dirs,
@@ -315,12 +325,17 @@ pub(crate) fn normalize_staged(dest: &Path, mod_root: &str, content_dirs: &[Stri
         return Ok(());
     }
     if !mod_root.is_empty() {
-        // A single-component mod root (Bethesda's `Data`) sits beside the game
-        // binary, so a top-level .exe/.dll is a loader that belongs at the
-        // install root. A *nested* mod root (`BepInEx/plugins`) IS the plugin
-        // container: a top-level DLL there is the mod itself, and parking it
-        // would deploy the plugin to the game root where nothing loads it.
-        if !mod_root.contains('/') {
+        // Inference, when the definition does not decide: a single-component
+        // mod root (Bethesda's `Data`) sits beside the game binary, so a
+        // top-level .exe/.dll is a loader that belongs at the install root. A
+        // *nested* mod root (`BepInEx/plugins`) IS the plugin container: a
+        // top-level DLL there is the mod itself, and parking it would deploy
+        // the plugin to the game root where nothing loads it.
+        //
+        // The inference is wrong for a loader whose mod directory is a single
+        // component holding bare payload DLLs (Sons of the Forest's `Mods/`),
+        // which is why a definition can override it outright.
+        if park_root.unwrap_or(!mod_root.contains('/')) {
             // Park loader binaries first - the mod-root remap would otherwise
             // sweep them into `.unmanaged/` as generic extras.
             park_root_binaries(dest)?;
@@ -875,7 +890,7 @@ mod tests {
             &dest.join("The One Ring Redux/Data/Scripts/OneRingScript.pex"),
             b"pex",
         );
-        normalize_staged(&dest, "Data", &[]).unwrap();
+        normalize_staged(&dest, "Data", &[], None).unwrap();
 
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
@@ -906,7 +921,7 @@ mod tests {
             &dest.join("Shaders/CloudShadows/CloudShadows.hlsli"),
             b"hlsl",
         );
-        normalize_staged(&dest, "Data", &[]).unwrap();
+        normalize_staged(&dest, "Data", &[], None).unwrap();
 
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
@@ -933,7 +948,7 @@ mod tests {
         // it.
         write(&dest.join("BepInEx/plugins/Tweaks/Tweaks.dll"), b"dll");
         write(&dest.join("BepInEx/plugins/Tweaks/config.json"), b"json");
-        normalize_staged(&dest, "", &[]).unwrap();
+        normalize_staged(&dest, "", &[], None).unwrap();
 
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
@@ -965,7 +980,7 @@ mod tests {
             b"a",
         );
         write(&dest.join("README.md"), b"readme");
-        normalize_staged(&dest, "BepInEx/plugins", &[]).unwrap();
+        normalize_staged(&dest, "BepInEx/plugins", &[], None).unwrap();
 
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
@@ -991,7 +1006,7 @@ mod tests {
         // - that deployed it beside the .exe where BepInEx never loads it.
         write(&dest.join("ECCLibrary.dll"), b"dll");
         write(&dest.join("Assets/bundle"), b"a");
-        normalize_staged(&dest, "BepInEx/plugins", &[]).unwrap();
+        normalize_staged(&dest, "BepInEx/plugins", &[], None).unwrap();
 
         assert!(
             !dest.join(".root").exists(),
@@ -1009,6 +1024,58 @@ mod tests {
     }
 
     #[test]
+    fn single_component_mod_root_can_opt_out_of_parking_binaries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("staged");
+        // A Sons of the Forest mod: the loader enumerates `Mods/*.dll`
+        // non-recursively for payloads but reads `Mods/<id>/manifest.json` for
+        // metadata, so the archive legitimately carries BOTH a bare top-level
+        // DLL and a folder.
+        //
+        // `Mods` is a single-component mod root, so the shape heuristic would
+        // park the DLL into `.root/` and deploy it to the game install
+        // directory - where the loader never looks. Deploy would report
+        // success and the game would load nothing. `park_root = Some(false)`
+        // is what makes this game work at all.
+        write(&dest.join("SolafiteMaskAura.dll"), b"dll");
+        write(&dest.join("SolafiteMaskAura/manifest.json"), b"{}");
+        normalize_staged(&dest, "Mods", &[], Some(false)).unwrap();
+
+        assert!(
+            !dest.join(".root").exists(),
+            "the payload DLL must not be parked to the install root"
+        );
+        let rels: Vec<_> = resolve_files(&dest)
+            .unwrap()
+            .iter()
+            .map(|f| f.target_rel.clone())
+            .collect();
+        assert_eq!(
+            rels,
+            vec![
+                "SolafiteMaskAura.dll".to_owned(),
+                "solafitemaskaura/manifest.json".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn single_component_mod_root_still_parks_binaries_by_default() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("staged");
+        // The opt-out must be exactly that: with `None` the Bethesda-shaped
+        // inference is unchanged, so SKSE's loader still lands in `.root/`.
+        write(&dest.join("skse64_loader.exe"), b"exe");
+        write(&dest.join("Data/Scripts/x.pex"), b"pex");
+        normalize_staged(&dest, "Data", &[], None).unwrap();
+
+        assert!(
+            dest.join(".root/skse64_loader.exe").is_file(),
+            "a loader binary must still be parked when the def does not opt out"
+        );
+    }
+
+    #[test]
     fn nested_mod_root_leaves_a_multi_target_tree_alone() {
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("staged");
@@ -1016,7 +1083,7 @@ mod tests {
         // silently drop the config, so the tree is left as-is.
         write(&dest.join("BepInEx/plugins/Mod/mod.dll"), b"dll");
         write(&dest.join("BepInEx/config/Mod.cfg"), b"cfg");
-        normalize_staged(&dest, "BepInEx/plugins", &[]).unwrap();
+        normalize_staged(&dest, "BepInEx/plugins", &[], None).unwrap();
         assert!(dest.join("BepInEx/plugins/Mod/mod.dll").is_file());
         assert!(dest.join("BepInEx/config/Mod.cfg").is_file());
     }
@@ -1029,7 +1096,7 @@ mod tests {
         // side directory (whatever it holds) must not be hoisted over it.
         write(&dest.join("Mod.esp"), b"esp");
         write(&dest.join("Extras/Data/Optional.esp"), b"esp");
-        normalize_staged(&dest, "Data", &[]).unwrap();
+        normalize_staged(&dest, "Data", &[], None).unwrap();
         assert!(dest.join("Mod.esp").is_file());
         assert!(dest.join("Extras/Data/Optional.esp").is_file());
     }
@@ -1043,7 +1110,7 @@ mod tests {
         write(&dest.join("skse64_2_02_06/skse64_1_6_1170.dll"), b"dll");
         write(&dest.join("skse64_2_02_06/Data/Scripts/Actor.pex"), b"pex");
         write(&dest.join("skse64_2_02_06/src/skse64/main.cpp"), b"cpp");
-        normalize_staged(&dest, "Data", &[]).unwrap();
+        normalize_staged(&dest, "Data", &[], None).unwrap();
 
         // Scripts became the mod root; loaders/src parked, never deployed.
         let rels: Vec<_> = resolve_files(&dest)
@@ -1069,7 +1136,7 @@ mod tests {
         let dest = tmp.path().join("staged");
         write(&dest.join("SkyUI.esp"), b"esp");
         write(&dest.join("textures/ui.dds"), b"dds");
-        normalize_staged(&dest, "Data", &[]).unwrap();
+        normalize_staged(&dest, "Data", &[], None).unwrap();
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
             .iter()
@@ -1087,7 +1154,7 @@ mod tests {
         let dest = tmp.path().join("staged");
         write(&dest.join("MyMod-1.0/meshes/m.nif"), b"m");
         write(&dest.join("MyMod-1.0/MyMod.esp"), b"e");
-        normalize_staged(&dest, "Data", &[]).unwrap();
+        normalize_staged(&dest, "Data", &[], None).unwrap();
         assert!(dest.join("MyMod.esp").is_file());
         assert!(dest.join("meshes/m.nif").is_file());
         assert!(!dest.join("MyMod-1.0").exists());
@@ -1099,7 +1166,7 @@ mod tests {
         let dest = tmp.path().join("staged");
         // A mod that IS just meshes must stay under meshes/.
         write(&dest.join("meshes/armor/a.nif"), b"m");
-        normalize_staged(&dest, "Data", &[]).unwrap();
+        normalize_staged(&dest, "Data", &[], None).unwrap();
         let rels: Vec<_> = resolve_files(&dest)
             .unwrap()
             .iter()
@@ -1153,7 +1220,7 @@ mod tests {
         let dest = tmp.path().join("staged");
         extract_with_system(&archive, &dest).unwrap();
         assert!(dest.join("inner/Data/Scripts/s.pex").is_file());
-        normalize_staged(&dest, "Data", &[]).unwrap();
+        normalize_staged(&dest, "Data", &[], None).unwrap();
         assert!(dest.join("Scripts/s.pex").is_file());
     }
 

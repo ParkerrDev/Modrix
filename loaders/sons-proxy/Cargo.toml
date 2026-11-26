@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+# This is a SEPARATE cargo workspace on purpose.
+#
+# The main Modrix workspace sets `unsafe_code = "forbid"` because the deploy
+# engine touches users' game files. An in-process injector cannot be written
+# without `unsafe`, and rather than weaken that guarantee for 13 crates so one
+# crate can use FFI, the injector lives outside the workspace entirely. The root
+# manifest declares `members = ["crates/*"]`, so `loaders/` is naturally
+# excluded and `cargo build` at the root never sees this package.
+#
+# See README.md for the unsafe policy that applies HERE instead.
+[workspace]
+resolver = "3"
+
+[package]
+name = "modrix-sons-proxy"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "GPL-2.0-only"
+authors = ["Modrix contributors"]
+description = "version.dll proxy that hosts CoreCLR inside Sons of the Forest"
+publish = false
+
+[lib]
+name = "modrix_sons_proxy"
+crate-type = ["cdylib"]
+
+# windows-sys is the ONLY dependency, and only when targeting Windows. On a
+# Linux host the pure modules (layout, log formatting, errors, the export name
+# table) still compile and their tests still run, which is what makes any of
+# this testable without a Windows box.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
+    "Win32_System_Environment",
+] }
+
+# A Rust panic must never unwind across the FFI boundary into Unity's stack.
+# `abort` makes that structurally impossible; the code paths below return
+# `Result` and log instead, so an abort would itself be a bug.
+[profile.dev]
+panic = "abort"
+overflow-checks = true
+
+[profile.release]
+panic = "abort"
+overflow-checks = true
+opt-level = "s"
+lto = true
+codegen-units = 1
+
+# Modrix house lints. The one deliberate difference from the root workspace is
+# `unsafe_code`: allowed here, but every `unsafe` block must carry a `// SAFETY:`
+# comment, which `undocumented_unsafe_blocks` upgrades from advice to a hard
+# error.
+[lints.rust]
+unsafe_code = "allow"
+missing_docs = "deny"
+unreachable_code = "deny"
+unreachable_patterns = "deny"
+unused = { level = "deny", priority = -1 }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+expect_used = "warn"
+indexing_slicing = "deny"
+arithmetic_side_effects = "warn"
+mem_forget = "deny"
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+dbg_macro = "warn"

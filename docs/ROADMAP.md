@@ -16,12 +16,12 @@ Workspace + plumbing. No features yet.
 - Cargo workspace, the crate skeletons from `ARCHITECTURE.md §3`.
 - **Power of Ten enforcement from commit #1:** workspace `[lints]` (forbid
   `unsafe`, panic-free, indexing/arithmetic guards), `clippy.toml` (≤60-line
-  functions), `deny.toml` (GPLv2 license gate + advisories). Full configs live
+  functions), `deny.toml` (advisories + bans + sources). Full configs live
   at the repository root.
 - `directories`-based config/data/cache paths; structured logging (`tracing`).
 - SQLite schema + migrations (`rusqlite`); open/create the DB.
 - GPL-2.0 `LICENSE` (full text) + SPDX headers on every source file; `README`.
-- CI = fmt + clippy `-D warnings` + test + `cargo deny` on Linux/Windows/macOS.
+- CI = fmt + clippy `-D warnings` + test + `cargo deny` (advisories) on Linux/Windows/macOS.
 
 **Done when:** CI green on all 3 OSes with **zero clippy warnings under
 `-D warnings`**; `cargo deny` passes; the app creates its data dir and an empty DB.
@@ -52,7 +52,7 @@ Make "click in browser → installed" real - **with no site API and no API key**
 (corrected from the original API-based plan; see `ARCHITECTURE.md §6`).
 - `modrix-download`: a segmented, multi-connection, **resumable, checksum-verified**
   download engine (a clean-room aria2/Motrix-style engine, no aria2 code), on the
-  GPLv2-clean hyper + rustls stack. FIFO queue + concurrency cap + progress events.
+  hyper + rustls stack. FIFO queue + concurrency cap + progress events.
   Retains an `nxm://` identity parser (not a download mechanism).
 - `modrix-ipc`: loopback listener + single-instance guard + session token; a JSON
   `POST /download` hand-off endpoint (+ `GET /download/<id>`, `/downloads`).
@@ -96,7 +96,7 @@ install / update / gc from the GUI, CLI, and MCP).
 ---
 
 ## Phase 5 - GUI
-- `modrix-gui` (**Iced**, MIT): the same feature set, themed classy/macOS-like;
+- `modrix-gui` (**Rune**): the same feature set, a native GPU UI tinted by each game's artwork;
   drag-to-reorder load order; the install wizard; settings.
 - Optional system-tray / headless-background so browser clicks work while "closed."
 

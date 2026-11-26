@@ -13,6 +13,8 @@
 //! single-instance primary and serves the listener in the background;
 //! frontends keep the same `Service` to answer their own UI queries.
 
+pub mod store;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -228,6 +230,20 @@ impl Service {
 
     fn try_enqueue(&self, body: &str) -> Result<DownloadId> {
         let job = HandoffJob::from_json(body).context("parsing the hand-off")?;
+        self.enqueue_job(job)
+    }
+
+    /// Queue an already-built hand-off job, exactly as if the browser had sent
+    /// it: it is routed to a game, downloaded, and auto-staged by the same
+    /// pipeline. This is what lets an in-app source (the mod store) install
+    /// with one click without duplicating any of that machinery.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the job fails validation (bad URL, unusable
+    /// filename), the download cannot be queued, or the route table is
+    /// poisoned.
+    pub fn enqueue_job(&self, job: HandoffJob) -> Result<DownloadId> {
         let game = self.route(&job);
         // Each hand-off downloads into its own subdirectory, so two downloads
         // that share a filename never collide on .part / .mmdl / destination.

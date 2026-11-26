@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 [package]
 name = "modrix-gui"
-description = "Modrix graphical frontend (Iced)."
+description = "Modrix graphical frontend (Rune, native GPU UI)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,14 +17,17 @@ modrix-core.workspace = true
 modrix-download.workspace = true
 modrix-ipc.workspace = true
 modrix-service.workspace = true
-iced.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-rfd.workspace = true
 modrix-plugin.workspace = true
 modrix-registry.workspace = true
 modrix-update.workspace = true
+rune.workspace = true
+rune-kit.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 image.workspace = true
 
 [lints]

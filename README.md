@@ -128,7 +128,7 @@ rm -rf ~/.cache/modrix              # artwork + download staging
 |---|---|
 | Linux, Windows, or macOS | Steam plus Proton is first-class on Linux |
 | Rust (pinned toolchain) | Build-time only; `rustup` installs it from `rust-toolchain.toml` |
-| A GPU or software renderer | The GUI uses `wgpu` (falls back to `tiny-skia`) |
+| A GPU, or a software adapter | The GUI renders with `wgpu` (Vulkan, Metal or DirectX 12) and falls back to a software adapter such as WARP or llvmpipe |
 
 </details>
 
@@ -139,7 +139,7 @@ rm -rf ~/.cache/modrix              # artwork + download staging
 
 <br>
 
-1. Launch `modrix-gui`. On **Games**, register your game. If it is installed through Steam, Modrix usually detects it and offers a one-click "Add and switch"; otherwise point it at the install directory.
+1. Launch `modrix-gui`. On **Games**, register your game. If it is installed through Steam, Modrix usually detects it and offers it under **Found on this computer** with a one-click **Add**; otherwise point it at the install directory.
 2. Load the `extension/` folder unpacked in your browser (see Installation). No token needed.
 3. Click **Download** on nexusmods.com. The file downloads segmented, stages itself into the library, and appears under **Mods**.
 4. Enable the mod, resolve any conflicts under **Conflicts**, then hit **Deploy**. Use **Verify** to confirm the game folder matches the manifest, and **Undeploy** to reverse it.
@@ -265,13 +265,13 @@ Modrix follows the platform's standard directories (via the `directories` crate)
 | Directory | Linux default | Holds |
 |---|---|---|
 | Data | `~/.local/share/modrix` | SQLite database, staged mod library, installed plugins |
-| Config | `~/.config/modrix` | GUI theme (`gui.toml`), extra game definitions |
+| Config | `~/.config/modrix` | GUI appearance (`gui.toml`), extra game definitions |
 | Cache | `~/.cache/modrix` | Steam artwork bakes, download staging, update downloads |
 
 On Windows these map to `%LOCALAPPDATA%` and `%APPDATA%`; on macOS to `~/Library`.
 
 - **Extra games:** drop a `game.toml` at `<config>/games/<id>/game.toml`.
-- **GUI theme:** the theme picker in **Settings** persists to `<config>/gui.toml` (Aurora glass by default, Gold as an alternative).
+- **GUI appearance:** **Settings** chooses System, Dark or Light and saves it to `<config>/gui.toml`. The accent colour comes from the selected game's artwork.
 - **Registry source:** `MODRIX_REGISTRY` overrides where game-support plugins are fetched from.
 
 </details>
@@ -300,7 +300,7 @@ Modrix is a Cargo workspace. `modrix-core` depends on no UI, site-specific, or p
 | `modrix-update` | In-app updater over GitHub Releases (reuses the hyper plus rustls client). |
 | `modrix-cli` | The `clap` frontend (binary: `modrix`). |
 | `modrix-tui` | The `ratatui` frontend. |
-| `modrix-gui` | The `iced` frontend (the only crate allowed to link a GUI toolkit). |
+| `modrix-gui` | The native GPU frontend, built with [Rune](https://github.com/anomalyco/rune) (the only crate allowed to link a GUI toolkit). |
 
 ### Deploy data flow
 
@@ -331,9 +331,9 @@ enabled mods (load order)
 4. **Crash-safety.** The journal is written before any file moves, so an interrupted deploy is recovered on next launch.
 5. **Determinism.** The planner is a pure function of the enabled set and load order.
 
-### Licensing gate
+### Licensing
 
-The whole tree is GPL-2.0-only, enforced mechanically by `cargo-deny` in CI. Apache-2.0-only dependencies are rejected as GPLv2-incompatible, which is why the HTTP stack is `hyper` plus `rustls` plus `rustls-rustcrypto` plus `rustls-native-certs` and never `reqwest` (which pulls `ring`). The sole carve-out is a documented [GUI linking exception](docs/LICENSE-EXCEPTIONS.md) for the windowing and text crates the Iced GUI needs; the engine links zero Apache-2.0 code.
+Modrix itself is GPL-2.0-only. Dependency licenses are not gated: `cargo-deny` runs for security advisories, duplicate-version policy and registry sources only. The HTTP stack is `hyper` plus `rustls` because it is small, pure Rust and already audited against how Modrix uses it - not because anything forbids the alternatives.
 
 ### Power of Ten for Rust
 
@@ -360,7 +360,7 @@ Windows builds keep themselves current through GitHub Releases, with no telemetr
 - When a newer release exists, a notification appears and **Settings** grows an **Updates** card with the version, its notes, and a one-click **Download and install**.
 - Installing downloads the signed installer, launches it silently, and quits Modrix so the installer can replace the running executable and relaunch it. Because the install is per-user, no administrator prompt is involved.
 
-The updater reuses the same GPLv2-clean `hyper` plus `rustls` HTTP client as the rest of Modrix (never `reqwest`). Pre-releases (betas) are skipped, so a beta never auto-updates a stable install. On Linux and macOS the same check links you to the release page for a manual download.
+The updater reuses the same `hyper` plus `rustls` HTTP client as the rest of Modrix. Pre-releases (betas) are skipped, so a beta never auto-updates a stable install. On Linux and macOS the Updates card links to the release page instead of installing, since there is no installer to run.
 
 </details>
 
@@ -382,7 +382,7 @@ cargo build
 cargo test --all --all-features                            # what CI runs
 cargo clippy --all-targets --all-features -- -D warnings   # zero warnings required
 cargo fmt --all -- --check
-cargo deny check                                           # license + advisory gate
+cargo deny check advisories bans sources                   # advisories gate (licenses are not checked)
 ```
 
 Run the GUI with `cargo run -p modrix-gui`, the CLI with `cargo run -p modrix-cli -- <args>`.
@@ -403,7 +403,7 @@ Most games need only a declarative definition. Drop a `game.toml` at `<config>/g
 
 1. Fork the repository and branch: `feat/short-description` or `fix/short-description`.
 2. Keep commits focused, one logical change each.
-3. Run the full gate before pushing: `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --all --all-features`, `cargo deny check`.
+3. Run the full gate before pushing: `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --all --all-features`, `cargo deny check advisories bans sources`.
 4. Open a PR against `main` describing what it changes, how you tested it, and any edge cases considered. For deploy-engine changes, note which invariant your test protects.
 
 </details>
@@ -417,7 +417,7 @@ Most games need only a declarative definition. Drop a `game.toml` at `<config>/g
 
 Modrix is released under the **GNU General Public License v2.0 only** (`GPL-2.0-only`).
 
-You are free to use, modify, and distribute it under the terms of the GPLv2. Every dependency is GPLv2-compatible, verified by `cargo-deny` in CI. The one documented carve-out is a [GUI linking exception](docs/LICENSE-EXCEPTIONS.md) for the Apache-2.0 windowing and text crates the Iced GUI links; the engine itself links zero Apache-2.0 code.
+You are free to use, modify, and distribute it under the terms of the GPLv2. Dependency licenses are not policed by the build; consult `cargo tree` and each crate's own license if you redistribute binaries.
 
 See [`LICENSE`](LICENSE) for the full text.
 

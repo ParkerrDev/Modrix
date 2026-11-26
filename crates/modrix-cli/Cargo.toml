@@ -14,6 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 modrix-core.workspace = true
+modrix-il2cpp.workspace = true
+modrix-interop-gen.workspace = true
 modrix-ipc.workspace = true
 modrix-mcp.workspace = true
 modrix-plugin.workspace = true

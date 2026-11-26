@@ -36,9 +36,9 @@ Two-tone: `MOD` in the accent blue, `RIX` in white, on black.
 | white | `#FFFFFF` | `RIX` |
 | black | `#000000` | background |
 
-The blue is the same value as `theme::AURORA.accent` in
-`crates/modrix-gui/src/theme.rs`. If one changes, change the other: the logo and
-the running app are meant to share one accent.
+The running app takes its accent from the selected game's artwork. With no
+artwork it falls back to this blue's hue (`DEFAULT_HUE` in
+`crates/modrix-gui/src/look.rs`); if the blue changes, change that too.
 
 Typeface is **Noto Sans Bold**. Its outlines are baked into `glyphs.json` as SVG
 path data, so the marks render identically everywhere with no font dependency and
@@ -112,4 +112,4 @@ Noto Sans is licensed under the SIL Open Font License 1.1 by the Noto Project
 Authors. `glyphs.json` contains outlines for six characters converted to path
 data, used as artwork rather than redistributed as font software, which is the
 ordinary way a typeface is used to set a logo. The OFL is not in Modrix's
-dependency graph and is not checked by `cargo deny`, which only sees Rust crates.
+dependency graph and is outside anything `cargo deny` sees (it checks Rust crates, and no longer their licenses).

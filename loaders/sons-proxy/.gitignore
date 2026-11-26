@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Build outputs. The root .gitignore only covers /target at the repo root.
+/target
+/dist

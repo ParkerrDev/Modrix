@@ -15,9 +15,8 @@
 //! - [`NxmUri`] is retained purely as an identity parser (game/mod/file), not a
 //!   download mechanism.
 //!
-//! The HTTP stack is pure-Rust and GPLv2-clean - hyper + rustls with the
-//! RustCrypto crypto provider and the OS trust store, never reqwest/ring (see
-//! `docs/ARCHITECTURE.md` §11). Held to the Power of Ten reliability standard:
+//! The HTTP stack is hyper + rustls with the ring crypto provider and the OS
+//! trust store (see `docs/ARCHITECTURE.md` §11). Held to the Power of Ten reliability standard:
 //! panic-free on fallible paths, bounded loops, and offset writes via safe
 //! seek-once file handles (no `unsafe`, no `nix`).
 

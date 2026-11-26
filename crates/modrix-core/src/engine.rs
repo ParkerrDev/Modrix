@@ -251,12 +251,89 @@ impl Engine {
             load_order: crate::loadorder::LoadOrderStrategy::from_def(&def).is_some(),
             external_scan: !external_scans_of(&def).is_empty(),
             health_checks: def.health.is_some(),
+            launch: def.launch.is_some(),
+            mod_loader: def.mod_loader.is_some(),
+            store: def.store.is_some(),
         })
+    }
+
+    // --- launch, loader, and logs ------------------------------------------
+    //
+    // These are the only actions that touch anything outside the mod store, so
+    // they stay deliberately thin: `launch.rs` holds the logic, the engine just
+    // resolves the game's definition and install path and hands off.
+
+    /// Whether the game's mod loader is installed, and what is in the way.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotFound`] for an unknown game, or [`Error::Loader`]
+    /// if the game declares no loader at all.
+    pub fn loader_status(&self, id: GameId) -> Result<crate::launch::LoaderStatus> {
+        let (game, def) = (self.game(id)?, self.game_def(id)?);
+        let loader = def.mod_loader.as_ref().ok_or_else(|| Error::Loader {
+            message: format!("{} does not use a mod loader", game.name),
+        })?;
+        crate::launch::loader_status(Path::new(&game.install_path), loader)
+    }
+
+    /// Start the game.
+    ///
+    /// Fire-and-forget: this returns once the launch is handed off, without
+    /// waiting for the game to appear. Poll [`Engine::tail_log`] if you need to
+    /// know it actually started.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotFound`] for an unknown game, or [`Error::Launch`] if
+    /// the game declares no launch method or the command could not be spawned.
+    pub fn launch(&self, id: GameId) -> Result<crate::launch::LaunchOutcome> {
+        let (game, def) = (self.game(id)?, self.game_def(id)?);
+        let launch = def.launch.as_ref().ok_or_else(|| Error::Launch {
+            message: format!("{} does not declare how to launch", game.name),
+        })?;
+        crate::launch::launch(Path::new(&game.install_path), launch, def.steam_appid)
+    }
+
+    /// Read a bounded window of the game's log, starting at byte `since`.
+    ///
+    /// Pass the returned `next_cursor` as the next `since` to follow the log.
+    /// A `truncated` result means the log restarted (the loader truncates on
+    /// launch), so a caller following it should reset its own view.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotFound`] for an unknown game, or [`Error::Launch`] if
+    /// the game declares no log path. A log that does not exist yet is *not* an
+    /// error - it yields an empty tail.
+    pub fn tail_log(
+        &self,
+        id: GameId,
+        since: u64,
+        max_lines: usize,
+    ) -> Result<crate::launch::LogTail> {
+        let (game, def) = (self.game(id)?, self.game_def(id)?);
+        let rel = def
+            .launch
+            .as_ref()
+            .and_then(|l| l.log.as_deref())
+            .ok_or_else(|| Error::Launch {
+                message: format!("{} does not declare a log path", game.name),
+            })?;
+        crate::launch::tail_log(&Path::new(&game.install_path).join(rel), since, max_lines)
     }
 }
 
 /// What a game supports, derived from its definition.
+///
+/// Frontends gate whole screens on these, so each really is an independent
+/// yes/no about one feature - the usual "replace the bools with an enum"
+/// advice does not apply, because a game can support any combination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "one independent capability flag per feature; not a state machine"
+)]
 pub struct GameCapabilities {
     /// The game has a load-order strategy (a Load Order screen makes sense).
     pub load_order: bool,
@@ -264,6 +341,13 @@ pub struct GameCapabilities {
     pub external_scan: bool,
     /// The game declares game-specific health checks.
     pub health_checks: bool,
+    /// The game declares how to launch it (a Play button makes sense).
+    pub launch: bool,
+    /// The game declares a mod loader Modrix can install and check.
+    pub mod_loader: bool,
+    /// The game declares a community mod store (a browse-and-install screen
+    /// makes sense).
+    pub store: bool,
 }
 
 /// A minimal definition for a legacy row whose definition file is gone:
@@ -291,6 +375,14 @@ fn synthesize_def(game: &Game) -> GameDef {
         base_files: Vec::new(),
         external_scan: Vec::new(),
         health: None,
+        // A legacy row predates v3, so it declares none of these: keep the
+        // mod-root-shape inference, and offer neither launch nor loader
+        // management (frontends gate on `capabilities`, so the controls
+        // simply stay hidden rather than failing at the point of use).
+        park_root_binaries: None,
+        launch: None,
+        mod_loader: None,
+        store: None,
     }
 }
 
@@ -431,16 +523,23 @@ impl Engine {
         let version = detected.and_then(|d| d.version.as_deref());
         let nexus_mod_id = detected.and_then(|d| d.nexus_mod_id);
         let mod_root = self.game(game)?.mod_root;
-        // The definition's content-dir list steers archive normalization
-        // (which lone root directories are content vs packaging wrappers).
-        let content_dirs = self
-            .game_def(game)
-            .map(|d| d.content_dirs)
+        // The definition steers archive normalization: which lone root
+        // directories are content vs packaging wrappers, and whether a
+        // top-level binary is a loader to park or the mod payload itself.
+        let def = self.game_def(game).ok();
+        let content_dirs = def
+            .as_ref()
+            .map(|d| d.content_dirs.clone())
             .unwrap_or_default();
+        let shape = ShapeOpts {
+            mod_root: &mod_root,
+            content_dirs: &content_dirs,
+            park_root: def.as_ref().and_then(|d| d.park_root_binaries),
+        };
         let staged = self.paths.staging_root().join(game.to_string()).join(name);
         let logic = self.logic_of(game);
         self.progress.begin(&format!("Installing · {name}"), 0);
-        let extracted = extract_into(path, &staged, &mod_root, &content_dirs, logic.as_deref());
+        let extracted = extract_into(path, &staged, &shape, logic.as_deref());
         self.progress.finish();
         if let Err(error) = extracted {
             // Never leave a half-staged tree behind a failed stage.
@@ -1307,14 +1406,24 @@ fn is_system_archive(path: &Path) -> bool {
     EXTS.iter().any(|ext| name.ends_with(ext))
 }
 
+/// How the game definition says a staged tree should be shaped. Bundled into
+/// one struct so `extract_into` stays inside the workspace argument limit.
+struct ShapeOpts<'a> {
+    /// Where mods deploy, relative to the base (`Data`, `BepInEx/plugins`).
+    mod_root: &'a str,
+    /// Directory names that are content, not a packaging wrapper.
+    content_dirs: &'a [String],
+    /// Override for loader-binary parking; `None` = infer from `mod_root`.
+    park_root: Option<bool>,
+}
+
 /// Extract or copy `path` into `staged`, then shape the tree: a registered
 /// Tier-2 plugin may return a stage plan (validated and applied by core);
 /// otherwise the data-driven normalization runs.
 fn extract_into(
     path: &Path,
     staged: &Path,
-    mod_root: &str,
-    content_dirs: &[String],
+    shape: &ShapeOpts<'_>,
     logic: Option<&dyn crate::logic::GameLogic>,
 ) -> Result<()> {
     if path.is_dir() {
@@ -1332,7 +1441,7 @@ fn extract_into(
     }
     match logic.map(|l| l.install(staged)).transpose()? {
         Some(Some(plan)) => crate::logic::apply_plan(staged, &plan)?,
-        _ => store::normalize_staged(staged, mod_root, content_dirs)?,
+        _ => store::normalize_staged(staged, shape.mod_root, shape.content_dirs, shape.park_root)?,
     }
     // Stamp AFTER structural shaping so the final tree is covered
     // (renames preserve mtimes, so order is for clarity, not correctness).

@@ -347,7 +347,7 @@ mod tests {
         assert_eq!(p.to_add(), 2);
         assert_eq!(p.to_remove(), 0);
         assert_eq!(p.unchanged(), 0);
-        assert!(p.conflicts().is_empty());
+        assert_eq!(p.conflicts(), []);
     }
 
     #[test]

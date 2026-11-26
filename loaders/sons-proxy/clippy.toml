@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Same Power of Ten thresholds as the main workspace (see the root clippy.toml).
+too-many-lines-threshold = 60
+too-many-arguments-threshold = 5
+
+# Product and technology names that read better unbackticked in prose. ".."
+# keeps clippy's own defaults. The loader-specific half of this list is why the
+# file exists at all: this crate's doc comments are mostly about other people's
+# software.
+doc-valid-idents = [
+    "Modrix", "CoreCLR", "IL2CPP", "Il2CppInterop", "RedLoader", "MelonLoader",
+    "BepInEx", "Doorstop", "GameAssembly", "UnityPlayer", "Unity", "Proton",
+    "Dobby", "MonoBehaviour", "AppDomain", "macOS", "..",
+]
+
+# Production code stays panic-free and bounded. Test code may assert directly.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+allow-indexing-slicing-in-tests = true

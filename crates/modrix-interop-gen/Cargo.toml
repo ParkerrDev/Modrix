@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[package]
+name = "modrix-interop-gen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Generates managed reference assemblies from an IL2CPP game so mods can be compiled against it."
+
+[dependencies]
+modrix-ecma335 = { path = "../modrix-ecma335" }
+modrix-il2cpp = { path = "../modrix-il2cpp" }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

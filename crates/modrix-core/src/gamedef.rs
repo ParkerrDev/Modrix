@@ -15,10 +15,19 @@ use std::path::Path;
 
 use crate::error::{Error, Result};
 
+/// The `mod_loader.kind` that means "Modrix supplies this loader itself" - there
+/// is nothing to download and no third-party project to track.
+pub const NATIVE_LOADER_KIND: &str = "modrix-sons";
+
 /// The oldest `game.toml` schema version this build understands.
 pub const MIN_API_VERSION: u32 = 1;
 /// The newest `game.toml` schema version this build understands.
-pub const MAX_API_VERSION: u32 = 2;
+///
+/// v3 adds `[launch]`, `[mod_loader]` and `park_root_binaries`: a definition can
+/// now declare how to start the game, which mod loader it needs, and that its
+/// mod root must not have top-level binaries parked away from it. Every new
+/// field is `#[serde(default)]`, so v1/v2 definitions parse unchanged.
+pub const MAX_API_VERSION: u32 = 3;
 
 /// A parsed, validated game definition.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -121,6 +130,149 @@ pub struct GameDef {
     /// pairings). Absent = none run.
     #[serde(default)]
     pub health: Option<HealthDef>,
+    /// Whether a top-level `.exe`/`.dll` in a staged archive is a *loader*
+    /// that belongs beside the game binary (parked into `.root/`) rather than
+    /// the mod payload itself.
+    ///
+    /// Absent = infer from the shape of `mod_root`, which is right for
+    /// Bethesda (`Data` sits beside the binary, so a loose DLL is SKSE) and
+    /// for nested roots (`BepInEx/plugins` IS the plugin container). It is
+    /// WRONG for a loader whose mod directory is a single component holding
+    /// bare payload DLLs - Sons of the Forest deploys `Mods/<Name>.dll`, and
+    /// inferring would park every mod to the install root where nothing loads
+    /// it. Such a game sets this to `false` explicitly.
+    #[serde(default)]
+    pub park_root_binaries: Option<bool>,
+    /// How to start the game (and where it writes its log). Absent = Modrix
+    /// cannot launch this game and frontends hide the control.
+    #[serde(default)]
+    pub launch: Option<LaunchDef>,
+    /// The mod loader this game needs before any mod will load. Absent =
+    /// mods drop straight into the game and no loader is managed.
+    ///
+    /// Named `mod_loader` rather than `loader` because `loader` is already a
+    /// nested key under `[health]`, and the misplaced-key guard below relies
+    /// on top-level names never being valid inside a table.
+    #[serde(default)]
+    pub mod_loader: Option<LoaderDef>,
+    /// The community mod store this game has, when one exists. Absent = mods
+    /// arrive only through the browser hand-off and frontends hide the
+    /// browse-and-install screen entirely.
+    #[serde(default)]
+    pub store: Option<StoreDef>,
+}
+
+/// A community mod store a game's mods can be browsed and installed from.
+///
+/// Deliberately just an identity plus an origin: `kind` selects the client that
+/// knows the site's JSON shape (each store's API differs, so there is no useful
+/// generic schema to declare here), and `base_url` is the only thing that ever
+/// varies per deployment. Core stores and validates this; it does not speak
+/// HTTP - the client lives in `modrix-service`, keeping core free of any
+/// site-specific code.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct StoreDef {
+    /// Which store client handles this API (e.g. `sotf-mods`). An unknown kind
+    /// is not an error here - a newer definition may name a client this build
+    /// does not have yet, and the frontend simply finds no handler.
+    pub kind: String,
+    /// The API origin, with no trailing slash (e.g. `https://api.sotf-mods.com`).
+    /// Must be `https://` - a store install runs unattended and ends in code
+    /// deployed into the game directory, so the transport is never optional.
+    pub base_url: String,
+}
+
+/// How to start a game, and where to read its log afterwards.
+///
+/// Deliberately fire-and-forget: Modrix starts the game and stops caring.
+/// Supervising a game process (PID tracking, restart watchdogs) is a different
+/// problem with its own failure modes, and nothing here needs it.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LaunchDef {
+    /// `"steam"` (via `steam://rungameid/<steam_appid>`) or `"exe"` (run
+    /// `exe` from the install directory).
+    pub mode: String,
+    /// For `mode = "exe"`: the executable, relative to the install directory.
+    #[serde(default)]
+    pub exe: Option<String>,
+    /// Extra command-line arguments.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Environment variables the game needs. On Linux/macOS a Windows-only
+    /// title runs under Proton/Wine, where a loader's proxy DLL is inert
+    /// unless `WINEDLLOVERRIDES` names it - that is what this carries.
+    /// Ignored on Windows, where the proxy loads natively.
+    ///
+    /// A `BTreeMap` rather than a `HashMap` so the rendered launch options are
+    /// byte-stable across runs; Modrix compares them to decide whether a
+    /// Steam config actually needs rewriting.
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+    /// The game/loader log, relative to the install directory.
+    #[serde(default)]
+    pub log: Option<String>,
+    /// Process image name used to stop a running instance before relaunching
+    /// (e.g. `SonsOfTheForest.exe`). Absent = never kill anything.
+    #[serde(default)]
+    pub process: Option<String>,
+}
+
+/// A mod loader that must be installed into the game before mods will load.
+///
+/// This is *not* a mod: it is infrastructure that lives beside the game binary
+/// and is deliberately kept out of the deployment manifest, so `verify` and
+/// `undeploy` never treat it as owned content.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LoaderDef {
+    /// Loader identity. `modrix-sons` is Modrix's own native loader (built in,
+    /// nothing to download); anything else names a third-party loader that
+    /// `source` says how to fetch.
+    pub kind: String,
+    /// The loader's own directory, relative to the install dir (`_Modrix`).
+    pub install_root: String,
+    /// A file that exists if and only if the loader is installed, relative to
+    /// the install dir. This is the installed/not-installed test.
+    pub sentinel: String,
+    /// The proxy DLL the loader injects through, relative to the install dir
+    /// (`version.dll`). Games have exactly one such slot, which is why two
+    /// loaders can never coexist.
+    #[serde(default)]
+    pub proxy: Option<String>,
+    /// Where generated interop assemblies land, relative to the install dir.
+    /// IL2CPP games only; mods compile against these.
+    #[serde(default)]
+    pub interop_dir: Option<String>,
+    /// A file holding the installed version string, relative to the install
+    /// dir. Absent = version is unknown but installation is still detectable.
+    #[serde(default)]
+    pub version_file: Option<String>,
+    /// Paths (relative to the install dir) whose presence means a *rival*
+    /// loader already owns the proxy slot. Installing over one of these
+    /// bricks both, so Modrix refuses rather than guessing.
+    #[serde(default)]
+    pub conflicts: Vec<String>,
+    /// Where to fetch a third-party loader. Absent = `kind` is native and
+    /// Modrix supplies it.
+    #[serde(default)]
+    pub source: Option<LoaderSourceDef>,
+}
+
+/// Where a third-party loader's release archive comes from.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LoaderSourceDef {
+    /// `owner/repo` whose latest GitHub release carries the loader.
+    #[serde(default)]
+    pub github_repo: Option<String>,
+    /// Release asset name, matched case-insensitively (asset casing drifts
+    /// between releases, so this is never an exact match).
+    #[serde(default)]
+    pub asset: Option<String>,
+    /// A direct download URL, used instead of `github_repo`.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Expected SHA-256 of the archive, when it is pinned.
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 /// A load-order strategy declaration.
@@ -224,7 +376,7 @@ pub struct RecommendDef {
 /// unambiguously a misplaced key rather than a field from a newer schema
 /// (unknown nested keys stay tolerated, so definitions written for a later
 /// build still load).
-const TOP_LEVEL_KEYS: [&str; 21] = [
+const TOP_LEVEL_KEYS: [&str; 25] = [
     "api_version",
     "id",
     "name",
@@ -246,6 +398,10 @@ const TOP_LEVEL_KEYS: [&str; 21] = [
     "base_files",
     "external_scan",
     "health",
+    "park_root_binaries",
+    "launch",
+    "mod_loader",
+    "store",
 ];
 
 /// Most nodes the misplaced-key walk will visit (bounded loop, no recursion).
@@ -418,6 +574,83 @@ impl GameDef {
             if probe.key.trim().is_empty() || probe.value.trim().is_empty() {
                 return Some("a registry_keys entry needs a `key` and a `value`".to_owned());
             }
+        }
+        self.validate_launch()
+            .or_else(|| self.validate_loader())
+            .or_else(|| self.validate_store())
+    }
+
+    /// Check the `[launch]` table. Split out of [`Self::validate_details`] to
+    /// keep each validator under the workspace's 60-line ceiling.
+    fn validate_launch(&self) -> Option<String> {
+        let launch = self.launch.as_ref()?;
+        match launch.mode.as_str() {
+            "steam" => {
+                if self.steam_appid.is_none() {
+                    return Some("launch.mode = \"steam\" needs a `steam_appid`".to_owned());
+                }
+            }
+            "exe" => {
+                let named = launch.exe.as_ref().is_some_and(|e| !e.trim().is_empty());
+                if !named {
+                    return Some("launch.mode = \"exe\" needs an `exe`".to_owned());
+                }
+            }
+            other => return Some(format!("unknown launch mode `{other}` (steam/exe)")),
+        }
+        if launch.log.as_ref().is_some_and(|l| l.trim().is_empty()) {
+            return Some("launch.log must not be empty when present".to_owned());
+        }
+        None
+    }
+
+    /// Check the `[loader]` table.
+    fn validate_loader(&self) -> Option<String> {
+        let loader = self.mod_loader.as_ref()?;
+        if loader.kind.trim().is_empty() {
+            return Some("mod_loader.kind must not be empty".to_owned());
+        }
+        if loader.install_root.trim().is_empty() {
+            return Some("mod_loader.install_root must not be empty".to_owned());
+        }
+        if loader.sentinel.trim().is_empty() {
+            return Some("mod_loader.sentinel must not be empty".to_owned());
+        }
+        // A non-native loader has to say where it comes from, or `install`
+        // would have nothing to do and would silently report success.
+        if loader.kind != NATIVE_LOADER_KIND {
+            let src = loader.source.as_ref();
+            let fetchable = src.is_some_and(|s| s.github_repo.is_some() || s.url.is_some());
+            if !fetchable {
+                return Some(format!(
+                    "mod_loader.kind `{}` is not native, so [mod_loader.source] needs a `github_repo` or `url`",
+                    loader.kind
+                ));
+            }
+        }
+        None
+    }
+
+    /// Check the `[store]` table. Split out for the same reason as
+    /// [`Self::validate_launch`]: the 60-line ceiling is per function.
+    fn validate_store(&self) -> Option<String> {
+        let store = self.store.as_ref()?;
+        if store.kind.trim().is_empty() {
+            return Some("store.kind must not be empty".to_owned());
+        }
+        // Plain http would let anyone on the path choose which archive gets
+        // extracted into the game directory, so it is rejected outright rather
+        // than warned about.
+        if !store.base_url.starts_with("https://") {
+            return Some(format!(
+                "store.base_url `{}` must be an https:// origin",
+                store.base_url
+            ));
+        }
+        // A trailing slash would produce `…//api/mods` once a client joins a
+        // path onto it. Some servers 404 that, so normalize by refusing it.
+        if store.base_url.ends_with('/') {
+            return Some("store.base_url must not end with a slash".to_owned());
         }
         None
     }
@@ -655,13 +888,150 @@ mod tests {
         let def = GameDef::from_toml_str(text, &inline()).unwrap();
         assert_eq!(def.mod_root, "");
         assert!(def.steam_appid.is_none());
-        assert!(def.install_probe.is_empty());
-        assert!(def.content_dirs.is_empty());
+        assert!(
+            def.install_probe.is_empty(),
+            "expected empty, got {:?}",
+            def.install_probe
+        );
+        assert!(
+            def.content_dirs.is_empty(),
+            "expected empty, got {:?}",
+            def.content_dirs
+        );
         assert!(def.external_scan.is_empty());
         assert!(def.health.is_none());
         assert!(def.gog_id.is_none());
         assert!(def.epic_id.is_none());
         assert!(def.registry_keys.is_empty());
-        assert!(def.required_files.is_empty());
+        assert!(
+            def.required_files.is_empty(),
+            "expected empty, got {:?}",
+            def.required_files
+        );
+        // v3 fields default to absent, which is what keeps every v1/v2
+        // definition parsing unchanged.
+        assert!(def.park_root_binaries.is_none());
+        assert!(def.launch.is_none());
+        assert!(def.mod_loader.is_none());
+        assert!(def.store.is_none());
+    }
+
+    #[test]
+    fn parses_a_v3_definition_with_launch_and_loader() {
+        let text = "\
+api_version = 3
+id = \"g\"
+name = \"G\"
+steam_appid = 1
+park_root_binaries = false
+
+[launch]
+mode = \"steam\"
+log = \"_Modrix/Latest.log\"
+process = \"G.exe\"
+
+[launch.env]
+WINEDLLOVERRIDES = \"version=n,b\"
+
+[mod_loader]
+kind = \"modrix-sons\"
+install_root = \"_Modrix\"
+sentinel = \"_Modrix/net6/Modrix.Loader.dll\"
+proxy = \"version.dll\"
+
+[store]
+kind = \"sotf-mods\"
+base_url = \"https://api.sotf-mods.com\"
+";
+        let def = GameDef::from_toml_str(text, &inline()).unwrap();
+        assert_eq!(def.park_root_binaries, Some(false));
+        let launch = def.launch.expect("launch table parsed");
+        assert_eq!(launch.mode, "steam");
+        assert_eq!(
+            launch.env.get("WINEDLLOVERRIDES").map(String::as_str),
+            Some("version=n,b"),
+            "the Proton override is what makes a loader work off-Windows"
+        );
+        let loader = def.mod_loader.expect("mod_loader table parsed");
+        assert_eq!(loader.kind, NATIVE_LOADER_KIND);
+        assert!(loader.source.is_none(), "a native loader needs no source");
+        let store = def.store.expect("store table parsed");
+        assert_eq!(store.kind, "sotf-mods");
+        assert_eq!(store.base_url, "https://api.sotf-mods.com");
+    }
+
+    #[test]
+    fn store_tables_are_rejected_when_incoherent() {
+        let base = "api_version = 3\nid = \"g\"\nname = \"G\"\n";
+        // No kind: nothing selects a client, so the screen would show but never
+        // load.
+        let text = format!("{base}\n[store]\nkind = \"\"\nbase_url = \"https://x.example\"\n");
+        assert!(GameDef::from_toml_str(&text, &inline()).is_err());
+        // Plain http: a store install ends in code inside the game directory.
+        let text =
+            format!("{base}\n[store]\nkind = \"sotf-mods\"\nbase_url = \"http://x.example\"\n");
+        assert!(GameDef::from_toml_str(&text, &inline()).is_err());
+        // A trailing slash would build `…//api/mods`.
+        let text =
+            format!("{base}\n[store]\nkind = \"sotf-mods\"\nbase_url = \"https://x.example/\"\n");
+        assert!(GameDef::from_toml_str(&text, &inline()).is_err());
+    }
+
+    #[test]
+    fn v3_tables_are_rejected_when_incoherent() {
+        let base = "api_version = 3\nid = \"g\"\nname = \"G\"\n";
+        // steam launch without an appid has nothing to launch.
+        let text = format!("{base}\n[launch]\nmode = \"steam\"\n");
+        assert!(GameDef::from_toml_str(&text, &inline()).is_err());
+        // exe launch without an exe likewise.
+        let text = format!("{base}\n[launch]\nmode = \"exe\"\n");
+        assert!(GameDef::from_toml_str(&text, &inline()).is_err());
+        // An unknown mode is a typo, not a forward-compatible extension.
+        let text = format!("{base}\n[launch]\nmode = \"magic\"\n");
+        assert!(GameDef::from_toml_str(&text, &inline()).is_err());
+        // A non-native loader with no source would silently install nothing.
+        let text = format!(
+            "{base}\n[mod_loader]\nkind = \"redloader\"\ninstall_root = \"_Redloader\"\n\
+             sentinel = \"_Redloader/net6/RedLoader.dll\"\n"
+        );
+        assert!(GameDef::from_toml_str(&text, &inline()).is_err());
+    }
+
+    #[test]
+    fn v3_is_the_newest_supported_schema() {
+        let text = "api_version = 4\nid = \"g\"\nname = \"G\"\n";
+        assert!(
+            GameDef::from_toml_str(text, &inline()).is_err(),
+            "a definition from a newer build must be rejected, not half-read"
+        );
+    }
+
+    #[test]
+    fn shipped_sonsoftheforest_definition_opts_out_of_parking() {
+        // Regression guard for a silent misdeploy: `Mods` is a single-component
+        // mod root, so without the explicit opt-out every payload DLL is parked
+        // to `.root/` and deployed to the game install directory, where the
+        // loader never looks. Deploy reports success; nothing loads.
+        let text = include_str!("../../../games/sonsoftheforest/game.toml");
+        let path = std::path::Path::new("games/sonsoftheforest/game.toml");
+        let def = GameDef::from_toml_str(text, path).unwrap();
+        assert_eq!(def.api_version, 3);
+        assert_eq!(def.mod_root, "Mods");
+        assert_eq!(
+            def.park_root_binaries,
+            Some(false),
+            "removing this silently breaks every Sons of the Forest mod"
+        );
+        let loader = def.mod_loader.expect("declares a loader");
+        assert_eq!(loader.kind, NATIVE_LOADER_KIND);
+        assert!(
+            loader.conflicts.iter().any(|c| c == "MelonLoader"),
+            "must refuse to install over a rival proxy owner"
+        );
+        // The Mod Store tab is gated on this table alone, so losing it would
+        // silently remove the only in-app way to install a Sons mod.
+        let store = def.store.expect("declares a mod store");
+        assert_eq!(store.kind, "sotf-mods");
+        assert_eq!(store.base_url, "https://api.sotf-mods.com");
     }
 }

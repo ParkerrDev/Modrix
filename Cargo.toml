@@ -10,7 +10,7 @@ members = ["crates/*"]
 # `v*` tag, so a tag is always authoritative and code/About/release stay in sync.
 version = "0.1.0-beta.3"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.99"
 license = "GPL-2.0-only"
 authors = ["Modrix contributors"]
 
@@ -20,6 +20,8 @@ modrix-core = { path = "crates/modrix-core" }
 modrix-plugin = { path = "crates/modrix-plugin" }
 modrix-download = { path = "crates/modrix-download" }
 modrix-ipc = { path = "crates/modrix-ipc" }
+modrix-il2cpp = { path = "crates/modrix-il2cpp" }
+modrix-interop-gen = { path = "crates/modrix-interop-gen" }
 modrix-mcp = { path = "crates/modrix-mcp" }
 modrix-registry = { path = "crates/modrix-registry" }
 modrix-service = { path = "crates/modrix-service" }
@@ -28,17 +30,15 @@ modrix-update = { path = "crates/modrix-update" }
 anyhow = "1"
 thiserror = "2"
 directories = "5"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive", "env"] }
 tempfile = "3"
 # --- async runtime (Phase 2) ---
-# NOTE: the HTTP *client* stack does NOT use reqwest - it transitively pulls
-# Apache-2.0-encumbered crates (`ring`, `sync_wrapper`), which are GPLv2-
-# incompatible. The download pipeline (added next) assembles a pure-Rust,
-# GPLv2-clean stack instead: hyper + rustls + a RustCrypto crypto provider +
-# the OS trust store, all MIT/ISC. See docs/ARCHITECTURE.md §8/§11.
+# The HTTP client is assembled from hyper + rustls (ring provider) + the OS
+# trust store. It is small and already audited against our usage; it is a
+# choice, not a rule (see docs/ARCHITECTURE.md §11).
 tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread", "macros", "net", "io-util", "fs", "sync", "time",
 ] }
@@ -46,36 +46,39 @@ hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 http-body-util = "0.1"
 tokio-rustls = { version = "0.26", default-features = false, features = ["tls12", "logging"] }
-rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "logging"] }
-rustls-rustcrypto = "=0.0.2-alpha"      # pure-Rust CryptoProvider (RustCrypto primitives)
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "logging", "ring"] }
 rustls-native-certs = "0.8"             # OS trust store (avoids CDLA webpki-roots)
 getrandom = "0.3"
-iced = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "auto-detect-theme", "canvas", "image"] }
-# FOMOD installer config parsing (read-only XML DOM; MIT arm of MIT/Apache dual).
+# Native GPU UI: Rune's renderer, layout, text and springs, plus its
+# component kit. Pinned to one `dev` rev; the [patch.crates-io] block at the
+# bottom must use the same URL and rev (Rune ships patched winit/wgpu-hal/etc).
+rune = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7", features = ["native-file-dialog"] }
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7", default-features = false }
+# FOMOD installer config parsing (read-only XML DOM).
 roxmltree = "0.20"
 # Decode Steam artwork + bake the per-game backdrop / extract accent colors
-# (GUI only; MIT arm of MIT/Apache dual; the same 0.24 iced already resolves).
+# (GUI only).
 image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
-# Sandboxed Lua host for Tier-2 game plugins (MIT; vendors Lua 5.4, also MIT).
+# Sandboxed Lua host for Tier-2 game plugins (vendors Lua 5.4).
 mlua = { version = "0.10", default-features = false, features = ["lua54", "vendored"] }
-# Native file-open dialogs via the XDG portal (MIT; no GTK linkage).
+# Native file-open dialogs via the XDG portal (no GTK linkage).
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 serde = { version = "1", features = ["derive"] }
 wiremock = "0.6"
 serde_json = "1"
-# Semantic-version comparison for the in-app updater (MIT arm of MIT/Apache dual).
+# Semantic-version comparison for the in-app updater.
 semver = "1"
 toml = "0.8"
 # Windows registry reads for non-Steam store detection (GOG / Xbox / Uplay /
-# vendor keys like Bethesda Softworks). MIT; target-gated to cfg(windows). Its
+# vendor keys like Bethesda Softworks). Target-gated to cfg(windows). Its
 # FFI `unsafe` lives inside the crate, not ours (workspace forbids unsafe).
 winreg = "0.52"
 sha2 = "0.10"
-md-5 = "0.10"      # Nexus publishes file MD5s; RustCrypto, MIT/Apache
-# zip for reading mod archives. We DECOMPRESS only, so we take the pure-Rust
-# flate2 (miniz_oxide) backend and never enable `deflate` (which would pull in
-# zopfli, an Apache-2.0-only crate rejected by our GPLv2 license gate).
-zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
+md-5 = "0.10"      # Nexus publishes file MD5s; RustCrypto
+# zip for reading mod archives. We DECOMPRESS only, so the pure-Rust flate2
+# (miniz_oxide) backend is all that is needed; `deflate` (zopfli) would add a
+# compressor we never use.
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 proptest = "1"
 
@@ -105,3 +108,16 @@ print_stderr = "warn"
 
 [profile.release]
 overflow-checks = true               # Power of Ten: no silent integer wraparound
+
+# Rune's patched windowing/text/GPU crates. Cargo does not inherit a
+# dependency's patches, so they live here at the same rev as `rune` above.
+# Re-check Rune's own Cargo.toml [patch.crates-io] list whenever the rev moves.
+[patch.crates-io]
+winit = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+naga = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+accesskit_atspi_common = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }

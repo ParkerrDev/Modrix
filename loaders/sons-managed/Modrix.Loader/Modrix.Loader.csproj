@@ -1,0 +1,86 @@
+<!-- SPDX-License-Identifier: GPL-2.0-only -->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    net6.0 is not a preference, it is a constraint: the runtime the proxy hosts
+    is BepInEx's `mini-coreclr` 6.0.7, and `coreclr_create_delegate` loads this
+    assembly into THAT runtime. A net8/net9 assembly would fail to load with a
+    bare TypeLoadException and no diagnostic, inside a game, under Proton.
+
+    Building it needs the .NET 6 targeting pack. A modern SDK downloads it as a
+    NuGet package on first build; NETSDK1138 (net6.0 is out of support) is
+    therefore expected and suppressed rather than "fixed" by retargeting.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>Modrix.Loader</AssemblyName>
+    <RootNamespace>Modrix.Loader</RootNamespace>
+    <Version>0.1.0</Version>
+
+    <LangVersion>10.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- One self-contained file to copy into `<game>/_Modrix/net6/`. -->
+    <DebugType>embedded</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <IncludeSymbols>false</IncludeSymbols>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <NoWarn>$(NoWarn);NETSDK1138</NoWarn>
+
+    <!--
+      A class library does not copy its NuGet dependencies to the output
+      directory - the consuming application normally does that. Here there is no
+      consuming application: the proxy hands CoreCLR a bare `APP_PATHS` list and
+      the runtime probes those directories by file name. Without this, the build
+      output is two DLLs, the loader is injected, and it dies on the first
+      Il2CppInterop type with a FileNotFoundException.
+    -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+
+  <ItemGroup>
+    <ProjectReference Include="../Modrix.Sons.Sdk/Modrix.Sons.Sdk.csproj" />
+  </ItemGroup>
+
+  <!--
+    Runtime IL2CPP interop.
+
+    Modrix owns mod management, discovery, deployment and loading. What it does
+    NOT reimplement is the IL2CPP marshalling layer: turning a managed call into
+    `il2cpp_runtime_invoke`, attaching threads to the GC, injecting managed
+    MonoBehaviour types. That is Il2CppInterop's entire purpose, it is
+    maintained, and every loader in this ecosystem (BepInEx 6, MelonLoader,
+    RedLoader) depends on it rather than rewriting it.
+
+    Versions are pinned to the set RedLoader ships, because that combination is
+    known to work against this Unity generation - Cpp2IL and Il2CppInterop are
+    tightly coupled through AsmResolver and drift between them breaks generation
+    in ways that surface only at runtime.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Il2CppInterop.Runtime" Version="1.4.6-ci.602" />
+    <PackageReference Include="Il2CppInterop.Generator" Version="1.4.6-ci.602" />
+    <PackageReference Include="Il2CppInterop.HarmonySupport" Version="1.4.6-ci.602" />
+    <PackageReference Include="Samboy063.Cpp2IL.Core" Version="2022.1.0-pre-release.19" />
+    <!--
+      HarmonyX 2.10.1 and MonoMod.RuntimeDetour 22.7.31.1 are pinned, not merely
+      "old". Il2CppInterop's Harmony support needs an `IDetourProvider`, and the
+      only way to implement one is a native detour that can hand back a
+      trampoline to the original code. MonoMod 22.x exposes exactly that as the
+      public `NativeDetour` with `GenerateTrampoline<T>()`. MonoMod 25.x - which
+      HarmonyX 2.16 pulls in - made `NativeDetour` non-public and offers only
+      `NativeHook`, whose call-the-original story does not map onto that
+      interface. This combination is also the one RedLoader ships, so it is known
+      good against this Unity generation.
+    -->
+    <PackageReference Include="HarmonyX" Version="2.10.1" />
+    <PackageReference Include="MonoMod.RuntimeDetour" Version="22.7.31.1" />
+  </ItemGroup>
+
+</Project>

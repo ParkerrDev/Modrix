@@ -1,0 +1,179 @@
+{
+  "status": true,
+  "data": {
+    "id": 74,
+    "name": "BuildShare",
+    "slug": "buildshare",
+    "mod_id": "BuildShare",
+    "shortDescription": "Share your buildings with the world.",
+    "description": "## Introducing Build Share open alpha. Create building prefabs and import them as  blueprints\r\n\r\n\r\nIn the open alpha uploading is not yet supported. For the ful",
+    "dependencies": "",
+    "type": "Mod",
+    "modSide": null,
+    "isNSFW": false,
+    "isApproved": true,
+    "isFeatured": false,
+    "isMultiplayerCompatible": false,
+    "requiresAllPlayers": false,
+    "lastWeekDownloads": 134,
+    "downloads": 22626,
+    "latestVersion": "1.0.10",
+    "latestVersionSize": "",
+    "averageRating": 0,
+    "reviewsCount": 0,
+    "favoritesCount": 2,
+    "commentsCount": 2,
+    "sourceUrl": null,
+    "imageUrl": "https://r2.sotf-mods.com/1767666383118_1702916367133_buildshare_thumbnail.png",
+    "buildGuid": null,
+    "buildShareVersion": null,
+    "numberOfElements": null,
+    "lastReleasedAt": "2025-01-29T23:36:38.853Z",
+    "createdAt": "2023-12-18T16:19:27.103Z",
+    "updatedAt": "2026-08-17T19:00:01.311Z",
+    "userId": 8,
+    "categoryId": 1,
+    "images": [],
+    "user": {
+      "name": "ToniMacaroni",
+      "slug": "tonimacaroni",
+      "imageUrl": "",
+      "isTrusted": true
+    },
+    "category": {
+      "name": "Misc",
+      "slug": "misc"
+    },
+    "versions": [
+      {
+        "id": 226,
+        "version": "1.0.8",
+        "isLatest": false,
+        "changelog": "Fix not being able to place buildings on new games.",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668351060_1710694865825_buildshare_1.0.8.zip",
+        "extension": "zip",
+        "filename": "1710694865825_buildshare_1.0.8.zip",
+        "createdAt": "2024-03-17T17:01:05.885Z",
+        "updatedAt": "2026-01-06T02:59:11.519Z",
+        "_count": {
+          "downloads": 4844
+        }
+      },
+      {
+        "id": 225,
+        "version": "1.0.7",
+        "isLatest": false,
+        "changelog": "Recompile that might fix some placing issues.",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668350750_1710693481987_buildshare_1.0.7.zip",
+        "extension": "zip",
+        "filename": "1710693481987_buildshare_1.0.7.zip",
+        "createdAt": "2024-03-17T16:38:02.065Z",
+        "updatedAt": "2026-01-06T02:59:11.206Z",
+        "_count": {
+          "downloads": 4
+        }
+      },
+      {
+        "id": 174,
+        "version": "1.0.6",
+        "isLatest": false,
+        "changelog": "Quick fix for SOTF 1.0",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668940029_1709230978600_buildshare_1.0.6.zip",
+        "extension": "zip",
+        "filename": "1709230978600_buildshare_1.0.6.zip",
+        "createdAt": "2024-02-29T18:22:58.661Z",
+        "updatedAt": "2026-01-06T03:09:00.614Z",
+        "_count": {
+          "downloads": 1198
+        }
+      },
+      {
+        "id": 142,
+        "version": "1.0.4",
+        "isLatest": false,
+        "changelog": "Fixed duplication of original building",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668243029_1704041784782_buildshare_1.0.4.zip",
+        "extension": "zip",
+        "filename": "1704041784782_buildshare_1.0.4.zip",
+        "createdAt": "2023-12-31T16:56:24.979Z",
+        "updatedAt": "2026-01-06T02:57:23.533Z",
+        "_count": {
+          "downloads": 1837
+        }
+      },
+      {
+        "id": 140,
+        "version": "1.0.3",
+        "isLatest": false,
+        "changelog": "Fixed places in-progress blueprints not saving correctly",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668242952_1703109632183_buildshare_1.0.3.zip",
+        "extension": "zip",
+        "filename": "1703109632183_buildshare_1.0.3.zip",
+        "createdAt": "2023-12-20T22:00:32.302Z",
+        "updatedAt": "2026-01-06T02:57:23.412Z",
+        "_count": {
+          "downloads": 546
+        }
+      },
+      {
+        "id": 138,
+        "version": "1.0.2",
+        "isLatest": false,
+        "changelog": "Constraint RedLoader version",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668242951_1702932624568_buildshare_1.0.2.zip",
+        "extension": "zip",
+        "filename": "1702932624568_buildshare_1.0.2.zip",
+        "createdAt": "2023-12-18T20:50:24.657Z",
+        "updatedAt": "2026-01-06T02:57:23.518Z",
+        "_count": {
+          "downloads": 371
+        }
+      },
+      {
+        "id": 479,
+        "version": "1.0.10",
+        "isLatest": true,
+        "changelog": "Fix for new game version",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668375925_1738193798432_buildshare_1.0.10.zip",
+        "extension": "zip",
+        "filename": "1738193798432_buildshare_1.0.10.zip",
+        "createdAt": "2025-01-29T23:36:38.819Z",
+        "updatedAt": "2026-01-06T02:59:36.381Z",
+        "_count": {
+          "downloads": 13793
+        }
+      },
+      {
+        "id": 137,
+        "version": "1.0.1",
+        "isLatest": false,
+        "changelog": "Remove some debugging stuff",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668242958_1702920087009_buildshare_1.0.1.zip",
+        "extension": "zip",
+        "filename": "1702920087009_buildshare_1.0.1.zip",
+        "createdAt": "2023-12-18T17:21:27.080Z",
+        "updatedAt": "2026-01-06T02:57:23.433Z",
+        "_count": {
+          "downloads": 13
+        }
+      },
+      {
+        "id": 136,
+        "version": "1.0.0",
+        "isLatest": false,
+        "changelog": "First release",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668242976_1702916367664_buildshare_1.0.0.zip",
+        "extension": "zip",
+        "filename": "1702916367664_buildshare_1.0.0.zip",
+        "createdAt": "2023-12-18T16:19:27.103Z",
+        "updatedAt": "2026-01-06T02:57:23.417Z",
+        "_count": {
+          "downloads": 20
+        }
+      }
+    ],
+    "_count": {
+      "favorites": 2
+    }
+  }
+}

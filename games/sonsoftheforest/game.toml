@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Sons of the Forest - Unity 2022.2.16f1, IL2CPP-compiled, Windows-only binary
+# (it runs under Proton/Wine on Linux and macOS). Endnight / Steam appid 1326470.
+#
+# Because the game is IL2CPP there is no Assembly-CSharp.dll to patch: a mod
+# loader must inject through a proxy DLL, host a .NET runtime in-process, and
+# generate managed interop assemblies from GameAssembly.dll + global-metadata.dat
+# before any mod can even be compiled. Modrix ships that loader natively - see
+# the [mod_loader] table and `crates/modrix-loader-*`.
+#
+# `mod_root = "Mods"` is the loader's mod directory, mirroring what a manual
+# install does. Note the layout is SPLIT: the loader enumerates `Mods/*.dll`
+# NON-RECURSIVELY for payloads, but reads metadata from `Mods/<id>/manifest.json`.
+# A mod therefore legitimately owns both a bare top-level DLL and a folder.
+api_version         = 3
+id                  = "sonsoftheforest"
+name                = "Sons of the Forest"
+steam_appid         = 1326470
+nexus_domain        = "sonsoftheforest"   # routes nxm://sonsoftheforest/... here
+mod_root            = "Mods"
+deploy              = "link"
+install_probe       = ["steam"]
+required_files      = ["SonsOfTheForest.exe", "SonsOfTheForest_Data/il2cpp_data/Metadata/global-metadata.dat"]
+
+# CRITICAL, and the reason this definition needs api_version 3.
+#
+# Without this, `Mods` (a single-component mod root) triggers the loader-parking
+# heuristic in store::normalize_staged: every top-level .exe/.dll is moved to
+# `.root/` and deployed to the game INSTALL ROOT. For Bethesda that is correct -
+# `Data/` sits beside the binary, so a loose DLL is SKSE. Here it is exactly
+# backwards: the bare top-level DLL IS the mod payload, and parking it would
+# deploy every Sons of the Forest mod to a directory the loader never reads.
+#
+# The failure is silent - deploy reports success and the game loads nothing.
+park_root_binaries  = false
+
+# A `Mods/` tree at an archive root is content, not a packaging wrapper -
+# hoisting it would strip the container. `_modrix`/`_redloader` appear in
+# archives that bundle a loader alongside the mod.
+content_dirs = ["mods", "_modrix", "_redloader", "userdata", "fomod"]
+
+# Hand-installed mods are BOTH loose DLLs and folders in Mods/ (the split layout
+# above), so both kinds are scanned. The base game ships no Mods/ directory at
+# all, so anything unowned there is genuinely an external mod.
+[[external_scan]]
+kind  = "file"
+label = "mod"
+dir   = ""
+exts  = ["dll"]
+
+[[external_scan]]
+kind  = "folder"
+label = "mod data"
+dir   = ""
+
+# ── Launch ───────────────────────────────────────────────────────────────────
+# Steam-launched even on Windows: the game is a Steam DRM title, and going
+# through steam:// keeps overlay and entitlement init correct.
+#
+# `env` is what makes modding work off-Windows at all. Under Proton the loader's
+# version.dll proxy is inert unless WINEDLLOVERRIDES names it as a native
+# override; Modrix applies this through Steam's launch options. It is ignored on
+# Windows, where the proxy is picked up by the normal DLL search order.
+[launch]
+mode    = "steam"
+log     = "_Modrix/Latest.log"
+process = "SonsOfTheForest.exe"
+
+[launch.env]
+WINEDLLOVERRIDES = "version=n,b"
+
+# ── Loader ───────────────────────────────────────────────────────────────────
+# `modrix-sons` is Modrix's own native loader: there is no third-party project
+# to download, no [loader.source], and no version drift to track. The sentinel
+# is the managed host assembly, which only exists after a successful install.
+#
+# `conflicts` lists the rival loaders that claim the same single proxy slot.
+# Installing over one of them bricks both, so install_loader refuses rather than
+# guessing which the user wanted. MelonLoader and RedLoader both take
+# version.dll; BepInEx 6 IL2CPP takes winhttp.dll.
+[mod_loader]
+kind         = "modrix-sons"
+install_root = "_Modrix"
+sentinel     = "_Modrix/net6/Modrix.Loader.dll"
+proxy        = "version.dll"
+interop_dir  = "_Modrix/interop"
+version_file = "_Modrix/version.txt"
+conflicts    = ["MelonLoader", "_Redloader", "_RedLoader", "BepInEx", "winhttp.dll", "dxgi.dll"]
+
+# ── Mod store ────────────────────────────────────────────────────────────────
+# sotf-mods.com is where this community actually publishes: the game has no
+# Nexus presence to speak of, so without this the browser hand-off is the only
+# way to install anything. The API is public and unauthenticated, which is why
+# Modrix can browse and one-click install from it directly.
+#
+# `kind` selects the client in modrix-service that knows this site's JSON shape
+# (its quirks are real: dependencies come back as an array from the list
+# endpoint and a comma-separated string from the detail endpoint, and the list
+# endpoint's `versions` array is a stale single entry, never the latest).
+[store]
+kind     = "sotf-mods"
+base_url = "https://api.sotf-mods.com"

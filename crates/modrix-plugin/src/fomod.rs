@@ -840,10 +840,7 @@ fn decode_text(bytes: &[u8]) -> String {
 }
 
 fn utf16(bytes: &[u8], from_bytes: fn([u8; 2]) -> u16) -> String {
-    let units = bytes
-        .chunks_exact(2)
-        .filter_map(|pair| <[u8; 2]>::try_from(pair).ok())
-        .map(from_bytes);
+    let units = bytes.as_chunks::<2>().0.iter().copied().map(from_bytes);
     char::decode_utf16(units)
         .map(|r| r.unwrap_or('\u{fffd}'))
         .collect()

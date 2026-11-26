@@ -1,0 +1,109 @@
+{
+  "status": true,
+  "data": {
+    "id": 20,
+    "name": "Axel's Mod Menu",
+    "slug": "axel's-mod-menu",
+    "mod_id": "AxelModMenu",
+    "shortDescription": "Featurefull mod menu for Sons of The Forest",
+    "description": "# <FONT COLOR=\"#ffff4d\">Warning</FONT COLOR>\r\nNeeds my `SonsAxLib v1.2.0+` library to work, download it here: https://sotf-mods.com/mods/imaxel/sonsaxlib\r\n\r\n###",
+    "dependencies": "SonsAxLib",
+    "type": "Mod",
+    "modSide": null,
+    "isNSFW": false,
+    "isApproved": true,
+    "isFeatured": false,
+    "isMultiplayerCompatible": false,
+    "requiresAllPlayers": false,
+    "lastWeekDownloads": 455,
+    "downloads": 114160,
+    "latestVersion": "1.3.8",
+    "latestVersionSize": "",
+    "averageRating": 0,
+    "reviewsCount": 0,
+    "favoritesCount": 6,
+    "commentsCount": 9,
+    "sourceUrl": null,
+    "imageUrl": "https://r2.sotf-mods.com/1767665951899_1696956193461_axel's-mod-menu_thumbnail.png",
+    "buildGuid": null,
+    "buildShareVersion": null,
+    "numberOfElements": null,
+    "lastReleasedAt": "2026-04-05T18:33:04.942Z",
+    "createdAt": "2023-10-10T16:43:13.458Z",
+    "updatedAt": "2026-08-17T19:07:07.301Z",
+    "userId": 4,
+    "categoryId": 1,
+    "images": [],
+    "user": {
+      "name": "ImAxel",
+      "slug": "imaxel",
+      "imageUrl": "",
+      "isTrusted": true
+    },
+    "category": {
+      "name": "Misc",
+      "slug": "misc"
+    },
+    "versions": [
+      {
+        "id": 664,
+        "version": "1.3.8",
+        "isLatest": true,
+        "changelog": "Fixed noclip causing issues with riding ziplines and character physics override",
+        "downloadUrl": "https://r2.sotf-mods.com/1775413983720_axel's-mod-menu_1.3.8.zip",
+        "extension": "zip",
+        "filename": "1775413983720_axel's-mod-menu_1.3.8.zip",
+        "createdAt": "2026-04-05T18:33:04.943Z",
+        "updatedAt": "2026-04-05T18:33:04.943Z",
+        "_count": {
+          "downloads": 15641
+        }
+      },
+      {
+        "id": 365,
+        "version": "1.3.7",
+        "isLatest": false,
+        "changelog": "Fixed saved daytime speed not applying on game start",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668359472_1720112606809_axel's-mod-menu_1.3.7.zip",
+        "extension": "zip",
+        "filename": "1720112606809_axel's-mod-menu_1.3.7.zip",
+        "createdAt": "2024-07-04T17:03:27.260Z",
+        "updatedAt": "2026-04-05T18:33:04.937Z",
+        "_count": {
+          "downloads": 72332
+        }
+      },
+      {
+        "id": 364,
+        "version": "1.3.6",
+        "isLatest": false,
+        "changelog": "Daytime speed will now also be saved upon game restart if \"save settings\" is enabled",
+        "downloadUrl": "https://r2.sotf-mods.com/1767668367048_1720112355161_axel's-mod-menu_1.3.6.zip",
+        "extension": "zip",
+        "filename": "1720112355161_axel's-mod-menu_1.3.6.zip",
+        "createdAt": "2024-07-04T16:59:16.740Z",
+        "updatedAt": "2026-04-05T18:33:04.937Z",
+        "_count": {
+          "downloads": 1
+        }
+      },
+      {
+        "id": 315,
+        "version": "1.3.5",
+        "isLatest": false,
+        "changelog": "Disabled HUD when interactive map is open to avoid overlying text",
+        "downloadUrl": "https://r2.sotf-mods.com/1767669001602_1715157214354_axel's-mod-menu_1.3.5.zip",
+        "extension": "zip",
+        "filename": "1715157214354_axel's-mod-menu_1.3.5.zip",
+        "createdAt": "2024-05-08T08:33:34.765Z",
+        "updatedAt": "2026-04-05T18:33:04.937Z",
+        "_count": {
+          "downloads": 4756
+        }
+      }
+    ],
+    "_count": {
+      "favorites": 6
+    }
+  }
+}

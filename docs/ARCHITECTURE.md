@@ -34,19 +34,19 @@ engine that touches users' files.
 | Area | Choice | Rationale |
 |---|---|---|
 | Language | **Rust** | Safety where it matters most: the file-deployment engine touches users' game installs. Cargo + the crate ecosystem make 3 frontends cheap. |
-| GUI | **Iced** (MIT, pure-Rust) | GPLv2-compatible; one renderer → identical on all 3 OSes; tiny self-contained binary; themed toward a clean macOS-like look. |
-| GUI - ruled out | Slint | Was the first pick, but its free build is **GPLv3-only**, incompatible with our GPLv2 goal (see §11). Only `modrix-gui` links a toolkit, so this stayed a cheap swap. |
+| GUI | **Rune** (pure Rust) | Its own GPU renderer, text and layout, so it looks identical on all 3 OSes with no web view; springs and gradients for a polished look; headless `--snap` renders for visual review. Replaced a Tauri web UI: a native renderer resizes without the web process's lag. |
+| GUI - superseded | Slint, Iced 0.13, then a Tauri 2 webview | Slint was dropped under the (since removed) license gate; Iced hit its ceiling on effects and animation; the web UI got the look but resized and scrolled through a separate web process. Only `modrix-gui` links a toolkit, so each swap was one crate. |
 | TUI | **ratatui** | Mature, the standard. |
 | CLI | **clap** (derive) | Standard, scriptable. |
 | Plugins | **Two-tier: `game.toml` + `game.lua` (`mlua`, vendored Lua 5.4)** | Most games are just data; Lua only when logic is needed. |
 | Deployment | **Link → symlink → copy, transactional manifest** | Cross-platform, reversible, ships sooner. VFS deferred. |
-| Async/net | **tokio + hyper + rustls** (RustCrypto provider) | Concurrent, resumable downloads; Nexus API. *Not reqwest:* it transitively pulls Apache-2.0-only crates (`ring`, `sync_wrapper`), which are GPLv2-incompatible. We assemble a pure-Rust, all-MIT/ISC HTTPS stack instead (see §11). |
+| Async/net | **tokio + hyper + rustls** (ring provider) | Concurrent, resumable downloads; browser hand-off. Assembled from parts rather than `reqwest`; originally for licensing reasons, kept because it is small, pure Rust and already audited against our usage. |
 | Storage | **SQLite via `rusqlite`** | mods × profiles × files × conflicts is relational + transactional. |
 | Reliability | **Power of Ten for Rust** | forbid `unsafe`, panic-free, bounded loops, lint-enforced in CI - the deploy engine is safety-critical (§9.3). |
 | Steam | **`steamlocate`** | Parses `libraryfolders.vdf` / `appmanifest_*.acf`. |
 | Paths | **`directories`** | XDG / Known Folders / Application Support. |
 | Errors | **`thiserror`** (libs) / **`anyhow`** (binary edges) | Typed errors in the engine; ergonomic context at the top. |
-| License | **GPL-2.0-only** | Free/open-source; preference of v2 over v3. It's what drives the GUI choice (see §11). |
+| License | **GPL-2.0-only** (project); dependencies not gated | Free/open-source; preference of v2 over v3 for our own code. Dependency licenses are not policed (see §11). |
 
 ---
 
@@ -83,15 +83,13 @@ modrix/  (cargo workspace)
 │                      #   URL to the running instance (or starts a headless one).
 ├── modrix-cli         # thin: clap over core. The scriptable surface.
 ├── modrix-tui         # thin: ratatui over core.
-├── modrix-gui         # thin: Iced over core. The only crate that links a GUI toolkit.
+├── modrix-gui         # thin: Rune over core. The only crate that links a GUI toolkit.
 └── extension/         # userscript (v1) + WebExtension (later). JS - unavoidable
                        #   in a browser.
 ```
 
-**Licensing:** the project ships **GPL-2.0-only** (free/open-source; preference of
-v2 over v3). Every dependency is MIT/BSD/LGPL-2.1 or dual-licensed with an MIT arm,
-all GPLv2-compatible, enforced by `cargo-deny` in CI. See §11 for why the GUI is
-Iced and not Slint.
+**Licensing:** the project ships **GPL-2.0-only**. Dependency licenses are not
+gated; `cargo-deny` runs for advisories, bans and sources only (§11).
 
 ---
 
@@ -252,7 +250,7 @@ loads under the sandbox).
 
 Modrix is, at its core, a clean-room Rust reimplementation of the aria2/Motrix
 download *engine* (segmented, multi-connection, resumable) with no UI and **no
-aria2 code or binary** - a GPLv2-clean rebuild on our hyper + rustls stack. A thin
+aria2 code or binary** - a clean-room rebuild on our hyper + rustls stack. A thin
 **WebExtension** captures the browser's real, already-authenticated download and
 hands it to the engine over loopback; the engine downloads and installs.
 
@@ -321,16 +319,18 @@ logic in a frontend.
   engine headless. Everything is reachable here, and `--json` wraps every
   command in a stable `{"ok":true,"data":…}` envelope for agents and scripts.
 - **TUI (`ratatui`)**: mod list, load-order reorder, conflict view, download queue.
-- **GUI (`Iced`, MIT)**: the same, themed (switchable specs: Aurora glass /
-  Gold classic, Steam library artwork); the install wizard (FOMOD) renders here.
+- **GUI (`Rune`)**: the same, over the game's Steam library artwork, with
+  switchable themes (Aurora glass and Gold classic), the accent colour taken
+  from the art and light, dark or system appearance; the install wizard (FOMOD)
+  and, for games that declare one, the mod store render here.
 - **MCP (`modrix mcp`)**: the fourth frontend is an AI agent: a hand-rolled
   stdio JSON-RPC MCP server (`modrix-mcp`) exposing the full action surface as
   tools plus observability (downloads, progress, health) and `modrix://skill/*`
   resources - built-in usage/plugin-authoring guides and each installed game
   plugin's skill files - so agents learn per-game modding practice on install.
 
-Because frontends are thin, the GUI toolkit is a localized, swappable choice - which
-is exactly why the GPLv2 requirement (§11) only cost us a one-crate change.
+Because frontends are thin, the GUI toolkit is a localized, swappable choice - the
+GUI has already changed toolkit twice with no engine change.
 
 ---
 
@@ -404,7 +404,7 @@ loses saves and installs. It is mechanized so it holds from commit #1:
   semantics (ranges, invariants), not just shape.
 - **Short functions (~60 lines), immutable by default** (minimize `let mut`).
 - **Enforced mechanically:** pedantic clippy + cherry-picked `restriction` lints,
-  `-D warnings`, `cargo-deny` (incl. the GPLv2 license gate), cross-OS CI. The exact
+  `-D warnings`, `cargo-deny` (advisories, bans, sources), cross-OS CI. The exact
   `[workspace.lints]` / `clippy.toml` / `deny.toml` live at the
   repository root and are wired in Phase 0.
 
@@ -422,46 +422,25 @@ loses saves and installs. It is mechanized so it holds from commit #1:
 
 ---
 
-## 11. Licensing - why GPL-2.0, and why that picks the GUI
+## 11. Licensing
 
-**GPL-2.0-only**, because you prefer v2 over v3 and want the manager free and open
-source. Both are FSF/OSI free-software licenses; the difference is v3's added terms
-(anti-tivoization, explicit patent grant, anti-DRM). Preferring v2 is a legitimate
-choice - it's the Linux-kernel license.
+Modrix's own code is **GPL-2.0-only** (v2 preferred over v3; the Linux-kernel
+license). Every source file carries an SPDX header and `LICENSE` holds the full text.
 
-**The one hard constraint:** GPLv2 and GPLv3 are *mutually incompatible* - you cannot
-legally combine GPLv2-only code with GPLv3 code and redistribute it. That part is
-genuinely unavoidable. It bit us only because **Slint's free build is GPLv3-only**, so
-choosing Slint would force the whole app to v3. That was the *sole* thing pushing v3.
+**Dependency licenses are not gated.** Earlier revisions enforced GPLv2-compatibility
+across the whole dependency graph with a `cargo-deny` license allow-list, which is
+what excluded `reqwest` (via `ring`/`sync_wrapper`), forced a RustCrypto TLS
+provider (since replaced by `ring`, whose alpha RustCrypto rival lagged on
+security fixes), ruled out Slint and later required a documented linking
+exception for Iced's windowing stack. That rule has been removed: `deny.toml` now
+checks security advisories, duplicate-version policy and registry sources only, and
+nothing in the build rejects a crate by license.
 
-**The fix is just the GUI.** Slint → **Iced** (MIT). MIT is GPLv2-compatible, so the app
-is GPL-2.0 cleanly. We give up Slint's free "Cupertino" theme and instead theme Iced
-toward the macOS-like look - a little more styling, no blocker. Iced is also arguably
-*more* suckless: pure Rust, one language, no DSL, no external framework.
+What remains of the old constraint is a set of working choices, kept on their
+merits rather than by rule: the hyper + rustls client is small, pure Rust and
+already audited against how Modrix uses it, and `zip` decompresses with `flate2`
+because Modrix never compresses. Any of these may be replaced when something
+better is available.
 
-**Rest of the tree is clean:** tokio, rusqlite, ratatui, clap, mlua, serde,
-directories, steamlocate, zip, sevenz-rust are all MIT or dual-licensed with an MIT
-arm → GPLv2-compatible. Rule: take the MIT arm on dual-licensed crates, and avoid any
-**Apache-2.0-only** dependency (Apache-2.0 is incompatible with GPLv2). `unrar` is
-excluded for a related reason (§8). All of this is a mechanical `cargo-deny` gate.
-
-**The HTTP client is where this bit hardest.** The obvious choice, `reqwest`,
-transitively pulls **`ring`** (its rustls crypto backend, `Apache-2.0 AND ISC`)
-and **`sync_wrapper`** (`Apache-2.0`-only, via `tower-http`). Apache-2.0 is
-one-way-incompatible with GPLv2, so `cargo-deny` rejects both. We therefore do
-**not** use reqwest. Instead we assemble the client from **hyper + rustls**, with
-rustls's crypto provided by **`rustls-rustcrypto`** (pure-Rust RustCrypto
-primitives - aes-gcm, chacha20poly1305, p256/p384, rsa, sha2) and roots from the
-OS trust store via **`rustls-native-certs`** (avoiding the `CDLA-Permissive-2.0`
-`webpki-roots`). Every crate in that stack is MIT/ISC. The TLS state machine is
-still audited rustls; only the primitives change. Trade-off accepted with the
-maintainer: `rustls-rustcrypto` is young (0.0.x), in exchange for a 100%
-GPLv2-clean tree with no license exception. `zip` likewise uses the pure-Rust
-`flate2` backend, never `zopfli` (Apache-2.0-only).
-
-**v2-only vs "v2 or later":** we ship **GPL-2.0-only**, which most faithfully honors
-"v2 over v3." "GPL-2.0-or-later" would be the flexible alternative, but it lets v3 back
-in as a possibility - so we don't use it.
-
-**Escape hatch:** if you later decide Slint's free macOS look is worth more than v2, the
-alternative is GPLv3 + Slint. It's a one-crate change.
+Redistributors of binaries should still review `cargo tree` and each crate's own
+license terms; the build no longer does that for them.

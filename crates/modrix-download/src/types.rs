@@ -78,7 +78,7 @@ pub enum DownloadState {
 }
 
 /// A point-in-time snapshot of a download (the `tellStatus` analog).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadStatus {
     /// The download's handle.
     pub id: DownloadId,

@@ -512,7 +512,10 @@ mod tests {
         let text = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"/games/lib\"\n\t\t\"apps\"\n\t\t{\n\t\t\t\"264710\"\t\t\"7\"\n\t\t}\n\t}\n}\n";
         assert_eq!(vdf_values(text, "path"), vec!["/games/lib".to_owned()]);
         // `apps` and `libraryfolders` are block headers: no scalar value.
-        assert!(vdf_values(text, "apps").is_empty());
+        {
+            let left = vdf_values(text, "apps");
+            assert!(left.is_empty(), "expected empty, got {left:?}");
+        }
     }
 
     #[test]
