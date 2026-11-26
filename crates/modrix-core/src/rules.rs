@@ -188,7 +188,7 @@ mod tests {
         let mods = vec![m(1), m(2), m(3)];
         let (order, cycle) = effective_order(&mods, &[]);
         assert_eq!(order, mods);
-        assert!(cycle.is_empty());
+        assert_eq!(cycle, []);
     }
 
     #[test]
@@ -201,7 +201,7 @@ mod tests {
         }];
         let (order, cycle) = effective_order(&mods, &rules);
         assert_eq!(order, vec![m(2), m(1)]);
-        assert!(cycle.is_empty());
+        assert_eq!(cycle, []);
     }
 
     #[test]
@@ -244,7 +244,7 @@ mod tests {
         }];
         let (order, cycle) = effective_order(&mods, &rules);
         assert_eq!(order, mods);
-        assert!(cycle.is_empty());
+        assert_eq!(cycle, []);
     }
 
     #[test]

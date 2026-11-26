@@ -10,7 +10,7 @@ members = ["crates/*"]
 # `v*` tag, so a tag is always authoritative and code/About/release stay in sync.
 version = "0.1.0-beta.3"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.99"
 license = "GPL-2.0-only"
 authors = ["Modrix contributors"]
 
@@ -50,11 +50,15 @@ rustls = { version = "0.23", default-features = false, features = ["std", "tls12
 rustls-rustcrypto = "=0.0.2-alpha"      # pure-Rust CryptoProvider (RustCrypto primitives)
 rustls-native-certs = "0.8"             # OS trust store (avoids CDLA webpki-roots)
 getrandom = "0.3"
-iced = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "auto-detect-theme", "canvas", "image"] }
+# Native GPU UI (MIT): Rune's renderer, layout, text and springs, plus its
+# component kit. Pinned to one `dev` rev; the [patch.crates-io] block at the
+# bottom must use the same URL and rev (Rune ships patched winit/wgpu-hal/etc).
+rune = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7", features = ["native-file-dialog"] }
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7", default-features = false }
 # FOMOD installer config parsing (read-only XML DOM; MIT arm of MIT/Apache dual).
 roxmltree = "0.20"
 # Decode Steam artwork + bake the per-game backdrop / extract accent colors
-# (GUI only; MIT arm of MIT/Apache dual; the same 0.24 iced already resolves).
+# (GUI only; MIT arm of MIT/Apache dual).
 image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
 # Sandboxed Lua host for Tier-2 game plugins (MIT; vendors Lua 5.4, also MIT).
 mlua = { version = "0.10", default-features = false, features = ["lua54", "vendored"] }
@@ -105,3 +109,16 @@ print_stderr = "warn"
 
 [profile.release]
 overflow-checks = true               # Power of Ten: no silent integer wraparound
+
+# Rune's patched windowing/text/GPU crates. Cargo does not inherit a
+# dependency's patches, so they live here at the same rev as `rune` above.
+# Re-check Rune's own Cargo.toml [patch.crates-io] list whenever the rev moves.
+[patch.crates-io]
+winit = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+naga = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }
+accesskit_atspi_common = { git = "https://github.com/anomalyco/rune", rev = "e6f70eb09762180b86dcef912fe169a315bc31b7" }

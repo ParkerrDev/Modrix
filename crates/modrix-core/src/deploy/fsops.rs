@@ -464,7 +464,10 @@ mod tests {
         assert!(created[0].ends_with("a"));
         assert!(created[2].ends_with("a/b/c") || created[2].ends_with("a\\b\\c"));
         // Re-running creates nothing new.
-        assert!(ensure_parent_dirs(&target).unwrap().is_empty());
+        {
+            let left = ensure_parent_dirs(&target).unwrap();
+            assert!(left.is_empty(), "expected empty, got {left:?}");
+        }
     }
 
     #[test]

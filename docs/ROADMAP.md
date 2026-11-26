@@ -96,7 +96,7 @@ install / update / gc from the GUI, CLI, and MCP).
 ---
 
 ## Phase 5 - GUI
-- `modrix-gui` (**Iced**, MIT): the same feature set, themed classy/macOS-like;
+- `modrix-gui` (**Rune**, MIT): the same feature set, a native GPU UI tinted by each game's artwork;
   drag-to-reorder load order; the install wizard; settings.
 - Optional system-tray / headless-background so browser clicks work while "closed."
 

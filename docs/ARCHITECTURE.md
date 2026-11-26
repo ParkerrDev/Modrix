@@ -34,7 +34,7 @@ engine that touches users' files.
 | Area | Choice | Rationale |
 |---|---|---|
 | Language | **Rust** | Safety where it matters most: the file-deployment engine touches users' game installs. Cargo + the crate ecosystem make 3 frontends cheap. |
-| GUI | **Iced** (MIT, pure-Rust) | GPLv2-compatible; one renderer → identical on all 3 OSes; tiny self-contained binary; themed toward a clean macOS-like look. |
+| GUI | **Rune** (MIT, pure-Rust) | GPLv2-compatible; its own GPU renderer, text and layout, so it looks identical on all 3 OSes with no web view; springs, blur and gradients for a polished look; headless `--snap` renders for visual review. |
 | GUI - ruled out | Slint | Was the first pick, but its free build is **GPLv3-only**, incompatible with our GPLv2 goal (see §11). Only `modrix-gui` links a toolkit, so this stayed a cheap swap. |
 | TUI | **ratatui** | Mature, the standard. |
 | CLI | **clap** (derive) | Standard, scriptable. |
@@ -83,7 +83,7 @@ modrix/  (cargo workspace)
 │                      #   URL to the running instance (or starts a headless one).
 ├── modrix-cli         # thin: clap over core. The scriptable surface.
 ├── modrix-tui         # thin: ratatui over core.
-├── modrix-gui         # thin: Iced over core. The only crate that links a GUI toolkit.
+├── modrix-gui         # thin: Rune over core. The only crate that links a GUI toolkit.
 └── extension/         # userscript (v1) + WebExtension (later). JS - unavoidable
                        #   in a browser.
 ```
@@ -91,7 +91,7 @@ modrix/  (cargo workspace)
 **Licensing:** the project ships **GPL-2.0-only** (free/open-source; preference of
 v2 over v3). Every dependency is MIT/BSD/LGPL-2.1 or dual-licensed with an MIT arm,
 all GPLv2-compatible, enforced by `cargo-deny` in CI. See §11 for why the GUI is
-Iced and not Slint.
+not Slint (it was Iced first, and moved to Rune for a better-looking native UI).
 
 ---
 
@@ -321,8 +321,9 @@ logic in a frontend.
   engine headless. Everything is reachable here, and `--json` wraps every
   command in a stable `{"ok":true,"data":…}` envelope for agents and scripts.
 - **TUI (`ratatui`)**: mod list, load-order reorder, conflict view, download queue.
-- **GUI (`Iced`, MIT)**: the same, themed (switchable specs: Aurora glass /
-  Gold classic, Steam library artwork); the install wizard (FOMOD) renders here.
+- **GUI (`Rune`, MIT)**: the same, over the game's Steam library artwork, with
+  the accent colour taken from it and light, dark or system appearance; the
+  install wizard (FOMOD) renders here.
 - **MCP (`modrix mcp`)**: the fourth frontend is an AI agent: a hand-rolled
   stdio JSON-RPC MCP server (`modrix-mcp`) exposing the full action surface as
   tools plus observability (downloads, progress, health) and `modrix://skill/*`
@@ -434,10 +435,10 @@ legally combine GPLv2-only code with GPLv3 code and redistribute it. That part i
 genuinely unavoidable. It bit us only because **Slint's free build is GPLv3-only**, so
 choosing Slint would force the whole app to v3. That was the *sole* thing pushing v3.
 
-**The fix is just the GUI.** Slint → **Iced** (MIT). MIT is GPLv2-compatible, so the app
-is GPL-2.0 cleanly. We give up Slint's free "Cupertino" theme and instead theme Iced
-toward the macOS-like look - a little more styling, no blocker. Iced is also arguably
-*more* suckless: pure Rust, one language, no DSL, no external framework.
+**The fix is just the GUI.** Slint → **Iced** (MIT), and later Iced → **Rune** (MIT).
+MIT is GPLv2-compatible, so the app is GPL-2.0 cleanly. Rune is pure Rust like Iced
+(one language, no DSL, no web view) but draws its own text, blur, gradients and spring
+motion on the GPU, which is what the GUI's look needed.
 
 **Rest of the tree is clean:** tokio, rusqlite, ratatui, clap, mlua, serde,
 directories, steamlocate, zip, sevenz-rust are all MIT or dual-licensed with an MIT

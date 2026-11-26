@@ -212,7 +212,7 @@ mod tests {
         assert!(tools.len() >= 25, "expected a full tool surface");
         for tool in tools {
             assert!(tool["name"].is_string());
-            assert!(tool["inputSchema"]["type"] == "object");
+            assert_eq!(tool["inputSchema"]["type"], "object");
         }
     }
 

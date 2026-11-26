@@ -655,13 +655,25 @@ mod tests {
         let def = GameDef::from_toml_str(text, &inline()).unwrap();
         assert_eq!(def.mod_root, "");
         assert!(def.steam_appid.is_none());
-        assert!(def.install_probe.is_empty());
-        assert!(def.content_dirs.is_empty());
+        assert!(
+            def.install_probe.is_empty(),
+            "expected empty, got {:?}",
+            def.install_probe
+        );
+        assert!(
+            def.content_dirs.is_empty(),
+            "expected empty, got {:?}",
+            def.content_dirs
+        );
         assert!(def.external_scan.is_empty());
         assert!(def.health.is_none());
         assert!(def.gog_id.is_none());
         assert!(def.epic_id.is_none());
         assert!(def.registry_keys.is_empty());
-        assert!(def.required_files.is_empty());
+        assert!(
+            def.required_files.is_empty(),
+            "expected empty, got {:?}",
+            def.required_files
+        );
     }
 }

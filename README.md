@@ -128,7 +128,7 @@ rm -rf ~/.cache/modrix              # artwork + download staging
 |---|---|
 | Linux, Windows, or macOS | Steam plus Proton is first-class on Linux |
 | Rust (pinned toolchain) | Build-time only; `rustup` installs it from `rust-toolchain.toml` |
-| A GPU or software renderer | The GUI uses `wgpu` (falls back to `tiny-skia`) |
+| A GPU, or a software adapter | The GUI renders with `wgpu` (Vulkan, Metal or DirectX 12) and falls back to a software adapter such as WARP or llvmpipe |
 
 </details>
 
@@ -139,7 +139,7 @@ rm -rf ~/.cache/modrix              # artwork + download staging
 
 <br>
 
-1. Launch `modrix-gui`. On **Games**, register your game. If it is installed through Steam, Modrix usually detects it and offers a one-click "Add and switch"; otherwise point it at the install directory.
+1. Launch `modrix-gui`. On **Games**, register your game. If it is installed through Steam, Modrix usually detects it and offers it under **Found on this computer** with a one-click **Add**; otherwise point it at the install directory.
 2. Load the `extension/` folder unpacked in your browser (see Installation). No token needed.
 3. Click **Download** on nexusmods.com. The file downloads segmented, stages itself into the library, and appears under **Mods**.
 4. Enable the mod, resolve any conflicts under **Conflicts**, then hit **Deploy**. Use **Verify** to confirm the game folder matches the manifest, and **Undeploy** to reverse it.
@@ -265,13 +265,13 @@ Modrix follows the platform's standard directories (via the `directories` crate)
 | Directory | Linux default | Holds |
 |---|---|---|
 | Data | `~/.local/share/modrix` | SQLite database, staged mod library, installed plugins |
-| Config | `~/.config/modrix` | GUI theme (`gui.toml`), extra game definitions |
+| Config | `~/.config/modrix` | GUI appearance (`gui.toml`), extra game definitions |
 | Cache | `~/.cache/modrix` | Steam artwork bakes, download staging, update downloads |
 
 On Windows these map to `%LOCALAPPDATA%` and `%APPDATA%`; on macOS to `~/Library`.
 
 - **Extra games:** drop a `game.toml` at `<config>/games/<id>/game.toml`.
-- **GUI theme:** the theme picker in **Settings** persists to `<config>/gui.toml` (Aurora glass by default, Gold as an alternative).
+- **GUI appearance:** **Settings** chooses System, Dark or Light and saves it to `<config>/gui.toml`. The accent colour comes from the selected game's artwork.
 - **Registry source:** `MODRIX_REGISTRY` overrides where game-support plugins are fetched from.
 
 </details>
@@ -300,7 +300,7 @@ Modrix is a Cargo workspace. `modrix-core` depends on no UI, site-specific, or p
 | `modrix-update` | In-app updater over GitHub Releases (reuses the hyper plus rustls client). |
 | `modrix-cli` | The `clap` frontend (binary: `modrix`). |
 | `modrix-tui` | The `ratatui` frontend. |
-| `modrix-gui` | The `iced` frontend (the only crate allowed to link a GUI toolkit). |
+| `modrix-gui` | The native GPU frontend, built with [Rune](https://github.com/anomalyco/rune) (the only crate allowed to link a GUI toolkit). |
 
 ### Deploy data flow
 
@@ -333,7 +333,7 @@ enabled mods (load order)
 
 ### Licensing gate
 
-The whole tree is GPL-2.0-only, enforced mechanically by `cargo-deny` in CI. Apache-2.0-only dependencies are rejected as GPLv2-incompatible, which is why the HTTP stack is `hyper` plus `rustls` plus `rustls-rustcrypto` plus `rustls-native-certs` and never `reqwest` (which pulls `ring`). The sole carve-out is a documented [GUI linking exception](docs/LICENSE-EXCEPTIONS.md) for the windowing and text crates the Iced GUI needs; the engine links zero Apache-2.0 code.
+The whole tree is GPL-2.0-only, enforced mechanically by `cargo-deny` in CI. Apache-2.0-only dependencies are rejected as GPLv2-incompatible, which is why the HTTP stack is `hyper` plus `rustls` plus `rustls-rustcrypto` plus `rustls-native-certs` and never `reqwest` (which pulls `ring`). The sole carve-out is a documented [GUI linking exception](docs/LICENSE-EXCEPTIONS.md) for the windowing and GPU crates the GUI needs; the engine links zero Apache-2.0 code.
 
 ### Power of Ten for Rust
 
@@ -417,7 +417,7 @@ Most games need only a declarative definition. Drop a `game.toml` at `<config>/g
 
 Modrix is released under the **GNU General Public License v2.0 only** (`GPL-2.0-only`).
 
-You are free to use, modify, and distribute it under the terms of the GPLv2. Every dependency is GPLv2-compatible, verified by `cargo-deny` in CI. The one documented carve-out is a [GUI linking exception](docs/LICENSE-EXCEPTIONS.md) for the Apache-2.0 windowing and text crates the Iced GUI links; the engine itself links zero Apache-2.0 code.
+You are free to use, modify, and distribute it under the terms of the GPLv2. Every dependency is GPLv2-compatible, verified by `cargo-deny` in CI. The one documented carve-out is a [GUI linking exception](docs/LICENSE-EXCEPTIONS.md) for the Apache-2.0 windowing and GPU crates the GUI links; the engine itself links zero Apache-2.0 code.
 
 See [`LICENSE`](LICENSE) for the full text.
 

@@ -133,8 +133,8 @@ mod tests {
         let defs = builtin_defs();
         assert!(!defs.is_empty(), "at least the shipped games must embed");
         for entry in &defs {
-            assert!(!entry.def.id.trim().is_empty());
-            assert!(!entry.def.name.trim().is_empty());
+            assert_ne!(entry.def.id.trim(), "");
+            assert_ne!(entry.def.name.trim(), "");
         }
     }
 

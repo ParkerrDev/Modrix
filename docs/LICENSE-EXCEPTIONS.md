@@ -10,23 +10,18 @@ to combine the `modrix-gui` program with the following Apache-2.0-licensed
 libraries (or modified versions of them, under the same license), and to
 convey the resulting work:
 
-| Crate                 | Role                                        |
-| --------------------- | ------------------------------------------- |
-| `winit`               | Cross-platform window creation and events   |
-| `dpi`                 | DPI/scale-factor types (winit companion)    |
-| `ab_glyph`            | Font loading and glyph outlines             |
-| `ab_glyph_rasterizer` | Glyph rasterization                         |
-| `owned_ttf_parser`    | TTF font parsing (ab_glyph dependency)      |
-| `unicode-linebreak`   | Unicode line-breaking for text layout       |
-| `clipboard_macos`     | macOS clipboard backend                     |
-| `clipboard_wayland`   | Wayland clipboard backend                   |
-| `approx`              | Float comparisons (glyph layout dependency) |
-| `gethostname`         | Hostname lookup (X11 windowing dependency)  |
-| `codespan-reporting`  | Shader-compiler diagnostics (naga/wgpu)     |
-| `spirv`               | SPIR-V type definitions (naga/wgpu)         |
-| `gl_generator`        | Build-time OpenGL binding codegen (wgpu)    |
-| `khronos_api`         | Khronos XML registry data (build-time)      |
-| `glutin_wgl_sys`      | Windows WGL bindings (wgpu GL fallback)     |
+| Crate                | Role                                       |
+| -------------------- | ------------------------------------------ |
+| `winit`              | Cross-platform window creation and events  |
+| `dpi`                | DPI/scale-factor types (winit companion)   |
+| `gethostname`        | Hostname lookup (X11 windowing dependency) |
+| `codespan-reporting` | Shader-compiler diagnostics (naga/wgpu)    |
+| `spirv`              | SPIR-V type definitions (naga/wgpu)        |
+
+`ar_archive_writer` (Apache-2.0 WITH LLVM-exception) also appears in the
+tree, but only as a build-time tool of a build script; it is not part of
+any shipped binary, and its LLVM exception permits GPLv2 combination
+on its own terms.
 
 You must comply with the Apache License 2.0 in all respects for those
 libraries themselves. If you modify Modrix, you may extend this
@@ -44,7 +39,7 @@ not wish to, delete this exception statement from your version.
   layer (`modrix-ipc`), the protocol handler, the CLI, and the TUI link
   **zero** Apache-2.0 code - this is enforced mechanically by
   [`deny.toml`](../deny.toml), which forbids Apache-2.0 globally and excepts
-  precisely the fifteen crates named above, by name.
+  precisely the five crates named above, by name.
 - It is **not** a general grant to add Apache-2.0 dependencies. Any new
   Apache-2.0 crate fails `cargo deny check` unless it is a
   windowing/rendering requirement of the GUI and is added both here and

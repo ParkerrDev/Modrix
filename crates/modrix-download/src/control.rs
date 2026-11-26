@@ -261,9 +261,7 @@ mod tests {
         // 4100 bytes at 1024 => 5 pieces, last is 4 bytes.
         let mut c = Control::fresh(1024, 4100, String::new(), false).unwrap();
         assert_eq!(c.done.len(), 5);
-        for d in &mut c.done {
-            *d = true;
-        }
+        c.done.fill(true);
         assert_eq!(c.bytes_done(), 4100);
     }
 }
