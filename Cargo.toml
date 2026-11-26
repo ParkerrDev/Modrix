@@ -30,16 +30,15 @@ modrix-update = { path = "crates/modrix-update" }
 anyhow = "1"
 thiserror = "2"
 directories = "5"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive", "env"] }
 tempfile = "3"
 # --- async runtime (Phase 2) ---
-# The HTTP client is assembled from hyper + rustls + a RustCrypto crypto
-# provider + the OS trust store. This began as a licensing workaround and is
-# kept because it works and is already audited against our usage; it is a
-# choice, not a rule - see docs/ARCHITECTURE.md §11.
+# The HTTP client is assembled from hyper + rustls (ring provider) + the OS
+# trust store. It is small and already audited against our usage; it is a
+# choice, not a rule (see docs/ARCHITECTURE.md §11).
 tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread", "macros", "net", "io-util", "fs", "sync", "time",
 ] }
@@ -47,8 +46,7 @@ hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 http-body-util = "0.1"
 tokio-rustls = { version = "0.26", default-features = false, features = ["tls12", "logging"] }
-rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "logging"] }
-rustls-rustcrypto = "=0.0.2-alpha"      # pure-Rust CryptoProvider (RustCrypto primitives)
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "logging", "ring"] }
 rustls-native-certs = "0.8"             # OS trust store (avoids CDLA webpki-roots)
 getrandom = "0.3"
 # Native GPU UI: Rune's renderer, layout, text and springs, plus its
@@ -80,7 +78,7 @@ md-5 = "0.10"      # Nexus publishes file MD5s; RustCrypto
 # zip for reading mod archives. We DECOMPRESS only, so the pure-Rust flate2
 # (miniz_oxide) backend is all that is needed; `deflate` (zopfli) would add a
 # compressor we never use.
-zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 proptest = "1"
 

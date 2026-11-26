@@ -40,7 +40,7 @@ engine that touches users' files.
 | CLI | **clap** (derive) | Standard, scriptable. |
 | Plugins | **Two-tier: `game.toml` + `game.lua` (`mlua`, vendored Lua 5.4)** | Most games are just data; Lua only when logic is needed. |
 | Deployment | **Link → symlink → copy, transactional manifest** | Cross-platform, reversible, ships sooner. VFS deferred. |
-| Async/net | **tokio + hyper + rustls** (RustCrypto provider) | Concurrent, resumable downloads; browser hand-off. Assembled from parts rather than `reqwest`; originally for licensing reasons, kept because it is small, pure Rust and already audited against our usage. |
+| Async/net | **tokio + hyper + rustls** (ring provider) | Concurrent, resumable downloads; browser hand-off. Assembled from parts rather than `reqwest`; originally for licensing reasons, kept because it is small, pure Rust and already audited against our usage. |
 | Storage | **SQLite via `rusqlite`** | mods × profiles × files × conflicts is relational + transactional. |
 | Reliability | **Power of Ten for Rust** | forbid `unsafe`, panic-free, bounded loops, lint-enforced in CI - the deploy engine is safety-critical (§9.3). |
 | Steam | **`steamlocate`** | Parses `libraryfolders.vdf` / `appmanifest_*.acf`. |
@@ -429,8 +429,9 @@ license). Every source file carries an SPDX header and `LICENSE` holds the full 
 
 **Dependency licenses are not gated.** Earlier revisions enforced GPLv2-compatibility
 across the whole dependency graph with a `cargo-deny` license allow-list, which is
-what excluded `reqwest` (via `ring`/`sync_wrapper`), forced the hyper + rustls +
-RustCrypto HTTP stack, ruled out Slint and later required a documented linking
+what excluded `reqwest` (via `ring`/`sync_wrapper`), forced a RustCrypto TLS
+provider (since replaced by `ring`, whose alpha RustCrypto rival lagged on
+security fixes), ruled out Slint and later required a documented linking
 exception for Iced's windowing stack. That rule has been removed: `deny.toml` now
 checks security advisories, duplicate-version policy and registry sources only, and
 nothing in the build rejects a crate by license.

@@ -86,7 +86,7 @@ pub(crate) fn extract_zip(archive: &Path, dest: &Path) -> Result<()> {
         // `enclosed_name` returns None for any name that escapes the root.
         let Some(rel) = entry.enclosed_name() else {
             return Err(Error::PathEscape {
-                path: PathBuf::from(entry.name()),
+                path: PathBuf::from(entry.name().unwrap_or_default().into_owned()),
             });
         };
         let out = dest.join(&rel);

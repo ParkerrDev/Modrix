@@ -17,7 +17,6 @@ hyper-util.workspace = true
 http-body-util.workspace = true
 tokio-rustls.workspace = true
 rustls.workspace = true
-rustls-rustcrypto.workspace = true
 rustls-native-certs.workspace = true
 md-5.workspace = true
 sha2.workspace = true

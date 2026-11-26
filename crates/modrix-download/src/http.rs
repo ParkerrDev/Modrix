@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
-//! A small async HTTP/HTTPS client built on the pure-Rust, GPLv2-clean stack:
-//! hyper for HTTP/1.1, rustls for TLS with the RustCrypto crypto provider, and
-//! the OS trust store for roots. No reqwest, no ring (see `docs/ARCHITECTURE.md`
-//! §11). One connection per request (a download manager is not high-QPS) with
+//! A small async HTTP/HTTPS client: hyper for HTTP/1.1, rustls for TLS with
+//! the ring crypto provider, and the OS trust store for roots (see
+//! `docs/ARCHITECTURE.md` §11). One connection per request (a download manager is not high-QPS) with
 //! bounded redirect following.
 
 use std::sync::Arc;
@@ -71,14 +70,14 @@ impl Response {
 }
 
 impl HttpClient {
-    /// Build a client with a rustls config using the RustCrypto provider and the
+    /// Build a client with a rustls config using the ring provider and the
     /// OS trust store.
     ///
     /// # Errors
     ///
     /// Returns [`Error::Tls`] if the TLS configuration cannot be built.
     pub fn new() -> Result<Self, Error> {
-        let provider = Arc::new(rustls_rustcrypto::provider());
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
         let mut roots = rustls::RootCertStore::empty();
         let loaded = rustls_native_certs::load_native_certs();
         for cert in loaded.certs {
