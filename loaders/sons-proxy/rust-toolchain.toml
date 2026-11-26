@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Pinned to the same toolchain as the main workspace so lint behaviour matches.
+# `targets` makes `rustup` fetch the Windows std automatically - the proxy is a
+# Windows PE even when it is cross-compiled from Linux.
+[toolchain]
+channel = "1.96.0"
+components = ["clippy", "rustfmt"]
+targets = ["x86_64-pc-windows-gnu"]

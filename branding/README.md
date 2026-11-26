@@ -112,4 +112,4 @@ Noto Sans is licensed under the SIL Open Font License 1.1 by the Noto Project
 Authors. `glyphs.json` contains outlines for six characters converted to path
 data, used as artwork rather than redistributed as font software, which is the
 ordinary way a typeface is used to set a logo. The OFL is not in Modrix's
-dependency graph and is not checked by `cargo deny`, which only sees Rust crates.
+dependency graph and is outside anything `cargo deny` sees (it checks Rust crates, and no longer their licenses).

@@ -1,24 +1,20 @@
 # SPDX-License-Identifier: GPL-2.0-only
-# cargo-deny: make GPLv2 compliance a mechanical CI gate. Anything not in the
-# `allow` list below fails the build. Apache-2.0 is intentionally ABSENT - it is
-# incompatible with GPL-2.0-only; dual `MIT OR Apache-2.0` crates still pass via
-# their MIT arm.
+# cargo-deny: security advisories, duplicate-version policy and registry
+# sources. Dependency LICENSES ARE NOT GATED - the project stopped constraining
+# its dependency graph by license; see docs/ARCHITECTURE.md §11.
 
 [advisories]
-# Each ignore is justified by our *actual* usage, not waved away. All stem from
-# `rustls-rustcrypto` (the pure-Rust TLS crypto provider we use to stay
-# GPLv2-clean instead of the Apache-encumbered ring/aws-lc). Re-audit if that
-# provider is bumped.
+# Each ignore is justified by our *actual* usage, not waved away. Re-audit an
+# entry whenever the crate that pulls it in is bumped.
 ignore = [
     # `paste`: unmaintained, but a *build-time* proc-macro with no runtime or
-    # security surface, pulled transitively by RustCrypto crates. No upgrade.
+    # security surface, pulled transitively by RustCrypto crates.
     "RUSTSEC-2024-0436",
     # `rsa` "Marvin Attack": a timing sidechannel in RSA PKCS#1 v1.5
     # *decryption* (a private-key operation). We are a TLS *client*:
     # rustls-rustcrypto uses `rsa` only to VERIFY the server's certificate
-    # signature (a public-key operation) - no RSA private-key decryption ever
-    # happens on our side - so the vulnerable path is not exercised. No fix
-    # exists upstream.
+    # signature (a public-key operation), so the vulnerable path is not
+    # exercised. No fix exists upstream.
     "RUSTSEC-2023-0071",
     # `rustls-webpki` 0.102.8 (CRL matching, URI/wildcard name constraints, CRL
     # parse panic): our certificate chain verification runs through
@@ -30,65 +26,6 @@ ignore = [
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0104",
 ]
-
-[licenses]
-# Only GPLv2-compatible licenses. Add here (with a note) if a legitimately
-# compatible license shows up in the tree; never add Apache-2.0-only or GPL/LGPL-3.0.
-allow = [
-    "GPL-2.0-only",     # our own license
-    "MIT",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "ISC",
-    "Zlib",
-    "Unlicense",
-    "LGPL-2.1-only",
-    "CC0-1.0",
-    "Unicode-DFS-2016",
-    "Unicode-3.0",
-    "MIT-0",
-    "BSL-1.0",
-    # MPL-2.0 is GPL-2.0-compatible: MPL 2.0 §1.12 names "GNU GPL Version 2.0" a
-    # Secondary License and §3.3 grants distribution of a Larger Work under it,
-    # unless a file is flagged "Incompatible With Secondary Licenses" (none here
-    # are). Pulled in by `option-ext` via the locked `directories` dependency.
-    "MPL-2.0",
-]
-confidence-threshold = 0.9
-# The allow list is a curated superset of acceptable licenses, so entries that
-# no current dependency uses are expected - don't fail CI on them.
-unused-allowed-license = "allow"
-
-# --- GUI linking exception (Apache-2.0 for the windowing/rendering stack only) --
-# Apache-2.0 is NOT allowed in general (it is GPLv2-incompatible). But every
-# native Rust GUI is built on `winit` (Apache-2.0), and Rune, the GUI toolkit,
-# needs it plus a few Apache-2.0 crates of its own. Modrix grants a documented additional
-# permission (see docs/LICENSE-EXCEPTIONS.md) to link these specific GUI libraries, so
-# they are excepted BY NAME here - the engine stays 100% Apache-free; only the
-# `modrix-gui` windowing layer relies on this.
-[[licenses.exceptions]]
-name = "winit"
-allow = ["Apache-2.0"]
-[[licenses.exceptions]]
-name = "dpi"
-allow = ["Apache-2.0"]
-[[licenses.exceptions]]
-name = "gethostname"
-allow = ["Apache-2.0"]
-# The GPU renderer (wgpu/naga) additions - same GUI-only linking exception.
-[[licenses.exceptions]]
-name = "codespan-reporting"
-allow = ["Apache-2.0"]
-[[licenses.exceptions]]
-name = "spirv"
-allow = ["Apache-2.0"]
-# `ar_archive_writer`: Apache-2.0 WITH LLVM-exception, a BUILD-TIME helper of
-# `psm`'s build script (Rune's layout engine grows its stack through `stacker`).
-# It writes a static archive during the build and is not part of the shipped
-# binary; the LLVM exception also grants GPLv2 combination explicitly.
-[[licenses.exceptions]]
-name = "ar_archive_writer"
-allow = ["Apache-2.0 WITH LLVM-exception"]
 
 [bans]
 multiple-versions = "allow"

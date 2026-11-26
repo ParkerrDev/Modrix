@@ -27,6 +27,7 @@ pub mod external;
 mod gamedef;
 pub mod health;
 mod id;
+pub mod launch;
 pub mod loadorder;
 pub mod logic;
 mod model;
@@ -43,10 +44,12 @@ pub use engine::{Engine, GameCapabilities};
 pub use error::{Error, Result};
 pub use external::ExternalMod;
 pub use gamedef::{
-    ExternalScanDef, GameDef, HealthDef, LoadOrderDef, LoaderCheckDef, PluginsTxtDef, RecommendDef,
+    ExternalScanDef, GameDef, HealthDef, LaunchDef, LoadOrderDef, LoaderCheckDef, LoaderDef,
+    LoaderSourceDef, PluginsTxtDef, RecommendDef, StoreDef,
 };
 pub use health::{Issue, Severity};
 pub use id::{GameId, ModId, ProfileId};
+pub use launch::{LaunchOutcome, LaunchReadiness, LoaderStatus, LogTail};
 pub use model::{Game, LinkType, Mod, Profile};
 pub use paths::Paths;
 pub use progress::{Progress, ProgressSnapshot};

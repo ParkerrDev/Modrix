@@ -2485,6 +2485,8 @@ dependencies = [
  "anyhow",
  "clap",
  "modrix-core",
+ "modrix-il2cpp",
+ "modrix-interop-gen",
  "modrix-ipc",
  "modrix-mcp",
  "modrix-plugin",
@@ -2541,6 +2543,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "modrix-ecma335"
+version = "0.1.0-beta.3"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "modrix-gui"
 version = "0.1.0-beta.3"
 dependencies = [
@@ -2561,6 +2570,22 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "modrix-il2cpp"
+version = "0.1.0-beta.3"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "modrix-interop-gen"
+version = "0.1.0-beta.3"
+dependencies = [
+ "modrix-ecma335",
+ "modrix-il2cpp",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2638,6 +2663,8 @@ dependencies = [
  "modrix-download",
  "modrix-ipc",
  "modrix-plugin",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "tracing",

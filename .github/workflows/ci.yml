@@ -56,10 +56,11 @@ jobs:
       - run: cargo test --all --all-features
 
   deny:
-    name: cargo-deny (license + advisories)
+    name: cargo-deny (advisories, bans, sources)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check licenses advisories bans sources
+          # Licenses are deliberately not checked; see docs/ARCHITECTURE.md §11.
+          command: check advisories bans sources

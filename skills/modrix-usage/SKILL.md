@@ -34,6 +34,36 @@ engine, same data.
 5. Plugin games: `plugins auto-sort`, then review `plugins list`.
 6. `deploy` → `verify`. Report the numbers.
 
+## Launching and testing a change
+
+Some games declare how to start themselves and which mod loader they need.
+`game capabilities` reports `launch` and `mod_loader`; when either is false the
+commands below do not apply to that game and will say so.
+
+1. `loader status` / `loader_status` - **check this before anything else on a
+   loader game.** It reports whether the loader is installed, whether interop
+   assemblies exist, and whether a *rival* loader occupies the proxy slot. A
+   game has exactly one such slot, so two loaders never coexist: installing over
+   one silently breaks both. If `conflict` is set, stop and tell the user which
+   loader is in the way rather than working around it.
+2. `deploy` → `launch` (or `deploy_and_launch` / `modrix launch --deploy`) to
+   push a change and start the game in one step.
+3. `log --since <cursor>` / `read_game_log` to watch it boot. Pass the returned
+   `next_cursor` back as `since` to follow along without re-reading. A
+   `truncated: true` result means the game restarted and the log began again -
+   reset your view, do not treat it as corruption.
+
+**On Linux and macOS, read the launch warning.** Windows-only games run under
+Proton/Wine, where a loader's proxy DLL is ignored unless the game's Steam
+launch options carry the environment the definition asks for (typically
+`WINEDLLOVERRIDES="version=n,b" %command%`). Modrix cannot inject it, because
+Steam owns the game process. Without it the game starts perfectly and **no mods
+load, with no error** - so if a user reports "my mods stopped working" on Linux,
+check `launch`'s `readiness` before investigating anything else.
+
+`launch` is fire-and-forget: it returns as soon as the game is handed off, not
+when the game is ready. Poll the log if you need to know it actually started.
+
 ## Rules of engagement
 
 - Never edit the game directory by hand; hand-placed files show up as

@@ -23,6 +23,20 @@ pub enum Error {
     #[error("could not determine platform directories for this user")]
     NoProjectDirs,
 
+    /// The game could not be started, or its definition does not say how.
+    #[error("could not launch the game: {message}")]
+    Launch {
+        /// What went wrong.
+        message: String,
+    },
+
+    /// A mod loader operation was refused or failed.
+    #[error("mod loader: {message}")]
+    Loader {
+        /// What went wrong.
+        message: String,
+    },
+
     /// A database operation failed.
     #[error("database error: {0}")]
     Database(#[from] rusqlite::Error),

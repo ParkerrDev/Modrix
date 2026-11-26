@@ -141,6 +141,9 @@ fn library(s: &mut App) {
         load_order: true,
         external_scan: true,
         health_checks: true,
+        launch: true,
+        mod_loader: false,
+        store: false,
     });
     s.lib.mods = MODS
         .iter()

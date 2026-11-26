@@ -6,6 +6,7 @@
 //! do is reachable here. All business logic lives in the engine - this file only
 //! parses arguments, calls engine methods, and formats the result.
 
+mod interop;
 mod output;
 mod parity;
 mod registry;
@@ -71,6 +72,31 @@ enum Command {
     },
     /// Remove everything the current deployment placed, restoring originals.
     Undeploy,
+    /// Start the game. Returns immediately; follow `modrix log` to watch it boot.
+    Launch {
+        /// Deploy the active profile first (the usual test-a-change one-shot).
+        #[arg(long)]
+        deploy: bool,
+    },
+    /// Read the game's log. Pass the printed cursor as `--since` to follow it.
+    Log {
+        /// Byte offset to resume from; 0 reads the newest window.
+        #[arg(long, default_value_t = 0)]
+        since: u64,
+        /// Maximum lines to print (capped at 2000).
+        #[arg(long, default_value_t = 200)]
+        lines: usize,
+    },
+    /// Generate the reference assemblies an IL2CPP game needs to build mods.
+    Interop {
+        #[command(subcommand)]
+        cmd: interop::InteropCmd,
+    },
+    /// Inspect the game's mod loader.
+    Loader {
+        #[command(subcommand)]
+        cmd: LoaderCmd,
+    },
     /// Verify the current deployment against the manifest.
     Verify,
     /// Run the headless background service that handles browser download
@@ -261,6 +287,10 @@ fn dispatch(cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
         Command::Deploy { dry_run } => deploy(cli, engine, *dry_run, out),
         Command::Undeploy => undeploy(cli, engine, out),
         Command::Verify => verify(cli, engine, out),
+        Command::Launch { deploy } => launch(cli, engine, *deploy, out),
+        Command::Log { since, lines } => log_tail(cli, engine, *since, *lines, out),
+        Command::Interop { cmd } => interop::interop_cmd(cmd, cli, engine, out),
+        Command::Loader { cmd } => loader_cmd(cmd, cli, engine, out),
         Command::Registry { cmd } => registry::registry_cmd(cmd, engine, out),
         Command::Plugin { cmd } => registry::plugin_cmd(cmd, out),
         Command::Plugins { cmd } => parity::plugins_cmd(cmd, cli, engine, out),
@@ -512,10 +542,99 @@ fn verify(cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
     output::emit(out, cli.json, &data, |out, _| output::verify(&report, out))
 }
 
+// --- launch, loader, and logs ----------------------------------------------
+
+/// Loader subcommands.
+#[derive(Subcommand, Debug)]
+enum LoaderCmd {
+    /// Whether the mod loader is installed, and what is in its way.
+    Status,
+}
+
+fn launch(cli: &Cli, engine: &Engine, deploy_first: bool, out: &mut dyn Write) -> Result<()> {
+    let game = resolve_game(cli, engine)?;
+    if deploy_first {
+        let profile = engine.active_profile(game.id)?;
+        engine.deploy(profile.id)?;
+    }
+    let outcome = engine.launch(game.id)?;
+    output::emit(out, cli.json, &outcome, |out, outcome| {
+        if outcome.stopped_existing {
+            writeln!(out, "Stopped the running instance.")?;
+        }
+        writeln!(out, "Launched {} via {}", game.name, outcome.command)?;
+        // A launch that cannot deliver the loader's environment starts a
+        // perfectly working *unmodded* game, which is the confusing case.
+        if let Some(warning) = &outcome.readiness.warning {
+            writeln!(out, "\nwarning: {warning}")?;
+        }
+        Ok(())
+    })
+}
+
+fn log_tail(
+    cli: &Cli,
+    engine: &Engine,
+    since: u64,
+    lines: usize,
+    out: &mut dyn Write,
+) -> Result<()> {
+    let game = resolve_game(cli, engine)?;
+    let tail = engine.tail_log(game.id, since, lines)?;
+    output::emit(out, cli.json, &tail, |out, tail| {
+        if tail.truncated {
+            writeln!(out, "-- log restarted (new session) --")?;
+        }
+        for line in &tail.lines {
+            writeln!(out, "{line}")?;
+        }
+        writeln!(out, "-- cursor {} --", tail.next_cursor)?;
+        Ok(())
+    })
+}
+
+fn loader_cmd(cmd: &LoaderCmd, cli: &Cli, engine: &Engine, out: &mut dyn Write) -> Result<()> {
+    let game = resolve_game(cli, engine)?;
+    match cmd {
+        LoaderCmd::Status => {
+            let status = engine.loader_status(game.id)?;
+            output::emit(out, cli.json, &status, |out, status| {
+                let state = if status.installed {
+                    "installed"
+                } else {
+                    "not installed"
+                };
+                writeln!(out, "{}: {state}", status.kind)?;
+                if let Some(version) = &status.version {
+                    writeln!(out, "  version:  {version}")?;
+                }
+                writeln!(out, "  root:     {}", status.install_root.display())?;
+                writeln!(
+                    out,
+                    "  interop:  {}",
+                    if status.interop_ready {
+                        "generated"
+                    } else {
+                        "not generated - mods cannot be compiled yet"
+                    }
+                )?;
+                if let Some(conflict) = &status.conflict {
+                    writeln!(
+                        out,
+                        "\nwarning: `{conflict}` already occupies the loader slot. \
+                         Two loaders cannot share it - remove that one first."
+                    )?;
+                }
+                Ok(())
+            })
+        }
+    }
+}
+
 // --- resolution helpers ----------------------------------------------------
 
 /// Resolve the game to act on from `--game` (or the sole game if unambiguous).
-fn resolve_game(cli: &Cli, engine: &Engine) -> Result<Game> {
+pub(crate) fn resolve_game(cli: &Cli, engine: &Engine) -> Result<Game> {
     let games = engine.games()?;
     if games.is_empty() {
         bail!("no games registered - add one with `modrix game add`");

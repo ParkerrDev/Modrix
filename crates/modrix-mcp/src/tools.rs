@@ -112,7 +112,107 @@ fn all() -> Vec<Tool> {
     tools.extend(deploy_tools_b());
     tools.extend(misc_tools());
     tools.extend(download_tools());
+    tools.extend(launch_tools());
+    tools.extend(launch_tools_b());
     tools
+}
+
+// --- launch, loader, and logs ------------------------------------------------
+
+/// Tools that start a game, check its mod loader, and read its log.
+///
+/// This is the surface an agent drives to *verify* a mod actually works, as
+/// opposed to merely deploying it: deploy, launch, then poll the log. Modrix
+/// deliberately stops at the log - what happens inside a running game is the
+/// business of a per-game bridge, not of a mod manager.
+fn launch_tools() -> Vec<Tool> {
+    vec![
+        Tool {
+            name: "loader_status",
+            description: "Whether the game's mod loader is installed, its version, \
+                          whether interop assemblies are ready, and whether a rival \
+                          loader is occupying the proxy slot.",
+            schema: schema(&[], &game_prop()),
+            read_only: true,
+            run: |ctx, args| {
+                let game = game_of(ctx, args)?;
+                to_value(&ctx.engine().loader_status(game.id).map_err(err)?)
+            },
+        },
+        Tool {
+            name: "launch_game",
+            description: "Start the game. Returns immediately without waiting for it \
+                          to appear; poll read_game_log to see it boot. Warns when the \
+                          platform cannot deliver the loader's required environment.",
+            schema: schema(&[], &game_prop()),
+            read_only: false,
+            run: |ctx, args| {
+                let game = game_of(ctx, args)?;
+                to_value(&ctx.engine().launch(game.id).map_err(err)?)
+            },
+        },
+    ]
+}
+
+fn launch_tools_b() -> Vec<Tool> {
+    vec![
+        Tool {
+            name: "read_game_log",
+            description: "Read a bounded window of the game log. Pass the returned \
+                          next_cursor as `since` to follow it. A `truncated` result \
+                          means the game restarted and the log began again.",
+            schema: schema(&[], &log_props()),
+            read_only: true,
+            run: |ctx, args| {
+                let game = game_of(ctx, args)?;
+                let since = args.get("since").and_then(Value::as_u64).unwrap_or(0);
+                let max = args
+                    .get("max_lines")
+                    .and_then(Value::as_u64)
+                    .and_then(|n| usize::try_from(n).ok())
+                    .unwrap_or(200);
+                to_value(&ctx.engine().tail_log(game.id, since, max).map_err(err)?)
+            },
+        },
+        Tool {
+            name: "deploy_and_launch",
+            description: "Deploy the active profile, then start the game. The usual \
+                          one-shot for testing a change end to end.",
+            schema: schema(&[], &game_prop()),
+            read_only: false,
+            run: |ctx, args| {
+                let game = game_of(ctx, args)?;
+                let profile = active_profile(ctx, &game)?;
+                let report = ctx.engine().deploy(profile.id).map_err(err)?;
+                let outcome = ctx.engine().launch(game.id).map_err(err)?;
+                // `DeployReport` is not Serialize; mirror the `deploy` tool's
+                // shape so the two agree field for field.
+                Ok(json!({
+                    "deploy": { "added": report.added(), "removed": report.removed(),
+                                "unchanged": report.unchanged() },
+                    "launch": serde_json::to_value(&outcome).map_err(err)?,
+                }))
+            },
+        },
+    ]
+}
+
+/// Schema properties for `read_game_log`: the game plus a cursor and a cap.
+fn log_props() -> Value {
+    let mut props = game_prop();
+    if let Some(map) = props.as_object_mut() {
+        map.insert(
+            "since".to_owned(),
+            json!({ "type": "integer", "minimum": 0, "description":
+                "Byte offset to resume from; 0 reads the newest window" }),
+        );
+        map.insert(
+            "max_lines".to_owned(),
+            json!({ "type": "integer", "minimum": 1, "description":
+                "Maximum lines to return (default 200, capped at 2000)" }),
+        );
+    }
+    props
 }
 
 // --- shared resolution ------------------------------------------------------
